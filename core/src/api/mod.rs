@@ -7,6 +7,7 @@
 
 pub mod ai;
 pub mod assistant;
+pub mod auto_org;
 pub mod health;
 pub mod p2p;
 pub mod storage;

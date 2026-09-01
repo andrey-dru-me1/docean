@@ -69,6 +69,13 @@ sha2 = "0.10"
 # sync           -> iroh = "1"          (P2P transport over QUIC)
 #                   automerge = "0.11"  (CRDT for conflict-free merge)
 # observability  -> tracing = "0.1", tracing-subscriber = "0.3"
+#
+# auto_org is implemented with HAND-ROLLED, deterministic primitives (TF-IDF,
+# k-means, k-NN, MinHash/LSH) and needs no external ML crates. linfa/
+# linfa-clustering were evaluated and replaced (see README §7a): their k-means
+# is randomly seeded and GMM needs native BLAS, both violating the determinism
+# and self-contained-build requirements. The generative filename tier reuses
+# the ai module; the classic-ML path has zero ai dependency.
 # ---------------------------------------------------------------------------
 
 [lints.rust]

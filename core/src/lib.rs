@@ -15,7 +15,7 @@
 //! * [`taxonomy`]  — tagging and folder hierarchy operations.
 //! * [`search`]    — full-text and semantic search.
 //! * [`ai`]        — pluggable AI providers.
-//! * [`auto_org`]  — AI auto-organization pipeline.
+//! * [`auto_org`]  — automatic document organization (classic-ML first, deterministic).
 //! * [`assistant`] — chat assistant with document references.
 //! * [`sync`]      — peer-to-peer file sync with conflict resolution.
 

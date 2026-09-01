@@ -177,7 +177,7 @@ stack so later tasks build on the same choices without conflict.
 | Tagging & hierarchy | `taxonomy/` (`Taxonomy`) | `taxonomy.dart` | — (logic over `storage`) | Move/tag/untag, ancestor/descendant traversal, cycle detection |
 | Full-text & semantic search | `search/` (`SearchIndex`) | `search.dart` | `tantivy = "0.26"`, `fastembed = "6"`, `usearch = "2"` | Index/query text, semantic, and hybrid queries |
 | Pluggable AI providers | `ai/` (`AiProvider`, `AiManager`) | `ai.dart` (`AiService`) | `reqwest = "0.13"` (`json`, `rustls`), `keyring = "4"`, `log = "0.4"` | Uniform `generate`/`classify`/`embed` over three backends: a small built-in local model (data downloaded on first use), a local Ollama server, and any OpenAI-compatible API (user key + base URL). Secrets (API keys) stored in the OS keychain; never cross the FFI boundary. |
-| AI auto-organization | `auto_org/` (`AutoOrganizer`) | `auto_org.dart` | (orchestrates `ai` + `storage` + `taxonomy` + `search`) | Staged, resumable pipeline: ingest → extract → classify → apply suggestions |
+| Automatic organization | `auto_org/` (`DeterministicOrganizer`) | `auto_org.dart` | hand-rolled TF-IDF, k-means, k-NN, MinHash/LSH (see §7a); orchestration over `storage` + `taxonomy` + `search` | Deterministic offline pipeline: tag → place → rename → dedup; optional generative filename tier gated on `ai` |
 | Chat assistant | `assistant/` (`Assistant`) | `assistant.dart` | (uses `search` + `ai`) | Retrieval-augmented chat with cited document references |
 | P2P sync | `sync/` (`SyncEngine`) | `sync.dart` | `iroh = "1"`, `automerge = "0.11"` | Replicate library across devices; deterministic conflict resolution |
 | Observability | — | — | `tracing = "0.1"`, `tracing-subscriber = "0.3"` | Structured logging/spans (planned) |
@@ -198,6 +198,31 @@ stack so later tasks build on the same choices without conflict.
 > Versions above are the current stable at the time of writing. They are also
 > listed (commented) in `core/Cargo.toml`; activate them per-module when that
 > module is implemented.
+
+### 7a. Auto-organization: classic-ML-first crate decision
+
+`core/src/auto_org/` is fully implemented with **hand-rolled, deterministic,
+offline** primitives. The task recommended `linfa` + `linfa-clustering` as a
+"contract, not straitjacket"; after evaluating them against the requirements we
+deliberately replaced the clustering dependency and documented it here:
+
+| Concern | Implemented with | Why (replacement rationale) |
+|---------|------------------|-----------------------------|
+| TF-IDF | hand-rolled (`auto_org::text`) | No mature single crate for TF-IDF; deterministic by construction. |
+| Clustering (emergent tags) | hand-rolled deterministic k-means with farthest-first seeding (`auto_org::cluster`) | `linfa-clustering` k-means uses **randomized** initialization and GMM is inherently stochastic — both break the hard determinism requirement (reproducible results + fixed test fixtures). Additionally, linfa **GMM** requires `ndarray-linalg` → a native BLAS/LAPACK backend (C/FFI), which conflicts with the project's "pure Rust, self-contained build" goal. |
+| k-NN tag reuse | hand-rolled cosine k-NN over TF-IDF (`auto_org::knn`) | The search layer's embedding index (`SearchIndex`) is still an interface only; k-NN over TF-IDF works today and the signature is vector-agnostic so it can be swapped for embeddings later. |
+| De-duplication | hand-rolled MinHash + LSH, FNV-1a hashing (`auto_org::minhash`) | `sha2` is already a dependency; FNV-1a with a fixed basis is deterministic across runs — no external LSH crate needed. |
+| Renaming | deterministic template from keywords/metadata (`auto_org::keywords` + `rules`); **optional** generative tier (`auto_org::generative`) | The LLM tier is the *only* module importing `crate::ai`, wired in only when a provider is enabled. The classic-ML path has zero dependency on the LLM layer. |
+
+Key properties:
+
+- **Deterministic & reversible** — `DeterministicOrganizer::organize` returns an
+  `OrgPlan` as pure data; nothing is mutated. Applying suggestions (tagging,
+  path assignment, rename) is a separate, explicit step, and each file is
+  organized opt-in.
+- **Zero LLM dependency in the default path** — only `auto_org::generative`
+  references `crate::ai`; the deterministic path compiles and runs with no AI
+  provider configured.
 
 ---
 

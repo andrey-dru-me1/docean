@@ -1,50 +1,41 @@
-//! AI auto-organization pipeline.
+//! Automatic document organization pipeline.
 //!
-//! **Boundary:** a staged, resumable pipeline that ingests new documents,
-//! extracts text/embeddings, asks an [`crate::ai::AiProvider`] for suggested tags
-//! and folder placement, and applies approved suggestions to storage, taxonomy,
-//! and search.
+//! **Classic-ML first:** the primary implementation is a deterministic, offline,
+//! non-generative path. A generative LLM is only an optional upgrade, gated on
+//! the user enabling an AI provider ([`crate::ai`]).
 //!
-//! The AI call itself lives in the *orchestrator* (which is async); the pipeline
-//! trait only consumes the resulting [`Suggestion`]s as plain data, keeping the
-//! interface decoupled from any specific provider.
+//! When a file is ingested, [`DeterministicOrganizer::organize`] runs:
+//!
+//! 1. **Tagging** — unsupervised, no LLM: TF-IDF over the corpus, then
+//!    (a) k-means clustering to surface emergent tag/topic groups ([`cluster`]),
+//!    and (b) k-NN tag reuse against already-tagged documents ([`knn`]).
+//! 2. **Placement** — deterministic: map predicted tags/topics to hierarchy
+//!    paths via user-editable rules/templates ([`rules`]).
+//! 3. **Renaming** — two tiers: (a) deterministic from extracted
+//!    keywords/entities + metadata via template ([`keywords`]); (b) LLM-generated
+//!    filename only when a generative provider is enabled ([`generative`]).
+//! 4. **De-duplication** — MinHash/LSH to avoid redundant copies ([`minhash`]).
+//!
+//! The deterministic path has **zero** dependency on the LLM layer: only
+//! [`generative`] imports `crate::ai`. Auto-organization is optional per file
+//! (the caller decides whether to call `organize` and which of the resulting
+//! [`OrgPlan`] suggestions to apply) and reversible (suggestions are returned as
+//! data; applying them is a separate, explicit step).
 
-use crate::domain::DocumentId;
+pub mod cluster;
+pub mod config;
+pub mod generative;
+pub mod keywords;
+pub mod knn;
+pub mod minhash;
+pub mod organizer;
+pub mod rules;
+pub mod text;
 
-/// Current stage of a document in the pipeline (persisted for resume-ability).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Stage {
-    Ingested,
-    Extracted,
-    Classified,
-    Applied,
-    Failed,
-}
+pub use config::{FilenameSource, OrgConfig, OrgPlan};
+pub use generative::{apply_generated, generate_filename};
+pub use organizer::{Corpus, CorpusDoc, DeterministicOrganizer};
+pub use rules::{MatchKind, PlacementRule, RuleSet};
 
-/// A proposed organization decision produced by an AI provider.
-#[derive(Debug, Clone, Default)]
-pub struct Suggestion {
-    pub suggested_tags: Vec<String>,
-    pub suggested_parent: Option<DocumentId>,
-    pub confidence: f32,
-    pub rationale: Option<String>,
-}
-
-/// A single unit of work for the pipeline.
-#[derive(Debug, Clone)]
-pub struct PipelineJob {
-    pub document_id: DocumentId,
-    pub stage: Stage,
-    pub attempt: u32,
-}
-
-/// Interface for the auto-organization pipeline.
-pub trait AutoOrganizer {
-    fn enqueue(&mut self, doc: DocumentId) -> anyhow::Result<()>;
-
-    /// Next job ready for processing, if any.
-    fn next(&self) -> Option<PipelineJob>;
-
-    /// Apply a provider's suggestion to the given job, advancing its stage.
-    fn process(&mut self, job: PipelineJob, suggestion: Suggestion) -> anyhow::Result<()>;
-}
+#[cfg(test)]
+mod tests;
