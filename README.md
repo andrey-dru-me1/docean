@@ -4,9 +4,18 @@ Cross-platform app for storing and managing digital documents. A single Flutter
 (Dart) UI talks to a Rust core engine through
 [`flutter_rust_bridge`](https://cjycode.com/flutter_rust_bridge) (FRB).
 
-**Status:** scaffold + interfaces only. The app opens a window and calls a Rust
-health-check function from Dart; the feature modules are defined as interfaces
-(traits in Rust, `abstract interface class` in Dart) but not yet implemented.
+**Status:** the scaffold is fully wired and several feature modules are
+implemented and exposed through the bridge. The app opens a window, shows an
+engine health chip, and includes responsive Search + Chat + AI-provider
+configuration screens, all driven by the Rust core through
+`flutter_rust_bridge`. Implemented so far: local document storage, tagging and
+hierarchy, full-text + offline semantic search (exact/semantic/hybrid with tag
+and path filters and snippet highlighting), pluggable AI providers (built-in /
+Ollama / OpenAI-compatible) with a configuration screen, retrieval-augmented
+chat with streaming answers and clickable document citations, P2P networking,
+file sync, and the chat assistant's in-memory RAG. The remaining feature modules
+(auto-organization, end-to-end verification) are defined as interfaces in Rust
+traits and `abstract interface class` in Dart.
 
 ---
 
@@ -256,8 +265,12 @@ cd app && flutter test integration_test -d macos    # end-to-end (loads native l
 
 - `app/test/widget_test.dart` — headless widget tests that inject a fake health
   check, so no native library is required.
-- `app/integration_test/health_test.dart` — loads the real `docer-core` library
-  and asserts the Rust health check flows through to the UI.
+- `app/test/search_chat_ui_test.dart` — widget tests for the search, chat, and
+  AI-provider configuration screens using injected fake services (no FFI), and
+  `search_service`/`assistant_service`/`provider_service` facades.
+- `app/integration_test/health_test.dart` — loads the real `docer-core` library,
+  asserts the Rust health check flows through to the UI, and exercises the
+  search bridge (index + query with highlights).
 
 ---
 

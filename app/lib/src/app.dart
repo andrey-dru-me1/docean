@@ -1,15 +1,42 @@
 import 'package:flutter/material.dart';
 
+import 'features/assistant_service.dart'
+    show AssistantService, BridgeAssistantService;
+import 'features/provider_service.dart'
+    show BridgeProviderService, ProviderService;
+import 'features/search_service.dart' show BridgeSearchService, SearchService;
 import 'p2p_sync_screen.dart';
 import 'rust/api/health.dart';
 import 'rust_health.dart';
+import 'ui/chat_screen.dart' show ChatScreen;
+import 'ui/document_view.dart' show DocumentDetailView, DocumentSummary;
+import 'ui/provider_screen.dart' show ProviderScreen;
+import 'ui/search_screen.dart' show DocumentOpener, SearchScreen;
 
-/// Root widget. The health probe is injectable so widget tests can run
-/// headlessly without a native library.
+/// Root widget. All services are injectable so widget tests can run headlessly
+/// without the native library; the app uses the bridge-backed defaults.
 class DocerApp extends StatelessWidget {
-  const DocerApp({super.key, this.healthCheck = defaultHealthCheck});
+  const DocerApp({
+    super.key,
+    this.healthCheck = defaultHealthCheck,
+    this.searchService = const BridgeSearchService(),
+    this.assistantService = const BridgeAssistantService(),
+    this.providerService = const BridgeProviderService(),
+    this.tags = const [],
+    this.paths = const [],
+    this.openDocument,
+  });
 
   final HealthCheckFn healthCheck;
+  final SearchService searchService;
+  final AssistantService assistantService;
+  final ProviderService providerService;
+  final List<String> tags;
+  final List<String> paths;
+
+  /// Opens a document from a search result or citation. Defaults to a local
+  /// detail view.
+  final DocumentOpener? openDocument;
 
   @override
   Widget build(BuildContext context) {
@@ -20,112 +47,206 @@ class DocerApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: HomeScreen(healthCheck: healthCheck),
+      home: MainShell(
+        healthCheck: healthCheck,
+        searchService: searchService,
+        assistantService: assistantService,
+        providerService: providerService,
+        tags: tags,
+        paths: paths,
+        openDocument: openDocument,
+      ),
     );
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.healthCheck});
+/// The navigable shell: a navigation rail on wide screens and a bottom
+/// navigation bar on narrow screens, hosting Search, Chat, and Providers.
+class MainShell extends StatefulWidget {
+  const MainShell({
+    super.key,
+    required this.healthCheck,
+    required this.searchService,
+    required this.assistantService,
+    required this.providerService,
+    required this.tags,
+    required this.paths,
+    this.openDocument,
+  });
 
   final HealthCheckFn healthCheck;
+  final SearchService searchService;
+  final AssistantService assistantService;
+  final ProviderService providerService;
+  final List<String> tags;
+  final List<String> paths;
+  final DocumentOpener? openDocument;
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<MainShell> createState() => _MainShellState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _MainShellState extends State<MainShell> {
+  int _index = 0;
+  bool _aiAvailable = true;
   HealthStatus? _status;
-  Object? _error;
+  bool _healthError = false;
 
   @override
   void initState() {
     super.initState();
-    _probe();
+    _probeAi();
+    _probeHealth();
   }
 
-  void _probe() {
+  void _probeHealth() {
     try {
       _status = widget.healthCheck();
-      _error = null;
-    } catch (e) {
+      _healthError = false;
+    } catch (_) {
       _status = null;
-      _error = e;
+      _healthError = true;
     }
   }
 
-  void _refresh() {
-    setState(_probe);
+  void _probeAi() {
+    try {
+      final active = widget.providerService.activeProvider();
+      // The built-in local provider has no API key and serves excerpts only;
+      // generative answers require an external (or Ollama) provider.
+      _aiAvailable = active.kind != 'builtin';
+    } catch (_) {
+      _aiAvailable = false;
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Docer')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.folder_shared_outlined, size: 72),
-              const SizedBox(height: 16),
-              const Text(
-                'Digital document storage & organization',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18),
-              ),
-              const SizedBox(height: 32),
-              _buildStatus(),
-              const SizedBox(height: 16),
-              TextButton.icon(
-                onPressed: _refresh,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Re-run health check'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const P2pSyncScreen(),
-                  ),
-                ),
-                icon: const Icon(Icons.swap_horiz),
-                label: const Text('P2P & Sync'),
-              ),
-            ],
-          ),
+  void _openDocument(DocumentSummary doc) {
+    if (widget.openDocument != null) {
+      widget.openDocument!(doc);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DocumentDetailView(
+          document: doc,
+          onBack: () => Navigator.of(context).pop(),
         ),
       ),
     );
   }
 
-  Widget _buildStatus() {
-    if (_error != null) {
-      return Text(
-        'Engine error: $_error',
-        textAlign: TextAlign.center,
-        style: const TextStyle(color: Colors.red),
-      );
-    }
-    final status = _status;
-    if (status == null) {
-      return const CircularProgressIndicator();
-    }
-    final ok = status.ok;
-    return Column(
-      children: [
-        Text(
-          'Rust core: ${ok ? 'OK' : 'DEGRADED'}',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
+  /// Opens the P2P & Sync screen (kept from the main UI shell integration).
+  void _openP2p() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const P2pSyncScreen()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+
+    Widget? healthChip;
+    final ok = _status?.ok ?? false;
+    if (_status != null || _healthError) {
+      healthChip = Padding(
+        padding: const EdgeInsets.only(right: 16),
+        child: Chip(
+          avatar: Icon(
+            ok ? Icons.check_circle : Icons.warning,
+            size: 18,
             color: ok ? Colors.green : Colors.orange,
           ),
+          label: Text(ok ? 'Engine OK' : 'Engine degraded'),
         ),
-        const SizedBox(height: 8),
-        Text('${status.engine} v${status.engineVersion} on ${status.platform}'),
-        const SizedBox(height: 4),
-        Text('timestamp_ms=${status.timestampMs}'),
-      ],
+      );
+    }
+
+    final search = SearchScreen(
+      searchService: widget.searchService,
+      onOpenDocument: _openDocument,
+      tags: widget.tags,
+      paths: widget.paths,
+      onConfigureAi: () => setState(() => _index = 2),
+    );
+    final chat = ChatScreen(
+      assistantService: widget.assistantService,
+      onOpenDocument: _openDocument,
+      aiAvailable: _aiAvailable,
+      onConfigureAi: () => setState(() => _index = 2),
+    );
+    final providers = ProviderScreen(providerService: widget.providerService);
+
+    final pages = <Widget>[search, chat, providers];
+
+    if (wide) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Docer'),
+          actions: [
+            IconButton(
+              tooltip: 'P2P & Sync',
+              onPressed: _openP2p,
+              icon: const Icon(Icons.swap_horiz),
+            ),
+            ?healthChip,
+          ],
+        ),
+        body: Row(
+          children: [
+            NavigationRail(
+              selectedIndex: _index,
+              onDestinationSelected: (i) => setState(() => _index = i),
+              labelType: NavigationRailLabelType.all,
+              destinations: const [
+                NavigationRailDestination(
+                  icon: Icon(Icons.search),
+                  label: Text('Search'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.chat_bubble_outline),
+                  selectedIcon: Icon(Icons.chat_bubble),
+                  label: Text('Chat'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.tune),
+                  label: Text('Providers'),
+                ),
+              ],
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(child: pages[_index]),
+          ],
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(['Search', 'Chat', 'Providers'][_index]),
+        actions: [
+          IconButton(
+            tooltip: 'P2P & Sync',
+            onPressed: _openP2p,
+            icon: const Icon(Icons.swap_horiz),
+          ),
+          ?healthChip,
+        ],
+      ),
+      body: IndexedStack(index: _index, children: pages),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: 'Chat',
+          ),
+          NavigationDestination(icon: Icon(Icons.tune), label: 'Providers'),
+        ],
+      ),
     );
   }
 }

@@ -134,6 +134,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProviderSettings dco_decode_box_autoadd_provider_settings(dynamic raw);
 
   @protected
+  SearchRequestDto dco_decode_box_autoadd_search_request_dto(dynamic raw);
+
+  @protected
   SyncConflictDto dco_decode_box_autoadd_sync_conflict_dto(dynamic raw);
 
   @protected
@@ -211,6 +214,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   HierarchyPath dco_decode_hierarchy_path(dynamic raw);
 
   @protected
+  HighlightSpan dco_decode_highlight_span(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
@@ -236,6 +242,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<HierarchyPath> dco_decode_list_hierarchy_path(dynamic raw);
+
+  @protected
+  List<HighlightSpan> dco_decode_list_highlight_span(dynamic raw);
 
   @protected
   List<LabelScore> dco_decode_list_label_score(dynamic raw);
@@ -349,6 +358,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SearchHitDto dco_decode_search_hit_dto(dynamic raw);
+
+  @protected
+  SearchMode dco_decode_search_mode(dynamic raw);
+
+  @protected
+  SearchRequestDto dco_decode_search_request_dto(dynamic raw);
 
   @protected
   SyncConflictDto dco_decode_sync_conflict_dto(dynamic raw);
@@ -513,6 +528,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  SearchRequestDto sse_decode_box_autoadd_search_request_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   SyncConflictDto sse_decode_box_autoadd_sync_conflict_dto(
     SseDeserializer deserializer,
   );
@@ -602,6 +622,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   HierarchyPath sse_decode_hierarchy_path(SseDeserializer deserializer);
 
   @protected
+  HighlightSpan sse_decode_highlight_span(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
@@ -631,6 +654,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<HierarchyPath> sse_decode_list_hierarchy_path(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<HighlightSpan> sse_decode_list_highlight_span(
     SseDeserializer deserializer,
   );
 
@@ -764,6 +792,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SearchHitDto sse_decode_search_hit_dto(SseDeserializer deserializer);
+
+  @protected
+  SearchMode sse_decode_search_mode(SseDeserializer deserializer);
+
+  @protected
+  SearchRequestDto sse_decode_search_request_dto(SseDeserializer deserializer);
 
   @protected
   SyncConflictDto sse_decode_sync_conflict_dto(SseDeserializer deserializer);
@@ -961,6 +995,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_search_request_dto(
+    SearchRequestDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_sync_conflict_dto(
     SyncConflictDto self,
     SseSerializer serializer,
@@ -1075,6 +1115,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_hierarchy_path(HierarchyPath self, SseSerializer serializer);
 
   @protected
+  void sse_encode_highlight_span(HighlightSpan self, SseSerializer serializer);
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
@@ -1107,6 +1150,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_hierarchy_path(
     List<HierarchyPath> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_highlight_span(
+    List<HighlightSpan> self,
     SseSerializer serializer,
   );
 
@@ -1274,6 +1323,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_search_hit_dto(SearchHitDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_search_mode(SearchMode self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_search_request_dto(
+    SearchRequestDto self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_sync_conflict_dto(

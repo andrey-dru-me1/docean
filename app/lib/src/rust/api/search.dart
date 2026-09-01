@@ -6,8 +6,8 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `engine`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `eq`, `eq`, `fmt`, `fmt`, `from`
+// These functions are ignored because they are not marked as `pub`: `compute_highlights`, `dispatch_to_dto`, `engine`, `find_offsets`, `merge_hits`, `metadata`, `to_dto`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Index (or re-index) a document's extracted text across exact, semantic, and
 /// near-duplicate backends. Call after content extraction.
@@ -17,7 +17,7 @@ void searchIndexDocument({required String documentId, required String text}) =>
       text: text,
     );
 
-/// Remove a document from all search backends.
+/// Remove a document from all search backends and the metadata table.
 void searchRemoveDocument({required String documentId}) => RustLib.instance.api
     .crateApiSearchSearchRemoveDocument(documentId: documentId);
 
@@ -58,6 +58,29 @@ Float32List searchEmbed({required String text}) =>
 /// Dimensionality of the embedding vectors produced by [`search_embed`].
 int searchEmbedDims() => RustLib.instance.api.crateApiSearchSearchEmbedDims();
 
+/// Register a document's tags and hierarchy paths for result filtering.
+///
+/// Call after a document is tagged or assigned to a path so searches can be
+/// filtered by that metadata. Pure bookkeeping: indexing text is separate.
+void searchSetMetadata({
+  required String documentId,
+  required List<String> tags,
+  required List<String> paths,
+}) => RustLib.instance.api.crateApiSearchSearchSetMetadata(
+  documentId: documentId,
+  tags: tags,
+  paths: paths,
+);
+
+/// Run a search across the document library.
+///
+/// `mode` selects exact full-text, semantic (vector similarity), or a hybrid
+/// combination. When `tags`/`paths` are non-empty only documents carrying all of
+/// the tags (and reachable via any listed path) are returned, with snippets
+/// annotated by match-highlight spans for the UI.
+List<SearchHitDto> searchQuery({required SearchRequestDto req}) =>
+    RustLib.instance.api.crateApiSearchSearchQuery(req: req);
+
 /// A candidate near-duplicate pair (Dart DTO).
 class DuplicatePairDto {
   final String a;
@@ -85,20 +108,56 @@ class DuplicatePairDto {
           similarity == other.similarity;
 }
 
+/// A single continuous run of matching text inside a snippet.
+class HighlightSpan {
+  /// Byte offset (relative to the snippet) where the match starts.
+  final BigInt start;
+
+  /// Byte offset (exclusive) where the match ends.
+  final BigInt end;
+
+  const HighlightSpan({required this.start, required this.end});
+
+  @override
+  int get hashCode => start.hashCode ^ end.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HighlightSpan &&
+          runtimeType == other.runtimeType &&
+          start == other.start &&
+          end == other.end;
+}
+
 /// A single search result (Dart DTO).
 class SearchHitDto {
   final String documentId;
   final double score;
-  final String? snippet;
+  final String snippet;
+
+  /// Byte ranges of the matching terms within `snippet`, for UI highlighting.
+  final List<HighlightSpan> highlights;
+  final List<String> tags;
+  final List<String> paths;
 
   const SearchHitDto({
     required this.documentId,
     required this.score,
-    this.snippet,
+    required this.snippet,
+    required this.highlights,
+    required this.tags,
+    required this.paths,
   });
 
   @override
-  int get hashCode => documentId.hashCode ^ score.hashCode ^ snippet.hashCode;
+  int get hashCode =>
+      documentId.hashCode ^
+      score.hashCode ^
+      snippet.hashCode ^
+      highlights.hashCode ^
+      tags.hashCode ^
+      paths.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -107,5 +166,52 @@ class SearchHitDto {
           runtimeType == other.runtimeType &&
           documentId == other.documentId &&
           score == other.score &&
-          snippet == other.snippet;
+          snippet == other.snippet &&
+          highlights == other.highlights &&
+          tags == other.tags &&
+          paths == other.paths;
+}
+
+/// Query kinds selectable in the UI.
+enum SearchMode { exact, semantic, hybrid }
+
+/// A search request (Dart DTO).
+class SearchRequestDto {
+  /// The user's query text.
+  final String text;
+  final SearchMode mode;
+
+  /// Only return documents bearing all of these tags.
+  final List<String> tags;
+
+  /// Only return documents reachable via any of these paths.
+  final List<String> paths;
+  final int? limit;
+
+  const SearchRequestDto({
+    required this.text,
+    required this.mode,
+    required this.tags,
+    required this.paths,
+    this.limit,
+  });
+
+  @override
+  int get hashCode =>
+      text.hashCode ^
+      mode.hashCode ^
+      tags.hashCode ^
+      paths.hashCode ^
+      limit.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SearchRequestDto &&
+          runtimeType == other.runtimeType &&
+          text == other.text &&
+          mode == other.mode &&
+          tags == other.tags &&
+          paths == other.paths &&
+          limit == other.limit;
 }

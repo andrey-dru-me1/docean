@@ -64,6 +64,12 @@ pub trait SearchIndex {
     fn search(&self, query: &Query, limit: usize) -> anyhow::Result<Vec<SearchHit>>;
 }
 
+/// A lightweight in-memory semantic search index (hashed n-gram vectors).
+///
+/// Fully offline and deterministic; complements [`MemorySearch`] so the UI can
+/// toggle between exact and semantic retrieval without any AI provider.
+pub mod semantic;
+
 /// A simple, in-memory full-text index.
 ///
 /// This is a lightweight, dependency-free implementation of [`SearchIndex`] used
@@ -166,6 +172,9 @@ impl SearchIndex for SharedMemorySearch {
 }
 
 /// A short, whitespace-normalized excerpt of `text`, capped at `max` chars.
+///
+/// Shared with [`semantic`] so both index implementations render snippets the
+/// same way.
 pub(crate) fn excerpt(text: &str, max: usize) -> String {
     let cleaned: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     cleaned.chars().take(max).collect()
