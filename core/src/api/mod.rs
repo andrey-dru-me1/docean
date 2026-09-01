@@ -6,6 +6,7 @@
 //! root to regenerate the Dart bindings in `app/lib/src/rust/`.
 
 pub mod ai;
+pub mod assistant;
 pub mod health;
 pub mod p2p;
 pub mod storage;

@@ -8,6 +8,7 @@
 
 import 'ai.dart';
 import 'api/ai.dart';
+import 'api/assistant.dart';
 import 'api/health.dart';
 import 'api/p2p.dart';
 import 'api/storage.dart';
@@ -57,6 +58,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<AssistantStreamEventDto>
+  dco_decode_StreamSink_assistant_stream_event_dto_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<PeerEvent> dco_decode_StreamSink_peer_event_Sse(dynamic raw);
 
   @protected
@@ -69,6 +74,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ActiveProviderInfo dco_decode_active_provider_info(dynamic raw);
+
+  @protected
+  AssistantEventKindDto dco_decode_assistant_event_kind_dto(dynamic raw);
+
+  @protected
+  AssistantReplyDto dco_decode_assistant_reply_dto(dynamic raw);
+
+  @protected
+  AssistantStreamEventDto dco_decode_assistant_stream_event_dto(dynamic raw);
 
   @protected
   bool dco_decode_bool(dynamic raw);
@@ -140,6 +154,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DocumentQuery dco_decode_document_query(dynamic raw);
 
   @protected
+  DocumentRefDto dco_decode_document_ref_dto(dynamic raw);
+
+  @protected
   EmbedRequestDto dco_decode_embed_request_dto(dynamic raw);
 
   @protected
@@ -180,6 +197,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Document> dco_decode_list_document(dynamic raw);
+
+  @protected
+  List<DocumentRefDto> dco_decode_list_document_ref_dto(dynamic raw);
 
   @protected
   List<HierarchyPath> dco_decode_list_hierarchy_path(dynamic raw);
@@ -331,6 +351,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<AssistantStreamEventDto>
+  sse_decode_StreamSink_assistant_stream_event_dto_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<PeerEvent> sse_decode_StreamSink_peer_event_Sse(
     SseDeserializer deserializer,
   );
@@ -345,6 +371,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ActiveProviderInfo sse_decode_active_provider_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AssistantEventKindDto sse_decode_assistant_event_kind_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AssistantReplyDto sse_decode_assistant_reply_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  AssistantStreamEventDto sse_decode_assistant_stream_event_dto(
     SseDeserializer deserializer,
   );
 
@@ -440,6 +481,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DocumentQuery sse_decode_document_query(SseDeserializer deserializer);
 
   @protected
+  DocumentRefDto sse_decode_document_ref_dto(SseDeserializer deserializer);
+
+  @protected
   EmbedRequestDto sse_decode_embed_request_dto(SseDeserializer deserializer);
 
   @protected
@@ -484,6 +528,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Document> sse_decode_list_document(SseDeserializer deserializer);
+
+  @protected
+  List<DocumentRefDto> sse_decode_list_document_ref_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<HierarchyPath> sse_decode_list_hierarchy_path(
@@ -662,6 +711,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_assistant_stream_event_dto_Sse(
+    RustStreamSink<AssistantStreamEventDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_peer_event_Sse(
     RustStreamSink<PeerEvent> self,
     SseSerializer serializer,
@@ -679,6 +734,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_active_provider_info(
     ActiveProviderInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_assistant_event_kind_dto(
+    AssistantEventKindDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_assistant_reply_dto(
+    AssistantReplyDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_assistant_stream_event_dto(
+    AssistantStreamEventDto self,
     SseSerializer serializer,
   );
 
@@ -791,6 +864,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_document_query(DocumentQuery self, SseSerializer serializer);
 
   @protected
+  void sse_encode_document_ref_dto(
+    DocumentRefDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_embed_request_dto(
     EmbedRequestDto self,
     SseSerializer serializer,
@@ -843,6 +922,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_document(List<Document> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_document_ref_dto(
+    List<DocumentRefDto> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_hierarchy_path(
