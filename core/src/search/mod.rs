@@ -39,6 +39,14 @@ pub use near_dup::{
 
 use crate::domain::DocumentId;
 
+/// A shared handle to the search layer's MinHash/LSH near-duplicate index.
+///
+/// This is the same handle shape the sync layer consumes
+/// (`crate::sync::SharedNearDuplicateIndex`) so both layers can point at one
+/// index instance and the sync reconciler can propose related versions for
+/// substantially-same documents.
+pub type SharedNearDuplicateIndex = Arc<Mutex<NearDuplicateIndex>>;
+
 /// A single search result.
 #[derive(Debug, Clone, Default)]
 pub struct SearchHit {
@@ -192,25 +200,38 @@ pub(crate) fn excerpt(text: &str, max: usize) -> String {
 pub struct SearchEngine {
     fts: FtsIndex,
     vectors: VectorStore,
-    near_dup: NearDuplicateIndex,
+    near_dup: SharedNearDuplicateIndex,
 }
 
 impl SearchEngine {
     /// Build an in-memory engine (FTS5 in-memory, empty vector + near-duplicate
-    /// stores).
+    /// stores) with a fresh private near-duplicate index.
     pub fn new() -> Self {
+        Self::with_near_dup(Arc::new(Mutex::new(NearDuplicateIndex::default_index())))
+    }
+
+    /// Build an engine that shares the given near-duplicate index handle, so the
+    /// sync reconciliation layer can point at the *same* index instance and
+    /// propose related versions for substantially-same documents.
+    pub fn with_near_dup(near_dup: SharedNearDuplicateIndex) -> Self {
         Self {
             fts: FtsIndex::in_memory().expect("in-memory FTS5 always opens"),
             vectors: VectorStore::new(),
-            near_dup: NearDuplicateIndex::default_index(),
+            near_dup,
         }
+    }
+
+    /// A shared handle to this engine's near-duplicate index. Clone it and hand
+    /// it to the sync layer to wire near-duplicate-assisted reconciliation.
+    pub fn near_dup_index(&self) -> SharedNearDuplicateIndex {
+        Arc::clone(&self.near_dup)
     }
 
     /// Index (or re-index) a document's extracted text across all three backends.
     pub fn index_document(&mut self, doc: &DocumentId, text: &str) -> anyhow::Result<()> {
         self.fts.index(doc, text)?;
         self.vectors.index(doc.clone(), text);
-        self.near_dup.index(doc, text);
+        self.near_dup.lock().unwrap().index(doc, text);
         Ok(())
     }
 
@@ -218,7 +239,7 @@ impl SearchEngine {
     pub fn remove_document(&mut self, doc: &DocumentId) -> anyhow::Result<()> {
         self.fts.remove(doc)?;
         self.vectors.remove(doc);
-        self.near_dup.remove(doc);
+        self.near_dup.lock().unwrap().remove(doc);
         Ok(())
     }
 
@@ -256,12 +277,14 @@ impl SearchEngine {
     /// Near-duplicate detection: list all candidate duplicate pairs (with
     /// estimated Jaccard similarity), deduplicated.
     pub fn duplicate_candidates(&self) -> Vec<NearDuplicatePair> {
-        self.near_dup.candidates()
+        self.near_dup.lock().unwrap().candidates()
     }
 
     /// Near-duplicate detection: documents similar to `text` above `threshold`.
     pub fn find_near_duplicates(&self, text: &str, threshold: f32) -> Vec<DocumentId> {
         self.near_dup
+            .lock()
+            .unwrap()
             .query(text, threshold)
             .into_iter()
             .map(|m| m.document_id)

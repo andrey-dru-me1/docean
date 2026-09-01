@@ -26,6 +26,15 @@ fn engine() -> &'static Arc<Mutex<SearchEngine>> {
     E.get_or_init(|| Arc::new(Mutex::new(SearchEngine::new())))
 }
 
+/// A process-wide handle to the search layer's MinHash/LSH near-duplicate index.
+///
+/// This is the *same* index instance [`engine`] indexes into, so handing it to
+/// the sync reconciliation layer wires near-duplicate-assisted version proposals
+/// for substantially-same documents. Exposed for [`crate::api::sync`].
+pub(crate) fn shared_near_dup_index() -> crate::search::SharedNearDuplicateIndex {
+    engine().lock().unwrap().near_dup_index()
+}
+
 /// document id -> (tags, paths) metadata for UI filtering.
 fn metadata() -> &'static Arc<std::sync::Mutex<DocMeta>> {
     static META: std::sync::OnceLock<Arc<std::sync::Mutex<DocMeta>>> = std::sync::OnceLock::new();

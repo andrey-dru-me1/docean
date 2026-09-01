@@ -4,11 +4,10 @@
 //!
 //! * [`api`] — the small, stable surface exposed to Flutter through
 //!   `flutter_rust_bridge`. This is the *only* place `#[frb]` attributes appear.
-//! * The feature modules below — the actual domain logic. They are currently
-//!   **interfaces only** (traits + data types); implementations land in later
-//!   tasks, one module at a time.
+//! * The feature modules below — the actual domain logic, each implemented and
+//!   exposed to Dart through a thin `api` facade.
 //!
-//! ## Feature modules (interfaces only)
+//! ## Feature modules
 //!
 //! * [`domain`]    — shared document/tag/hierarchy model.
 //! * [`storage`]   — local document storage (metadata index + blob store).

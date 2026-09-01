@@ -4,7 +4,7 @@
 
 use super::{
     search_index_document, search_query, search_remove_document, search_set_metadata,
-    HighlightSpan, SearchHitDto, SearchMode, SearchRequestDto,
+    shared_near_dup_index, HighlightSpan, SearchHitDto, SearchMode, SearchRequestDto,
 };
 
 fn index_doc(id: &str, text: &str, tags: &[&str], paths: &[&str]) {
@@ -181,6 +181,29 @@ fn remove_document_drops_it_from_search_and_metadata() {
         limit: None,
     });
     assert!(filtered.is_empty());
+}
+
+#[test]
+fn shared_near_dup_index_is_the_instance_the_indexer_writes_to() {
+    // The sync layer (`crate::api::sync`) attaches this exact handle so its
+    // reconciler can propose related versions. Confirm it observes documents the
+    // search bridge indexes — i.e. it is the *same* index instance, not a copy.
+    index_doc(
+        "t8_origin",
+        "algorithmic complexity guarantees amortized logarithmic lookup behavior",
+        &[],
+        &[],
+    );
+
+    let idx = shared_near_dup_index();
+    let matches = idx.lock().unwrap().query(
+        "algorithmic complexity guarantees amortized logarithmic lookup behavior and correctness",
+        0.5,
+    );
+    assert!(
+        matches.iter().any(|m| m.document_id == "t8_origin"),
+        "shared near-dup index should know about bridge-indexed docs: {matches:?}"
+    );
 }
 
 #[test]

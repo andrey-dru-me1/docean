@@ -33,7 +33,14 @@ static ENGINE: OnceLock<Result<Mutex<Engine>, String>> = OnceLock::new();
 fn engine() -> &'static Result<Mutex<Engine>, String> {
     ENGINE.get_or_init(|| {
         let store: SharedStore = Arc::new(Mutex::new(InMemoryStore::new()));
-        Ok(Mutex::new(SyncEngineImpl::new(store)))
+        let mut engine = SyncEngineImpl::new(store);
+        // Wire the search layer's shared MinHash/LSH near-duplicate index so the
+        // sync reconciler can propose substantially-same documents (minor edits,
+        // different id) as *related versions* rather than unrelated files. This
+        // is the same index instance the search UI/engine indexes into.
+        engine.attach_near_duplicate_index(crate::api::search::shared_near_dup_index());
+        engine.set_near_duplicate_threshold(0.6);
+        Ok(Mutex::new(engine))
     })
 }
 
