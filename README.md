@@ -280,4 +280,83 @@ cd app && flutter test integration_test -d macos    # end-to-end (loads native l
 3. When implementing: add the pinned crates to `core/Cargo.toml`, implement the
    trait, then expose a thin `#[frb]` facade in `core/src/api/` and run `just codegen`.
 
+---
+
+## 12. Verification / QA status
+
+Final integration & verification pass (`vs/qa`).
+
+### What was verified
+
+* **Rust core test suite** — `cargo test --manifest-path core/Cargo.toml`:
+  **32 tests pass, 0 fail** (storage, schema, blob hash, net/discovery over the
+  in-memory transport, sync reconciliation/conflict resolution, and the new
+  near-duplicate unit + integration tests).
+* **Rust lint/format** — `cargo fmt --check` and
+  `cargo clippy --all-targets -- -D warnings` are both clean.
+* **Flutter app** — `flutter test` (**4 tests pass**), `dart analyze`
+  (**no issues**), and `dart format --set-exit-if-changed` (clean). This covers
+  the widget health-check tests plus the new `p2p_sync_screen_test.dart`.
+* **Near-duplicate-aware sync (wire-in exercise)** — a two-peer simulation test
+  (`sync::tests::near_duplicate_proposal_is_emitted_for_minor_edits`) confirms
+  that a substantially-same document arriving under a *different* id is proposed
+  as a related version via the search layer's MinHash/LSH index rather than
+  filed as an unrelated file.
+* **FRB bindings** — regenerated with `flutter_rust_bridge_codegen` 2.13.0;
+  the generated `core/src/frb_generated.rs` and `app/lib/src/rust/**` are in
+  sync with the `api` surface (including the new `NearDuplicate` sync event).
+
+### What was fixed
+
+* **`dart analyze` error** — `connect`/`events` were exported ambiguously from
+  `app/lib/src/features/features.dart` (both `p2p.dart` and `sync.dart` define
+  top-level `connect`/`events`). The barrel now hides the sync variants, and
+  `sync.dart` no longer re-imports unused names.
+* **macOS link failure** — the static Rust core (rust-libp2p) references
+  `SystemConfiguration` (network interface enumeration) and `Security` (crypto)
+  symbols but those system frameworks were not linked. Both
+  `macos/` and `ios/` `docer_rust_builder.podspec`s now declare
+  `s.frameworks = 'SystemConfiguration', 'Security'`.
+
+### What was integrated (was missing before this pass)
+
+* **Near-duplicate index** (`core/src/search/near_dup.rs`) — a self-contained
+  MinHash + LSH (banding) index owned by the search layer, with
+  `NearDuplicateIndex`/`NearDuplicateMatch`, `shingles`, `minhash_signature`,
+  and `signature_similarity`. No external crates.
+* **Sync ↔ near-duplicate wiring** — `SyncEngineImpl` now accepts a shared
+  `SharedNearDuplicateIndex` (`attach_near_duplicate_index` + a similarity
+  threshold). `pull()` seeds the index from the local library and, when adopting
+  an incoming document, queries it and emits a new `SyncEvent::NearDuplicate`
+  (surfaced to Dart as `SyncEventKindDto::nearDuplicate` /
+  `SyncNearDuplicateDto`) proposing the related, substantially-same document.
+* **P2P + sync UI** (`app/lib/src/p2p_sync_screen.dart`) — a bridge-backed
+  screen wired to the existing `p2p`/`sync` facades: shows the local peer id,
+  discovered peers (mDNS), lets you dial a peer by id+addr, register sync peers,
+  `push`/`pull`, and lists pending conflicts plus a live event log (including
+  near-duplicate "related version" proposals). Reachable from the home screen
+  via the **P2P & Sync** button. Bridge functions are injectable for headless
+  widget testing.
+
+### Known limitations
+
+* **macOS app build not fully verified on this machine.** `flutter build macos`
+  fails at the Swift compile step with `Unable to resolve module dependency:
+  'FlutterMacOS'` (a Flutter 3.44.2 + Xcode 26.6 CocoaPods/Swift-Package-Manager
+  toolchain issue; the linker-level system-framework bug above *was* found and
+  fixed). The Rust core itself compiles and tests clean on macOS.
+* **Linux / Windows not verifiable here** (macOS host; Flutter has no
+  cross-compilation for those targets). They build in CI
+  (`.github/workflows/ci.yml` matrix).
+* **Android not verifiable here** — SDK present but licenses not accepted;
+  `flutter build apk` is exercised in CI.
+* The sync engine's runtime backend is still the in-memory
+  [`InMemoryStore`](core/src/sync/testing.rs) stand-in, not the SQLite
+  [`SqliteDocumentStore`](core/src/storage/sqlite.rs); the transport is the
+  `LocalLink`/in-process seam, not yet bridged to the live `net::P2pEngine`.
+  The protocol + conflict resolution + near-duplicate proposal logic are
+  complete and transport-agnostic.
+* Full-text/semantic search, AI auto-organization, and the chat assistant remain
+  interface-only (not implemented in this pass).
+
 

@@ -8,10 +8,11 @@
 use std::sync::{Arc, Mutex};
 
 use crate::domain::Document;
+use crate::search::NearDuplicateIndex;
 use crate::sync::testing::{make_doc, InMemoryStore, LocalLink};
 use crate::sync::{
-    ConflictResolution, PeerId, ResolutionStrategy, SyncEngine, SyncEngineImpl, SyncEvent,
-    SyncProgress, SyncStore,
+    ConflictResolution, PeerId, ResolutionStrategy, SharedNearDuplicateIndex, SyncEngine,
+    SyncEngineImpl, SyncEvent, SyncProgress, SyncStore,
 };
 
 /// Shorthand store type used by both the engines and the links.
@@ -251,4 +252,71 @@ fn events_report_progress_transfer_and_finish() {
     assert!(saw_transfer, "expected TransferringContent event");
     assert!(saw_transferred, "expected DocumentTransferred event");
     assert!(saw_finished, "expected Finished event");
+}
+
+/// A substantially-same document arriving under a *different* id (a minor edit)
+/// should be recognized by the search layer's MinHash/LSH index and proposed as
+/// a related version, rather than filed as an unrelated new file.
+#[test]
+fn near_duplicate_proposal_is_emitted_for_minor_edits() {
+    let origin = "The quick brown fox jumps over the lazy dog.";
+    let edited = "The quick brown fox jumps over the lazy dog and then runs away.";
+
+    // Peer A already holds the original document.
+    let mut a_store = InMemoryStore::new();
+    a_store
+        .put(
+            doc("doc-origin", "hash-origin", 1000, "origin"),
+            origin.as_bytes().to_vec(),
+        )
+        .unwrap();
+
+    // Peer B holds a *different-id* but substantially-same document (a minor edit).
+    let mut b_store = InMemoryStore::new();
+    b_store
+        .put(
+            doc("doc-edited", "hash-edited", 2000, "edited"),
+            edited.as_bytes().to_vec(),
+        )
+        .unwrap();
+
+    let (mut a, _b, _a_shared, _b_shared) = linked_pair(a_store, b_store, ResolutionStrategy::Fork);
+
+    // Attach a shared near-duplicate index to peer A's engine.
+    let ndi: SharedNearDuplicateIndex = Arc::new(Mutex::new(NearDuplicateIndex::default()));
+    a.attach_near_duplicate_index(ndi);
+
+    // Pull: `doc-edited` is new to A (different id), so it is transferred; the
+    // near-duplicate index should flag it as related to `doc-origin`.
+    let results = a.pull().unwrap();
+    assert!(
+        results.is_empty(),
+        "no same-id conflict expected, got {results:?}"
+    );
+
+    let events = collect_events(&mut a);
+    let near_dup = events.iter().find_map(|e| match e {
+        SyncEvent::NearDuplicate {
+            document_id,
+            related_to,
+            similarity,
+        } => Some((document_id.clone(), related_to.clone(), *similarity)),
+        _ => None,
+    });
+
+    assert!(
+        near_dup.is_some(),
+        "expected a NearDuplicate proposal, got events: {events:?}"
+    );
+    let (document_id, related_to, similarity) = near_dup.unwrap();
+    assert_eq!(document_id, "doc-edited");
+    assert_eq!(related_to, "doc-origin");
+    assert!(
+        similarity > 0.5,
+        "minor edit similarity should be high, got {similarity}"
+    );
+
+    // The edited document was still adopted as a separate document.
+    let docs = _a_shared.lock().unwrap().list().unwrap();
+    assert_eq!(docs.len(), 2, "both versions should coexist: {docs:?}");
 }

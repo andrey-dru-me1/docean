@@ -21,6 +21,12 @@ A new Flutter FFI plugin project.
   s.source_files     = 'Classes/**/*'
   s.dependency 'FlutterMacOS'
 
+  # The Rust core links rust-libp2p, which (on Apple platforms) pulls in
+  # `system-configuration` (network interface enumeration for mDNS/TCP) and
+  # `security` (crypto randomness for Noise). Link those system frameworks so
+  # the static `libdocer_core.a` resolves.
+  s.frameworks = 'SystemConfiguration', 'Security'
+
   s.platform = :osx, '10.11'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version = '5.0'

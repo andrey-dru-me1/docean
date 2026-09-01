@@ -43,6 +43,7 @@ pub mod testing;
 mod tests;
 
 use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex};
 
 pub use protocol::{
     ConflictInfo, ConflictKind, ResolutionStrategy, SyncError, SyncEvent, SyncProgress,
@@ -50,6 +51,12 @@ pub use protocol::{
 pub use transport::{PeerTransport, SyncEnvelope};
 
 use crate::domain::{Document, DocumentId, HierarchyLink, Tag};
+use crate::search::NearDuplicateIndex;
+
+/// A shared handle to the search layer's MinHash/LSH near-duplicate index. The
+/// sync engine consults this to recognize substantially-same documents (minor
+/// edits) as related versions rather than unrelated files.
+pub type SharedNearDuplicateIndex = Arc<Mutex<NearDuplicateIndex>>;
 
 /// A device participating in sync.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -126,6 +133,12 @@ pub struct SyncEngineImpl<S: SyncStore> {
     conflicts: Vec<ConflictInfo>,
     /// Deterministic resolution policy. Fork = keep both when conflicting.
     strategy: ResolutionStrategy,
+    /// Shared handle to the search layer's MinHash/LSH near-duplicate index.
+    /// When attached, reconciliation proposes substantially-same documents
+    /// (minor edits) as related versions instead of unrelated files.
+    near_dup: Option<SharedNearDuplicateIndex>,
+    /// Similarity threshold above which two documents are "near duplicates".
+    near_dup_threshold: f32,
 }
 
 impl<S: SyncStore> SyncEngineImpl<S> {
@@ -143,7 +156,20 @@ impl<S: SyncStore> SyncEngineImpl<S> {
             rx: Some(rx),
             conflicts: Vec::new(),
             strategy,
+            near_dup: None,
+            near_dup_threshold: 0.6,
         }
+    }
+
+    /// Attach the shared near-duplicate index so this engine can recognize
+    /// related versions during reconciliation.
+    pub fn attach_near_duplicate_index(&mut self, index: SharedNearDuplicateIndex) {
+        self.near_dup = Some(index);
+    }
+
+    /// Set the Jaccard-similarity threshold for near-duplicate proposals.
+    pub fn set_near_duplicate_threshold(&mut self, threshold: f32) {
+        self.near_dup_threshold = threshold;
     }
 
     /// Attach a transport connection. The engine performs a full reconcile
@@ -211,6 +237,14 @@ impl<S: SyncStore> SyncEngineImpl<S> {
 
     pub(crate) fn strategy(&self) -> &ResolutionStrategy {
         &self.strategy
+    }
+
+    pub(crate) fn near_dup(&self) -> Option<&SharedNearDuplicateIndex> {
+        self.near_dup.as_ref()
+    }
+
+    pub(crate) fn near_dup_threshold(&self) -> f32 {
+        self.near_dup_threshold
     }
 
     pub(crate) fn record_conflict(&mut self, info: ConflictInfo) {

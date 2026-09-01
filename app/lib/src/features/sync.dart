@@ -8,22 +8,10 @@ library;
 
 import '../rust/api/sync.dart' as bridge;
 import '../rust/api/sync.dart'
-    show
-        SyncConflictDto,
-        SyncConflictKindDto,
-        SyncEventDto,
-        SyncEventKindDto,
-        SyncPhaseDto,
-        SyncResolutionDto;
+    show SyncConflictDto, SyncEventDto, SyncResolutionDto;
 
 export '../rust/api/sync.dart'
-    show
-        SyncConflictDto,
-        SyncConflictKindDto,
-        SyncEventDto,
-        SyncEventKindDto,
-        SyncPhaseDto,
-        SyncResolutionDto;
+    show SyncConflictDto, SyncEventDto, SyncNearDuplicateDto, SyncResolutionDto;
 
 /// A device participating in sync.
 class PeerId {

@@ -93,7 +93,8 @@ pub enum SyncProgress {
 }
 
 /// An event emitted by the sync engine during a round.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// Note: not `Eq` — `NearDuplicate::similarity` is an `f32`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncEvent {
     Started {
@@ -109,6 +110,15 @@ pub enum SyncEvent {
     },
     Conflict {
         conflict: ConflictInfo,
+    },
+    /// A substantially-same document (minor edit) was detected between an
+    /// incoming document under a new id and an existing local document, via the
+    /// search layer's MinHash/LSH near-duplicate index. Surfaced so the UI can
+    /// propose the two as *related versions* rather than unrelated files.
+    NearDuplicate {
+        document_id: DocumentId,
+        related_to: DocumentId,
+        similarity: f32,
     },
     Finished {
         results: Vec<ConflictResolution>,
@@ -201,6 +211,18 @@ pub(crate) fn pull<S: SyncStore>(
     let mut results = Vec::new();
 
     let manifest = local_manifest(engine.store())?;
+
+    // Seed the shared near-duplicate index with the local library so incoming
+    // documents can be matched against it (idempotent: repeated indexing just
+    // replaces the same signatures).
+    if let Some(ndi) = engine.near_dup() {
+        let mut idx = ndi.lock().unwrap();
+        for doc in engine.store().list().unwrap_or_default() {
+            if let Ok(Some(bytes)) = engine.store().read_bytes(&doc.id) {
+                idx.index(&doc.id, &String::from_utf8_lossy(&bytes));
+            }
+        }
+    }
 
     // Snapshot (peer id, transport handle) pairs so we can mutate `engine`
     // while still issuing requests through the (cheaply cloned) handles.
@@ -302,10 +324,45 @@ pub(crate) fn pull<S: SyncStore>(
 fn apply_blob<S: SyncStore>(engine: &mut SyncEngineImpl<S>, payload: DocumentPayload) {
     let bytes = payload.bytes.len() as u64;
     let doc = payload.manifest.to_document(HashMap::new());
+
+    // Before filing this as a brand-new document, ask the shared near-duplicate
+    // index whether its content is substantially the same as an existing local
+    // document (under a different id). If so, propose them as related versions.
+    propose_near_duplicate(engine, &doc.id, &payload.bytes);
+
     if engine.store_mut().put(doc.clone(), payload.bytes).is_ok() {
         engine.emit(crate::sync::SyncEvent::DocumentTransferred {
             document_id: doc.id,
             bytes,
+        });
+    }
+}
+
+/// Consult the search layer's near-duplicate index and, when an incoming
+/// document is substantially the same as a locally known document under a
+/// different id, emit a [`SyncEvent::NearDuplicate`] proposal.
+fn propose_near_duplicate<S: SyncStore>(engine: &SyncEngineImpl<S>, id: &str, bytes: &[u8]) {
+    let Some(ndi) = engine.near_dup() else {
+        return;
+    };
+    let threshold = engine.near_dup_threshold();
+    let text = String::from_utf8_lossy(bytes);
+    let matches = ndi.lock().unwrap().query(&text, threshold);
+
+    let best = matches
+        .into_iter()
+        .filter(|m| m.document_id != id)
+        .max_by(|a, b| {
+            a.similarity
+                .partial_cmp(&b.similarity)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+    if let Some(best) = best {
+        engine.emit(crate::sync::SyncEvent::NearDuplicate {
+            document_id: id.to_owned(),
+            related_to: best.document_id,
+            similarity: best.similarity,
         });
     }
 }

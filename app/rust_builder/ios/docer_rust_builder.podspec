@@ -20,6 +20,12 @@ A new Flutter FFI plugin project.
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
+
+  # The Rust core links rust-libp2p, which (on Apple platforms) pulls in
+  # `system-configuration` (network interface enumeration) and `security`
+  # (crypto randomness). Link them so the static library resolves on iOS too.
+  s.frameworks = 'SystemConfiguration', 'Security'
+
   s.platform = :ios, '11.0'
 
   # Flutter.framework does not contain a i386 slice.

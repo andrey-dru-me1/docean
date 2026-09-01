@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `engine`, `to_conflict_dto`, `to_conflict_kind_dto`, `to_event_dto`, `to_phase_dto`, `to_resolution_dto`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Start the sync engine and emit a `Started` event.
 void syncStart() => RustLib.instance.api.crateApiSyncSyncStart();
@@ -107,6 +107,9 @@ class SyncEventDto {
   /// Populated for [`SyncEventKindDto::Conflict`].
   final SyncConflictDto? conflict;
 
+  /// Populated for [`SyncEventKindDto::NearDuplicate`].
+  final SyncNearDuplicateDto? nearDuplicate;
+
   /// Populated for [`SyncEventKindDto::Finished`].
   final List<SyncResolutionDto> results;
 
@@ -117,6 +120,7 @@ class SyncEventDto {
     this.documentId,
     this.bytes,
     this.conflict,
+    this.nearDuplicate,
     required this.results,
   });
 
@@ -128,6 +132,7 @@ class SyncEventDto {
       documentId.hashCode ^
       bytes.hashCode ^
       conflict.hashCode ^
+      nearDuplicate.hashCode ^
       results.hashCode;
 
   @override
@@ -141,6 +146,7 @@ class SyncEventDto {
           documentId == other.documentId &&
           bytes == other.bytes &&
           conflict == other.conflict &&
+          nearDuplicate == other.nearDuplicate &&
           results == other.results;
 }
 
@@ -150,7 +156,37 @@ enum SyncEventKindDto {
   progress,
   documentTransferred,
   conflict,
+  nearDuplicate,
   finished,
+}
+
+/// A near-duplicate relationship proposed by the sync reconciliation layer,
+/// delivered over the bridge as part of a [`SyncEventDto`].
+class SyncNearDuplicateDto {
+  final String documentId;
+  final String relatedTo;
+
+  /// Estimated Jaccard similarity in `[0, 1]`.
+  final double similarity;
+
+  const SyncNearDuplicateDto({
+    required this.documentId,
+    required this.relatedTo,
+    required this.similarity,
+  });
+
+  @override
+  int get hashCode =>
+      documentId.hashCode ^ relatedTo.hashCode ^ similarity.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SyncNearDuplicateDto &&
+          runtimeType == other.runtimeType &&
+          documentId == other.documentId &&
+          relatedTo == other.relatedTo &&
+          similarity == other.similarity;
 }
 
 /// Coarse-grained sync phase reported in progress events.

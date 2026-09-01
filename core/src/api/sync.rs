@@ -45,6 +45,7 @@ pub enum SyncEventKindDto {
     Progress,
     DocumentTransferred,
     Conflict,
+    NearDuplicate,
     Finished,
 }
 
@@ -91,8 +92,20 @@ pub struct SyncConflictDto {
     pub winner: String,
 }
 
+/// A near-duplicate relationship proposed by the sync reconciliation layer,
+/// delivered over the bridge as part of a [`SyncEventDto`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncNearDuplicateDto {
+    pub document_id: String,
+    pub related_to: String,
+    /// Estimated Jaccard similarity in `[0, 1]`.
+    pub similarity: f32,
+}
+
 /// A sync event delivered to Dart over the [`sync_events`] stream.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// Note: not `Eq` — `SyncNearDuplicateDto::similarity` is an `f32`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncEventDto {
     pub kind: SyncEventKindDto,
@@ -104,6 +117,8 @@ pub struct SyncEventDto {
     pub bytes: Option<u64>,
     /// Populated for [`SyncEventKindDto::Conflict`].
     pub conflict: Option<SyncConflictDto>,
+    /// Populated for [`SyncEventKindDto::NearDuplicate`].
+    pub near_duplicate: Option<SyncNearDuplicateDto>,
     /// Populated for [`SyncEventKindDto::Finished`].
     pub results: Vec<SyncResolutionDto>,
 }
@@ -159,51 +174,52 @@ fn to_conflict_dto(c: &crate::sync::ConflictInfo) -> SyncConflictDto {
 }
 
 fn to_event_dto(e: crate::sync::SyncEvent) -> SyncEventDto {
-    match e {
-        crate::sync::SyncEvent::Started { peers } => SyncEventDto {
-            kind: SyncEventKindDto::Started,
-            peer_id: peers.join(","),
+    // A base event with every optional field empty; arms override as needed.
+    fn base(kind: SyncEventKindDto, peer_id: String) -> SyncEventDto {
+        SyncEventDto {
+            kind,
+            peer_id,
             phase: None,
             document_id: None,
             bytes: None,
             conflict: None,
+            near_duplicate: None,
             results: vec![],
-        },
+        }
+    }
+
+    match e {
+        crate::sync::SyncEvent::Started { peers } => {
+            base(SyncEventKindDto::Started, peers.join(","))
+        }
         crate::sync::SyncEvent::Progress { progress, peer } => SyncEventDto {
-            kind: SyncEventKindDto::Progress,
-            peer_id: peer,
             phase: Some(to_phase_dto(progress)),
-            document_id: None,
-            bytes: None,
-            conflict: None,
-            results: vec![],
+            ..base(SyncEventKindDto::Progress, peer)
         },
         crate::sync::SyncEvent::DocumentTransferred { document_id, bytes } => SyncEventDto {
-            kind: SyncEventKindDto::DocumentTransferred,
-            peer_id: String::new(),
-            phase: None,
             document_id: Some(document_id),
             bytes: Some(bytes),
-            conflict: None,
-            results: vec![],
+            ..base(SyncEventKindDto::DocumentTransferred, String::new())
         },
         crate::sync::SyncEvent::Conflict { conflict } => SyncEventDto {
-            kind: SyncEventKindDto::Conflict,
-            peer_id: String::new(),
-            phase: None,
-            document_id: None,
-            bytes: None,
             conflict: Some(to_conflict_dto(&conflict)),
-            results: vec![],
+            ..base(SyncEventKindDto::Conflict, String::new())
+        },
+        crate::sync::SyncEvent::NearDuplicate {
+            document_id,
+            related_to,
+            similarity,
+        } => SyncEventDto {
+            near_duplicate: Some(SyncNearDuplicateDto {
+                document_id,
+                related_to,
+                similarity,
+            }),
+            ..base(SyncEventKindDto::NearDuplicate, String::new())
         },
         crate::sync::SyncEvent::Finished { results } => SyncEventDto {
-            kind: SyncEventKindDto::Finished,
-            peer_id: String::new(),
-            phase: None,
-            document_id: None,
-            bytes: None,
-            conflict: None,
             results: results.iter().map(to_resolution_dto).collect(),
+            ..base(SyncEventKindDto::Finished, String::new())
         },
     }
 }

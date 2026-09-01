@@ -14,7 +14,7 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral
 
 SPEC CHECKSUMS:
-  docer_rust_builder: 63311cfe516f698f021d5efdcfdcc71498f4e04a
+  docer_rust_builder: 10b9a81f606be2dc3ffdfd0bb7a862e6a90ea7e1
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
 
 PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009

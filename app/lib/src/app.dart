@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'p2p_sync_screen.dart';
 import 'rust/api/health.dart';
 import 'rust_health.dart';
 
@@ -81,6 +82,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: _refresh,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Re-run health check'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const P2pSyncScreen(),
+                  ),
+                ),
+                icon: const Icon(Icons.swap_horiz),
+                label: const Text('P2P & Sync'),
               ),
             ],
           ),

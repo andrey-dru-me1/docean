@@ -10,6 +10,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+mod near_dup;
+
+pub use near_dup::{
+    minhash_signature, shingles, MinHashSignature, NearDuplicateIndex, NearDuplicateMatch,
+};
+
 use crate::domain::DocumentId;
 
 /// A single search result.
