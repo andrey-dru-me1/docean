@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'features/assistant_service.dart'
     show AssistantService, BridgeAssistantService;
+import 'features/ingest_service.dart' show BridgeIngestService, IngestService;
 import 'features/provider_service.dart'
     show BridgeProviderService, ProviderService;
 import 'features/search_service.dart' show BridgeSearchService, SearchService;
@@ -22,6 +23,7 @@ class DocerApp extends StatelessWidget {
     this.searchService = const BridgeSearchService(),
     this.assistantService = const BridgeAssistantService(),
     this.providerService = const BridgeProviderService(),
+    this.ingestService = const BridgeIngestService(),
     this.tags = const [],
     this.paths = const [],
     this.openDocument,
@@ -31,6 +33,7 @@ class DocerApp extends StatelessWidget {
   final SearchService searchService;
   final AssistantService assistantService;
   final ProviderService providerService;
+  final IngestService ingestService;
   final List<String> tags;
   final List<String> paths;
 
@@ -52,6 +55,7 @@ class DocerApp extends StatelessWidget {
         searchService: searchService,
         assistantService: assistantService,
         providerService: providerService,
+        ingestService: ingestService,
         tags: tags,
         paths: paths,
         openDocument: openDocument,
@@ -69,6 +73,7 @@ class MainShell extends StatefulWidget {
     required this.searchService,
     required this.assistantService,
     required this.providerService,
+    required this.ingestService,
     required this.tags,
     required this.paths,
     this.openDocument,
@@ -78,6 +83,7 @@ class MainShell extends StatefulWidget {
   final SearchService searchService;
   final AssistantService assistantService;
   final ProviderService providerService;
+  final IngestService ingestService;
   final List<String> tags;
   final List<String> paths;
   final DocumentOpener? openDocument;
@@ -164,6 +170,7 @@ class _MainShellState extends State<MainShell> {
 
     final search = SearchScreen(
       searchService: widget.searchService,
+      ingestService: widget.ingestService,
       onOpenDocument: _openDocument,
       tags: widget.tags,
       paths: widget.paths,

@@ -3,10 +3,12 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  desktop_drop
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
   docer_rust_builder
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

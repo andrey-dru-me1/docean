@@ -46,6 +46,18 @@ dependencies:
   # Annotation crate required by flutter_rust_bridge codegen for generated types.
   freezed_annotation: ^2.4.0
 
+  # Desktop drag-and-drop file ingestion.
+  desktop_drop: ^0.8.4
+
+  # Native file picker for the "Add files" fallback on every platform.
+  file_picker: ^12.1.3
+
+  # Resolve the on-disk document repository root.
+  path_provider: ^2.1.5
+
+  # Cross-platform path manipulation for the repository root.
+  path: ^1.9.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

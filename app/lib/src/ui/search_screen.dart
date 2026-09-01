@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../features/ingest_service.dart' show IngestService;
 import '../features/search_service.dart'
     show SearchHitDto, SearchMode, SearchService;
 import 'document_view.dart' show DocumentSummary;
+import 'ingest_panel.dart'
+    show IngestPanel, PathPicker, pickPathsWithFilePicker;
 import 'widgets.dart';
 
 /// What a search result should do when tapped.
@@ -13,14 +16,21 @@ class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
     required this.searchService,
+    required this.ingestService,
     required this.onOpenDocument,
     required this.tags,
     this.paths = const [],
     this.onConfigureAi,
+    this.pickPaths,
   });
 
   final SearchService searchService;
+  final IngestService ingestService;
   final DocumentOpener onOpenDocument;
+
+  /// Injected file picker for the ingestion panel (defaults to the native
+  /// `file_picker`); tests inject a fake.
+  final PathPicker? pickPaths;
 
   /// Available tag names for the filter dropdown / chips.
   final List<String> tags;
@@ -196,6 +206,11 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
             ],
           ),
+        ),
+        IngestPanel(
+          ingestService: widget.ingestService,
+          onFilesIngested: _runSearch,
+          pickPaths: widget.pickPaths ?? pickPathsWithFilePicker,
         ),
         const Divider(height: 1),
         Expanded(child: _buildResults()),
