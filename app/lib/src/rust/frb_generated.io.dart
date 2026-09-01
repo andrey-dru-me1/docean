@@ -8,6 +8,7 @@ import 'api/ai.dart';
 import 'api/assistant.dart';
 import 'api/auto_org.dart';
 import 'api/health.dart';
+import 'api/ingest.dart';
 import 'api/p2p.dart';
 import 'api/storage.dart';
 import 'api/sync.dart';
@@ -61,6 +62,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   RustStreamSink<AssistantStreamEventDto>
   dco_decode_StreamSink_assistant_stream_event_dto_Sse(dynamic raw);
+
+  @protected
+  RustStreamSink<IngestEvent> dco_decode_StreamSink_ingest_event_Sse(
+    dynamic raw,
+  );
 
   @protected
   RustStreamSink<PeerEvent> dco_decode_StreamSink_peer_event_Sse(dynamic raw);
@@ -126,6 +132,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SyncConflictDto dco_decode_box_autoadd_sync_conflict_dto(dynamic raw);
+
+  @protected
+  SyncNearDuplicateDto dco_decode_box_autoadd_sync_near_duplicate_dto(
+    dynamic raw,
+  );
 
   @protected
   SyncPhaseDto dco_decode_box_autoadd_sync_phase_dto(dynamic raw);
@@ -198,6 +209,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
+
+  @protected
+  IngestEvent dco_decode_ingest_event(dynamic raw);
 
   @protected
   LabelScore dco_decode_label_score(dynamic raw);
@@ -275,6 +289,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SyncConflictDto? dco_decode_opt_box_autoadd_sync_conflict_dto(dynamic raw);
 
   @protected
+  SyncNearDuplicateDto? dco_decode_opt_box_autoadd_sync_near_duplicate_dto(
+    dynamic raw,
+  );
+
+  @protected
   SyncPhaseDto? dco_decode_opt_box_autoadd_sync_phase_dto(dynamic raw);
 
   @protected
@@ -329,6 +348,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SyncEventKindDto dco_decode_sync_event_kind_dto(dynamic raw);
 
   @protected
+  SyncNearDuplicateDto dco_decode_sync_near_duplicate_dto(dynamic raw);
+
+  @protected
   SyncPhaseDto dco_decode_sync_phase_dto(dynamic raw);
 
   @protected
@@ -381,6 +403,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   RustStreamSink<AssistantStreamEventDto>
   sse_decode_StreamSink_assistant_stream_event_dto_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RustStreamSink<IngestEvent> sse_decode_StreamSink_ingest_event_Sse(
     SseDeserializer deserializer,
   );
 
@@ -476,6 +503,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  SyncNearDuplicateDto sse_decode_box_autoadd_sync_near_duplicate_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   SyncPhaseDto sse_decode_box_autoadd_sync_phase_dto(
     SseDeserializer deserializer,
   );
@@ -556,6 +588,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+
+  @protected
+  IngestEvent sse_decode_ingest_event(SseDeserializer deserializer);
 
   @protected
   LabelScore sse_decode_label_score(SseDeserializer deserializer);
@@ -649,6 +684,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  SyncNearDuplicateDto? sse_decode_opt_box_autoadd_sync_near_duplicate_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   SyncPhaseDto? sse_decode_opt_box_autoadd_sync_phase_dto(
     SseDeserializer deserializer,
   );
@@ -707,6 +747,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SyncEventKindDto sse_decode_sync_event_kind_dto(SseDeserializer deserializer);
+
+  @protected
+  SyncNearDuplicateDto sse_decode_sync_near_duplicate_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   SyncPhaseDto sse_decode_sync_phase_dto(SseDeserializer deserializer);
@@ -770,6 +815,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_StreamSink_assistant_stream_event_dto_Sse(
     RustStreamSink<AssistantStreamEventDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_ingest_event_Sse(
+    RustStreamSink<IngestEvent> self,
     SseSerializer serializer,
   );
 
@@ -885,6 +936,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_sync_near_duplicate_dto(
+    SyncNearDuplicateDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_sync_phase_dto(
     SyncPhaseDto self,
     SseSerializer serializer,
@@ -985,6 +1042,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ingest_event(IngestEvent self, SseSerializer serializer);
 
   @protected
   void sse_encode_label_score(LabelScore self, SseSerializer serializer);
@@ -1104,6 +1164,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_sync_near_duplicate_dto(
+    SyncNearDuplicateDto? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_sync_phase_dto(
     SyncPhaseDto? self,
     SseSerializer serializer,
@@ -1175,6 +1241,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_sync_event_kind_dto(
     SyncEventKindDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_sync_near_duplicate_dto(
+    SyncNearDuplicateDto self,
     SseSerializer serializer,
   );
 

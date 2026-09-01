@@ -40,7 +40,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 543566241;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1526555012;
 
 // Section: executor
 
@@ -1673,6 +1673,54 @@ fn wire__crate__api__health__health_check_impl(
         },
     )
 }
+fn wire__crate__api__ingest__ingest_files_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "ingest_files",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_repo = <DocumentRepository>::sse_decode(&mut deserializer);
+            let api_paths = <Vec<String>>::sse_decode(&mut deserializer);
+            let api_destination_path = <Option<String>>::sse_decode(&mut deserializer);
+            let api_title_override = <Option<String>>::sse_decode(&mut deserializer);
+            let api_skip_existing = <bool>::sse_decode(&mut deserializer);
+            let api_sink = <StreamSink<
+                crate::api::ingest::IngestEvent,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::ingest::ingest_files(
+                        api_repo,
+                        api_paths,
+                        api_destination_path,
+                        api_title_override,
+                        api_skip_existing,
+                        api_sink,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__init_app_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2140,6 +2188,16 @@ impl SseDecode
 }
 
 impl SseDecode
+    for StreamSink<crate::api::ingest::IngestEvent, flutter_rust_bridge::for_generated::SseCodec>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
+    }
+}
+
+impl SseDecode
     for StreamSink<crate::api::p2p::PeerEvent, flutter_rust_bridge::for_generated::SseCodec>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -2485,6 +2543,24 @@ impl SseDecode for i64 {
     }
 }
 
+impl SseDecode for crate::api::ingest::IngestEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_kind = <String>::sse_decode(deserializer);
+        let mut var_fileName = <String>::sse_decode(deserializer);
+        let mut var_percent = <u32>::sse_decode(deserializer);
+        let mut var_documentId = <String>::sse_decode(deserializer);
+        let mut var_error = <String>::sse_decode(deserializer);
+        return crate::api::ingest::IngestEvent {
+            kind: var_kind,
+            file_name: var_fileName,
+            percent: var_percent,
+            document_id: var_documentId,
+            error: var_error,
+        };
+    }
+}
+
 impl SseDecode for crate::api::ai::LabelScore {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2779,6 +2855,19 @@ impl SseDecode for Option<crate::api::sync::SyncConflictDto> {
     }
 }
 
+impl SseDecode for Option<crate::api::sync::SyncNearDuplicateDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::sync::SyncNearDuplicateDto>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<crate::api::sync::SyncPhaseDto> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3032,6 +3121,8 @@ impl SseDecode for crate::api::sync::SyncEventDto {
         let mut var_bytes = <Option<u64>>::sse_decode(deserializer);
         let mut var_conflict =
             <Option<crate::api::sync::SyncConflictDto>>::sse_decode(deserializer);
+        let mut var_nearDuplicate =
+            <Option<crate::api::sync::SyncNearDuplicateDto>>::sse_decode(deserializer);
         let mut var_results = <Vec<crate::api::sync::SyncResolutionDto>>::sse_decode(deserializer);
         return crate::api::sync::SyncEventDto {
             kind: var_kind,
@@ -3040,6 +3131,7 @@ impl SseDecode for crate::api::sync::SyncEventDto {
             document_id: var_documentId,
             bytes: var_bytes,
             conflict: var_conflict,
+            near_duplicate: var_nearDuplicate,
             results: var_results,
         };
     }
@@ -3054,8 +3146,23 @@ impl SseDecode for crate::api::sync::SyncEventKindDto {
             1 => crate::api::sync::SyncEventKindDto::Progress,
             2 => crate::api::sync::SyncEventKindDto::DocumentTransferred,
             3 => crate::api::sync::SyncEventKindDto::Conflict,
-            4 => crate::api::sync::SyncEventKindDto::Finished,
+            4 => crate::api::sync::SyncEventKindDto::NearDuplicate,
+            5 => crate::api::sync::SyncEventKindDto::Finished,
             _ => unreachable!("Invalid variant for SyncEventKindDto: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::sync::SyncNearDuplicateDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_documentId = <String>::sse_decode(deserializer);
+        let mut var_relatedTo = <String>::sse_decode(deserializer);
+        let mut var_similarity = <f32>::sse_decode(deserializer);
+        return crate::api::sync::SyncNearDuplicateDto {
+            document_id: var_documentId,
+            related_to: var_relatedTo,
+            similarity: var_similarity,
         };
     }
 }
@@ -3272,10 +3379,11 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        39 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__storage__open_repository_impl(port, ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__p2p__p2p_events_impl(port, ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__sync__sync_events_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__ingest__ingest_files_impl(port, ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__storage__open_repository_impl(port, ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__p2p__p2p_events_impl(port, ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__sync__sync_events_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3307,15 +3415,15 @@ fn pde_ffi_dispatcher_sync_impl(
         35 => wire__crate__api__auto_org__auto_org_default_rules_impl(ptr, rust_vec_len, data_len),
         37 => wire__crate__api__auto_org__auto_org_organize_impl(ptr, rust_vec_len, data_len),
         38 => wire__crate__api__health__health_check_impl(ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__p2p__p2p_connect_impl(ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__p2p__p2p_list_peers_impl(ptr, rust_vec_len, data_len),
-        44 => wire__crate__api__p2p__p2p_local_peer_id_impl(ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__sync__sync_conflicts_impl(ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__sync__sync_connect_impl(ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__sync__sync_peers_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__sync__sync_pull_impl(ptr, rust_vec_len, data_len),
-        50 => wire__crate__api__sync__sync_push_impl(ptr, rust_vec_len, data_len),
-        51 => wire__crate__api__sync__sync_start_impl(ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__p2p__p2p_connect_impl(ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__p2p__p2p_list_peers_impl(ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__p2p__p2p_local_peer_id_impl(ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__sync__sync_conflicts_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__sync__sync_connect_impl(ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__sync__sync_peers_impl(ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__sync__sync_pull_impl(ptr, rust_vec_len, data_len),
+        51 => wire__crate__api__sync__sync_push_impl(ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__sync__sync_start_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3754,6 +3862,30 @@ impl flutter_rust_bridge::IntoIntoDart<crate::domain::HierarchyPath>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::ingest::IngestEvent {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.kind.into_into_dart().into_dart(),
+            self.file_name.into_into_dart().into_dart(),
+            self.percent.into_into_dart().into_dart(),
+            self.document_id.into_into_dart().into_dart(),
+            self.error.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::ingest::IngestEvent
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::ingest::IngestEvent>
+    for crate::api::ingest::IngestEvent
+{
+    fn into_into_dart(self) -> crate::api::ingest::IngestEvent {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::ai::LabelScore {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -4098,6 +4230,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::sync::SyncEventDto {
             self.document_id.into_into_dart().into_dart(),
             self.bytes.into_into_dart().into_dart(),
             self.conflict.into_into_dart().into_dart(),
+            self.near_duplicate.into_into_dart().into_dart(),
             self.results.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -4122,7 +4255,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::sync::SyncEventKindDto {
             Self::Progress => 1.into_dart(),
             Self::DocumentTransferred => 2.into_dart(),
             Self::Conflict => 3.into_dart(),
-            Self::Finished => 4.into_dart(),
+            Self::NearDuplicate => 4.into_dart(),
+            Self::Finished => 5.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -4135,6 +4269,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::sync::SyncEventKindDto>
     for crate::api::sync::SyncEventKindDto
 {
     fn into_into_dart(self) -> crate::api::sync::SyncEventKindDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::sync::SyncNearDuplicateDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.document_id.into_into_dart().into_dart(),
+            self.related_to.into_into_dart().into_dart(),
+            self.similarity.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::sync::SyncNearDuplicateDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::sync::SyncNearDuplicateDto>
+    for crate::api::sync::SyncNearDuplicateDto
+{
+    fn into_into_dart(self) -> crate::api::sync::SyncNearDuplicateDto {
         self
     }
 }
@@ -4237,6 +4393,15 @@ impl SseEncode
         crate::api::assistant::AssistantStreamEventDto,
         flutter_rust_bridge::for_generated::SseCodec,
     >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
+    }
+}
+
+impl SseEncode
+    for StreamSink<crate::api::ingest::IngestEvent, flutter_rust_bridge::for_generated::SseCodec>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4519,6 +4684,17 @@ impl SseEncode for i64 {
     }
 }
 
+impl SseEncode for crate::api::ingest::IngestEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.kind, serializer);
+        <String>::sse_encode(self.file_name, serializer);
+        <u32>::sse_encode(self.percent, serializer);
+        <String>::sse_encode(self.document_id, serializer);
+        <String>::sse_encode(self.error, serializer);
+    }
+}
+
 impl SseEncode for crate::api::ai::LabelScore {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4768,6 +4944,16 @@ impl SseEncode for Option<crate::api::sync::SyncConflictDto> {
     }
 }
 
+impl SseEncode for Option<crate::api::sync::SyncNearDuplicateDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::sync::SyncNearDuplicateDto>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<crate::api::sync::SyncPhaseDto> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4964,6 +5150,10 @@ impl SseEncode for crate::api::sync::SyncEventDto {
         <Option<String>>::sse_encode(self.document_id, serializer);
         <Option<u64>>::sse_encode(self.bytes, serializer);
         <Option<crate::api::sync::SyncConflictDto>>::sse_encode(self.conflict, serializer);
+        <Option<crate::api::sync::SyncNearDuplicateDto>>::sse_encode(
+            self.near_duplicate,
+            serializer,
+        );
         <Vec<crate::api::sync::SyncResolutionDto>>::sse_encode(self.results, serializer);
     }
 }
@@ -4977,13 +5167,23 @@ impl SseEncode for crate::api::sync::SyncEventKindDto {
                 crate::api::sync::SyncEventKindDto::Progress => 1,
                 crate::api::sync::SyncEventKindDto::DocumentTransferred => 2,
                 crate::api::sync::SyncEventKindDto::Conflict => 3,
-                crate::api::sync::SyncEventKindDto::Finished => 4,
+                crate::api::sync::SyncEventKindDto::NearDuplicate => 4,
+                crate::api::sync::SyncEventKindDto::Finished => 5,
                 _ => {
                     unimplemented!("");
                 }
             },
             serializer,
         );
+    }
+}
+
+impl SseEncode for crate::api::sync::SyncNearDuplicateDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.document_id, serializer);
+        <String>::sse_encode(self.related_to, serializer);
+        <f32>::sse_encode(self.similarity, serializer);
     }
 }
 

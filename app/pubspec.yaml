@@ -43,6 +43,9 @@ dependencies:
   docer_rust_builder:
     path: rust_builder
 
+  # Annotation crate required by flutter_rust_bridge codegen for generated types.
+  freezed_annotation: ^2.4.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -57,6 +60,11 @@ dev_dependencies:
   # Runs integration tests on a real device/desktop where the native lib loads.
   integration_test:
     sdk: flutter
+
+  # Required by flutter_rust_bridge codegen for generated opaque wrapper types
+  # (e.g. the ingestion progress sink).
+  build_runner: ^2.4.2
+  freezed: ^2.5.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
