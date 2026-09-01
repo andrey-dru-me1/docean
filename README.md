@@ -176,7 +176,7 @@ stack so later tasks build on the same choices without conflict.
 | Local storage | `storage/` (`DocumentStore`) | `storage.dart` | `redb = "4"` | Durable metadata index (embedded, typed, transactional KV) + blob files keyed by content hash |
 | Tagging & hierarchy | `taxonomy/` (`Taxonomy`) | `taxonomy.dart` | — (logic over `storage`) | Move/tag/untag, ancestor/descendant traversal, cycle detection |
 | Full-text & semantic search | `search/` (`SearchIndex`) | `search.dart` | `tantivy = "0.26"`, `fastembed = "6"`, `usearch = "2"` | Index/query text, semantic, and hybrid queries |
-| Pluggable AI providers | `ai/` (`AiProvider`) | `ai.dart` | `tokio = "1"`, `reqwest = { version = "0.13", features = ["json","stream"] }` | Uniform async client over OpenAI-compatible / Anthropic / Ollama backends |
+| Pluggable AI providers | `ai/` (`AiProvider`, `AiManager`) | `ai.dart` (`AiService`) | `reqwest = "0.13"` (`json`, `rustls`), `keyring = "4"`, `log = "0.4"` | Uniform `generate`/`classify`/`embed` over three backends: a small built-in local model (data downloaded on first use), a local Ollama server, and any OpenAI-compatible API (user key + base URL). Secrets (API keys) stored in the OS keychain; never cross the FFI boundary. |
 | AI auto-organization | `auto_org/` (`AutoOrganizer`) | `auto_org.dart` | (orchestrates `ai` + `storage` + `taxonomy` + `search`) | Staged, resumable pipeline: ingest → extract → classify → apply suggestions |
 | Chat assistant | `assistant/` (`Assistant`) | `assistant.dart` | (uses `search` + `ai`) | Retrieval-augmented chat with cited document references |
 | P2P sync | `sync/` (`SyncEngine`) | `sync.dart` | `iroh = "1"`, `automerge = "0.11"` | Replicate library across devices; deterministic conflict resolution |

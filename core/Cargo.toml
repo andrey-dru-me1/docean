@@ -35,6 +35,18 @@ rand = "0.8"
 # --- async runtime (shared by ai + net) -------------------------------------
 tokio = { version = "1", features = ["full"] }
 
+# --- pluggable AI providers (core::ai) -------------------------------------
+# reqwest: async HTTP client for the Ollama and OpenAI-compatible backends.
+# `json` for typed bodies, `rustls` + `webpki-roots` for a self-contained TLS
+# stack (no system OpenSSL dependency, keeping cargokit builds simple).
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "webpki-roots", "system-proxy"] }
+# keyring: OS credential store (macOS Keychain, Windows Credential Manager,
+# freedesktop Secret Service) for persisting provider API keys securely.
+# Default `v1` feature enables the native stores for all supported platforms.
+keyring = "4"
+# tracing/logging for provider lifecycle + model downloads.
+log = "0.4"
+
 # --- local storage (src/storage) -------------------------------------------
 # SQLite via `rusqlite` (explicit storage requirement) with an in-code
 # migration mechanism. `bundled` compiles SQLite from source so there is no

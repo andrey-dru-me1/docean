@@ -3,6 +3,8 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'ai.dart';
+import 'api/ai.dart';
 import 'api/health.dart';
 import 'api/p2p.dart';
 import 'api/storage.dart';
@@ -64,7 +66,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  ActiveProviderInfo dco_decode_active_provider_info(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
+
+  @protected
+  ClassifyRequestDto dco_decode_box_autoadd_classify_request_dto(dynamic raw);
 
   @protected
   Content dco_decode_box_autoadd_content(dynamic raw);
@@ -76,6 +84,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DocumentQuery dco_decode_box_autoadd_document_query(dynamic raw);
 
   @protected
+  EmbedRequestDto dco_decode_box_autoadd_embed_request_dto(dynamic raw);
+
+  @protected
+  double dco_decode_box_autoadd_f_32(dynamic raw);
+
+  @protected
+  GenerateRequestDto dco_decode_box_autoadd_generate_request_dto(dynamic raw);
+
+  @protected
   HierarchyLink dco_decode_box_autoadd_hierarchy_link(dynamic raw);
 
   @protected
@@ -83,6 +100,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PathAssignment dco_decode_box_autoadd_path_assignment(dynamic raw);
+
+  @protected
+  ProviderSettings dco_decode_box_autoadd_provider_settings(dynamic raw);
 
   @protected
   SyncConflictDto dco_decode_box_autoadd_sync_conflict_dto(dynamic raw);
@@ -100,6 +120,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt dco_decode_box_autoadd_u_64(dynamic raw);
 
   @protected
+  ClassifyRequestDto dco_decode_classify_request_dto(dynamic raw);
+
+  @protected
+  ClassifyResponseDto dco_decode_classify_response_dto(dynamic raw);
+
+  @protected
   ConnectionState dco_decode_connection_state(dynamic raw);
 
   @protected
@@ -110,6 +136,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   DocumentQuery dco_decode_document_query(dynamic raw);
+
+  @protected
+  EmbedRequestDto dco_decode_embed_request_dto(dynamic raw);
+
+  @protected
+  EmbedResponseDto dco_decode_embed_response_dto(dynamic raw);
+
+  @protected
+  double dco_decode_f_32(dynamic raw);
+
+  @protected
+  GenerateMode dco_decode_generate_mode(dynamic raw);
+
+  @protected
+  GenerateRequestDto dco_decode_generate_request_dto(dynamic raw);
+
+  @protected
+  GenerateResponseDto dco_decode_generate_response_dto(dynamic raw);
 
   @protected
   HealthStatus dco_decode_health_status(dynamic raw);
@@ -127,6 +171,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
+  LabelScore dco_decode_label_score(dynamic raw);
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
@@ -136,13 +183,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<HierarchyPath> dco_decode_list_hierarchy_path(dynamic raw);
 
   @protected
+  List<LabelScore> dco_decode_list_label_score(dynamic raw);
+
+  @protected
+  List<ModelInfo> dco_decode_list_model_info(dynamic raw);
+
+  @protected
   List<PeerInfo> dco_decode_list_peer_info(dynamic raw);
+
+  @protected
+  Float32List dco_decode_list_prim_f_32_strict(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  List<ProviderSettings> dco_decode_list_provider_settings(dynamic raw);
 
   @protected
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
@@ -157,6 +216,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Tag> dco_decode_list_tag(dynamic raw);
 
   @protected
+  ModelInfo dco_decode_model_info(dynamic raw);
+
+  @protected
   NodeKind dco_decode_node_kind(dynamic raw);
 
   @protected
@@ -164,6 +226,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Content? dco_decode_opt_box_autoadd_content(dynamic raw);
+
+  @protected
+  double? dco_decode_opt_box_autoadd_f_32(dynamic raw);
 
   @protected
   NodeKind? dco_decode_opt_box_autoadd_node_kind(dynamic raw);
@@ -191,6 +256,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PeerInfo dco_decode_peer_info(dynamic raw);
+
+  @protected
+  ProviderKind dco_decode_provider_kind(dynamic raw);
+
+  @protected
+  ProviderSettings dco_decode_provider_settings(dynamic raw);
 
   @protected
   (String, String) dco_decode_record_string_string(dynamic raw);
@@ -271,7 +342,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  ActiveProviderInfo sse_decode_active_provider_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
+  ClassifyRequestDto sse_decode_box_autoadd_classify_request_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   Content sse_decode_box_autoadd_content(SseDeserializer deserializer);
@@ -285,6 +366,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  EmbedRequestDto sse_decode_box_autoadd_embed_request_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  double sse_decode_box_autoadd_f_32(SseDeserializer deserializer);
+
+  @protected
+  GenerateRequestDto sse_decode_box_autoadd_generate_request_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   HierarchyLink sse_decode_box_autoadd_hierarchy_link(
     SseDeserializer deserializer,
   );
@@ -294,6 +388,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PathAssignment sse_decode_box_autoadd_path_assignment(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ProviderSettings sse_decode_box_autoadd_provider_settings(
     SseDeserializer deserializer,
   );
 
@@ -317,6 +416,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
+  ClassifyRequestDto sse_decode_classify_request_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ClassifyResponseDto sse_decode_classify_response_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   ConnectionState sse_decode_connection_state(SseDeserializer deserializer);
 
   @protected
@@ -327,6 +436,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   DocumentQuery sse_decode_document_query(SseDeserializer deserializer);
+
+  @protected
+  EmbedRequestDto sse_decode_embed_request_dto(SseDeserializer deserializer);
+
+  @protected
+  EmbedResponseDto sse_decode_embed_response_dto(SseDeserializer deserializer);
+
+  @protected
+  double sse_decode_f_32(SseDeserializer deserializer);
+
+  @protected
+  GenerateMode sse_decode_generate_mode(SseDeserializer deserializer);
+
+  @protected
+  GenerateRequestDto sse_decode_generate_request_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  GenerateResponseDto sse_decode_generate_response_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   HealthStatus sse_decode_health_status(SseDeserializer deserializer);
@@ -344,6 +475,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
+  LabelScore sse_decode_label_score(SseDeserializer deserializer);
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
@@ -355,13 +489,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<LabelScore> sse_decode_list_label_score(SseDeserializer deserializer);
+
+  @protected
+  List<ModelInfo> sse_decode_list_model_info(SseDeserializer deserializer);
+
+  @protected
   List<PeerInfo> sse_decode_list_peer_info(SseDeserializer deserializer);
+
+  @protected
+  Float32List sse_decode_list_prim_f_32_strict(SseDeserializer deserializer);
 
   @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  List<ProviderSettings> sse_decode_list_provider_settings(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<(String, String)> sse_decode_list_record_string_string(
@@ -382,6 +530,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Tag> sse_decode_list_tag(SseDeserializer deserializer);
 
   @protected
+  ModelInfo sse_decode_model_info(SseDeserializer deserializer);
+
+  @protected
   NodeKind sse_decode_node_kind(SseDeserializer deserializer);
 
   @protected
@@ -389,6 +540,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Content? sse_decode_opt_box_autoadd_content(SseDeserializer deserializer);
+
+  @protected
+  double? sse_decode_opt_box_autoadd_f_32(SseDeserializer deserializer);
 
   @protected
   NodeKind? sse_decode_opt_box_autoadd_node_kind(SseDeserializer deserializer);
@@ -420,6 +574,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PeerInfo sse_decode_peer_info(SseDeserializer deserializer);
+
+  @protected
+  ProviderKind sse_decode_provider_kind(SseDeserializer deserializer);
+
+  @protected
+  ProviderSettings sse_decode_provider_settings(SseDeserializer deserializer);
 
   @protected
   (String, String) sse_decode_record_string_string(
@@ -515,7 +675,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
+  void sse_encode_active_provider_info(
+    ActiveProviderInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_classify_request_dto(
+    ClassifyRequestDto self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_content(Content self, SseSerializer serializer);
@@ -526,6 +698,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_document_query(
     DocumentQuery self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_embed_request_dto(
+    EmbedRequestDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_f_32(double self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_generate_request_dto(
+    GenerateRequestDto self,
     SseSerializer serializer,
   );
 
@@ -544,6 +731,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_path_assignment(
     PathAssignment self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_provider_settings(
+    ProviderSettings self,
     SseSerializer serializer,
   );
 
@@ -569,6 +762,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
 
   @protected
+  void sse_encode_classify_request_dto(
+    ClassifyRequestDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_classify_response_dto(
+    ClassifyResponseDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_connection_state(
     ConnectionState self,
     SseSerializer serializer,
@@ -582,6 +787,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_document_query(DocumentQuery self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_embed_request_dto(
+    EmbedRequestDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_embed_response_dto(
+    EmbedResponseDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_f_32(double self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_generate_mode(GenerateMode self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_generate_request_dto(
+    GenerateRequestDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_generate_response_dto(
+    GenerateResponseDto self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_health_status(HealthStatus self, SseSerializer serializer);
@@ -599,6 +834,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
+  void sse_encode_label_score(LabelScore self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
@@ -611,7 +849,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_label_score(
+    List<LabelScore> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_model_info(
+    List<ModelInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_peer_info(List<PeerInfo> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_prim_f_32_strict(
+    Float32List self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
@@ -619,6 +875,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_provider_settings(
+    List<ProviderSettings> self,
     SseSerializer serializer,
   );
 
@@ -644,6 +906,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_tag(List<Tag> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_model_info(ModelInfo self, SseSerializer serializer);
+
+  @protected
   void sse_encode_node_kind(NodeKind self, SseSerializer serializer);
 
   @protected
@@ -654,6 +919,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     Content? self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_opt_box_autoadd_f_32(double? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_node_kind(
@@ -693,6 +961,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_peer_info(PeerInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_provider_kind(ProviderKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_provider_settings(
+    ProviderSettings self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_record_string_string(
