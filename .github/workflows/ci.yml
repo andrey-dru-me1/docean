@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Fails if the checked-in FRB bindings drift from the Rust `api` sources.
+  codegen-check:
+    name: FRB codegen check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install codegen tools
+        run: |
+          cargo install cargo-binstall --locked
+          cargo binstall --no-confirm flutter_rust_bridge_codegen --version 2.13.0
+          cargo binstall --no-confirm cargo-expand
+      - name: Regenerate bindings and check for drift
+        run: |
+          flutter_rust_bridge_codegen generate
+          git diff --exit-code -- core/src/frb_generated.rs app/lib/src/rust
+
+  core:
+    name: Rust core (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - run: cargo fmt -- --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  app:
+    name: Flutter app (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            build: flutter build linux
+          - os: macos-latest
+            build: flutter build macos
+          - os: windows-latest
+            build: flutter build windows
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev
+      - run: flutter pub get
+      - run: dart format --set-exit-if-changed lib test integration_test test_driver
+      - run: dart analyze
+      - run: flutter test
+      - run: ${{ matrix.build }}
+
+  android:
+    name: Android (debug APK)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: android-actions/setup-android@v3
+      - name: Install NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          # Match the NDK version pinned by the Flutter SDK.
+          ndk-version: r27c
+      - run: flutter pub get
+      - run: flutter build apk --debug

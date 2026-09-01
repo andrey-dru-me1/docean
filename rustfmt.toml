@@ -1,0 +1,5 @@
+edition = "2021"
+max_width = 100
+# Keep the module declarations in the intentional (dependency) order in lib.rs,
+# rather than re-sorting them alphabetically.
+reorder_modules = false

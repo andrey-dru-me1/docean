@@ -1,0 +1,19 @@
+# --- OS / editors ---------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# --- Logs -----------------------------------------------------------------
+*.log
+
+# --- Rust -----------------------------------------------------------------
+# `core/.gitignore` also ignores `core/target/`; keep a root-level rule as a
+# safety net for any future workspace crates.
+target/
+
+# --- Local environment ----------------------------------------------------
+.env
+.env.*
+!.env.example

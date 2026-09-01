@@ -1,0 +1,11 @@
+# flutter_rust_bridge v2 codegen configuration.
+# Run `flutter_rust_bridge_codegen generate` (or `just codegen`) from the repo root.
+
+# The Rust module subtree that contains `#[frb]`-annotated items.
+rust_input: crate::api
+
+# Path (relative to this file) to the Rust crate root.
+rust_root: core/
+
+# Where generated Dart bindings are written (relative to the Flutter package root).
+dart_output: app/lib/src/rust

@@ -1,0 +1,46 @@
+[package]
+# NOTE: no hyphen. cargokit derives the linked library name from the package
+# name, and Cargo maps `-` to `_` in the produced `lib<name>.a`/`.dylib` files,
+# so `docer-core` would break the pod/CMake link step on macOS/iOS.
+name = "docer_core"
+version = "0.1.0"
+edition = "2021"
+description = "Core engine for docer: document storage, organization, search, AI, and sync."
+license = "MIT"
+
+# flutter_rust_bridge requires the crate to be buildable as both a dynamic and
+# static library. The cargokit build glue links whichever the platform needs.
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+# Pinned exactly; the Dart side (`flutter_rust_bridge`) and the codegen CLI
+# (`flutter_rust_bridge_codegen`) must all stay on the same version.
+flutter_rust_bridge = "=2.13.0"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+anyhow = "1"
+
+# ---------------------------------------------------------------------------
+# Planned per-module dependencies (pinned choices; activate when implementing).
+# These are documented here so later tasks build on the same choices without
+# conflict. They are NOT activated yet to keep the skeleton build fast.
+#
+# storage        -> redb = "4"          (embedded, typed, transactional KV store)
+# search         -> tantivy = "0.26"    (full-text inverted index)
+#                   fastembed = "6"     (local ONNX embeddings for semantic search)
+#                   usearch = "2"       (HNSW vector similarity index)
+# ai             -> tokio = { version = "1", features = ["full"] }
+#                   reqwest = { version = "0.13", features = ["json", "stream"] }
+# sync           -> iroh = "1"          (P2P transport over QUIC)
+#                   automerge = "0.11"  (CRDT for conflict-free merge)
+# observability  -> tracing = "0.1", tracing-subscriber = "0.3"
+# ---------------------------------------------------------------------------
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
