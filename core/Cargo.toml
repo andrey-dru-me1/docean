@@ -56,6 +56,23 @@ rusqlite = { version = "0.37", features = ["bundled", "serde_json"] }
 # Content hashing for the content-addressed blob store + integrity checks.
 sha2 = "0.10"
 
+# --- file ingestion (src/ingest) -------------------------------------------
+# PDF text extraction (pure Rust, lopdf-based). See `pdf-extract` docs.
+pdf-extract = "0.12"
+# OOXML/ODF archives (docx/odt) are ZIP containers holding XML document bodies.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# `.eml` and RFC822-style plain-text mail files.
+mailparse = "0.16"
+# Streaming XML reader used to walk docx/odt document bodies.
+quick-xml = "0.41"
+
+# Optional OCR for images + scanned PDFs. Pulls in `tesseract-sys` which needs
+# a system Tesseract/Leptonica installation at *build* time, so it is disabled
+# by default; enable with `cargo build --feature ocr` (and install tesseract +
+# leptonica + the `eng` traineddata). With the feature off, images are stored
+# and ingested with metadata only (no text layer) rather than failing the build.
+tesseract = { version = "0.15", optional = true }
+
 # ---------------------------------------------------------------------------
 # Planned per-module dependencies (pinned choices; activate when implementing).
 # These are documented here so later tasks build on the same choices without
@@ -77,6 +94,17 @@ sha2 = "0.10"
 # and self-contained-build requirements. The generative filename tier reuses
 # the ai module; the classic-ML path has zero ai dependency.
 # ---------------------------------------------------------------------------
+
+[dev-dependencies]
+# Used by `src/ingest/tests.rs` to build a valid sample PDF in memory.
+lopdf = "0.42"
+
+[features]
+default = []
+# Enable the OCR text-extraction backend for images (/ scanned PDFs). Requires
+# a system Tesseract/Leptonica installation (see the `tesseract` dependency
+# above). Keep off by default so the crate builds everywhere.
+ocr = ["dep:tesseract"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

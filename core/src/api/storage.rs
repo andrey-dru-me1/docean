@@ -19,7 +19,7 @@ pub struct DocumentRepository {
 }
 
 impl DocumentRepository {
-    fn store(&self) -> Result<std::sync::MutexGuard<'_, SqliteDocumentStore>, String> {
+    pub(crate) fn store(&self) -> Result<std::sync::MutexGuard<'_, SqliteDocumentStore>, String> {
         self.inner
             .lock()
             .map_err(|_| "repository is closed".to_owned())

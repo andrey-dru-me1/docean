@@ -9,6 +9,7 @@ pub mod ai;
 pub mod assistant;
 pub mod auto_org;
 pub mod health;
+pub mod ingest;
 pub mod p2p;
 pub mod storage;
 pub mod sync;

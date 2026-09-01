@@ -12,6 +12,7 @@
 //!
 //! * [`domain`]    — shared document/tag/hierarchy model.
 //! * [`storage`]   — local document storage (metadata index + blob store).
+//! * [`ingest`]    — file ingestion pipeline (hash, copy, text extraction).
 //! * [`taxonomy`]  — tagging and folder hierarchy operations.
 //! * [`search`]    — full-text and semantic search.
 //! * [`ai`]        — pluggable AI providers.
@@ -21,6 +22,7 @@
 
 pub mod api;
 pub mod domain;
+pub mod ingest;
 pub mod storage;
 pub mod taxonomy;
 pub mod search;
