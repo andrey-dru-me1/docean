@@ -4,7 +4,7 @@
 //! are intentionally framework-agnostic — no storage/search/sync implementation
 //! details leak into them.
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 /// Opaque, stable identifier for a document.
 pub type DocumentId = String;
@@ -34,7 +34,10 @@ pub struct Document {
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
     /// Extensible key/value metadata (EXIF, OCR language, source URL, ...).
-    pub extra: BTreeMap<String, String>,
+    ///
+    /// A `HashMap` rather than `BTreeMap` because `flutter_rust_bridge` can
+    /// translate `HashMap<K, V>` → Dart `Map<K, V>` but not `BTreeMap`.
+    pub extra: HashMap<String, String>,
 }
 
 /// A user-defined tag. Tags may be nested (e.g. `receipts/2026`) via [`Tag::parent`].
@@ -52,4 +55,42 @@ pub struct HierarchyLink {
     pub child_id: DocumentId,
     /// Ordinal position of the child among its siblings.
     pub position: i32,
+}
+
+/// A hierarchy path, e.g. `/work/invoices/2026`.
+///
+/// A path is an entity independent of any single document: a document may be
+/// reachable through *many* paths (each a [`PathAssignment`] edge), and a path
+/// may contain many documents. This is a many-to-many relationship mirroring
+/// filesystem hard links / multiple virtual folders.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HierarchyPath {
+    /// Canonical, `/`-separated path with a leading slash. Unique in storage.
+    pub path: String,
+}
+
+/// A member edge of the many-to-many relationship between documents and paths.
+///
+/// One document ↔ many paths, and one path ↔ many documents.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathAssignment {
+    pub document_id: DocumentId,
+    pub path: String,
+    /// Ordinal position of the document among the path's members.
+    pub position: i32,
+}
+
+/// Extracted/ingested textual content for a document.
+///
+/// Kept separate from [`Document`] metadata so that raw binary documents can be
+/// stored without text, and so multiple extraction passes (OCR, re-parse) can
+/// update the text without touching the immutable content hash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Content {
+    /// The document this text belongs to.
+    pub document_id: DocumentId,
+    /// Plain-text content extracted from the document.
+    pub text: String,
+    /// A short extractor identifier, e.g. `"pdf"`, `"ocr"`, `"markdown"`.
+    pub source: String,
 }

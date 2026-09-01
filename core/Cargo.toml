@@ -35,12 +35,20 @@ rand = "0.8"
 # --- async runtime (shared by ai + net) -------------------------------------
 tokio = { version = "1", features = ["full"] }
 
+# --- local storage (src/storage) -------------------------------------------
+# SQLite via `rusqlite` (explicit storage requirement) with an in-code
+# migration mechanism. `bundled` compiles SQLite from source so there is no
+# system library dependency, keeping the cargokit cross-platform build
+# (macOS/Windows/Linux/Android/iOS) self-contained.
+rusqlite = { version = "0.37", features = ["bundled", "serde_json"] }
+# Content hashing for the content-addressed blob store + integrity checks.
+sha2 = "0.10"
+
 # ---------------------------------------------------------------------------
 # Planned per-module dependencies (pinned choices; activate when implementing).
 # These are documented here so later tasks build on the same choices without
-# conflict. They are NOT activated yet to keep the skeleton build fast.
+# conflict. Modules not yet implemented keep their crates commented out.
 #
-# storage        -> redb = "4"          (embedded, typed, transactional KV store)
 # search         -> tantivy = "0.26"    (full-text inverted index)
 #                   fastembed = "6"     (local ONNX embeddings for semantic search)
 #                   usearch = "2"       (HNSW vector similarity index)

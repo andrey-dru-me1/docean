@@ -8,11 +8,14 @@
 
 import 'api/health.dart';
 import 'api/p2p.dart';
+import 'api/storage.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'domain.dart';
 import 'frb_generated.dart';
 import 'net/models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
+import 'storage.dart';
 
 abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustLibApiImplPlatform({
@@ -22,8 +25,33 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     required super.portManager,
   });
 
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_DocumentRepositoryPtr => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository;
+
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw);
+
+  @protected
+  DocumentRepository
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    dynamic raw,
+  );
+
+  @protected
+  DocumentRepository
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    dynamic raw,
+  );
+
+  @protected
+  Map<String, String> dco_decode_Map_String_String_None(dynamic raw);
+
+  @protected
+  DocumentRepository
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    dynamic raw,
+  );
 
   @protected
   RustStreamSink<PeerEvent> dco_decode_StreamSink_peer_event_Sse(dynamic raw);
@@ -35,10 +63,49 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
+  Content dco_decode_box_autoadd_content(dynamic raw);
+
+  @protected
+  Document dco_decode_box_autoadd_document(dynamic raw);
+
+  @protected
+  DocumentQuery dco_decode_box_autoadd_document_query(dynamic raw);
+
+  @protected
+  HierarchyLink dco_decode_box_autoadd_hierarchy_link(dynamic raw);
+
+  @protected
+  NodeKind dco_decode_box_autoadd_node_kind(dynamic raw);
+
+  @protected
+  PathAssignment dco_decode_box_autoadd_path_assignment(dynamic raw);
+
+  @protected
+  Tag dco_decode_box_autoadd_tag(dynamic raw);
+
+  @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
   ConnectionState dco_decode_connection_state(dynamic raw);
 
   @protected
+  Content dco_decode_content(dynamic raw);
+
+  @protected
+  Document dco_decode_document(dynamic raw);
+
+  @protected
+  DocumentQuery dco_decode_document_query(dynamic raw);
+
+  @protected
   HealthStatus dco_decode_health_status(dynamic raw);
+
+  @protected
+  HierarchyLink dco_decode_hierarchy_link(dynamic raw);
+
+  @protected
+  HierarchyPath dco_decode_hierarchy_path(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -50,10 +117,43 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
+  List<Document> dco_decode_list_document(dynamic raw);
+
+  @protected
+  List<HierarchyPath> dco_decode_list_hierarchy_path(dynamic raw);
+
+  @protected
   List<PeerInfo> dco_decode_list_peer_info(dynamic raw);
 
   @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
+
+  @protected
+  List<Tag> dco_decode_list_tag(dynamic raw);
+
+  @protected
+  NodeKind dco_decode_node_kind(dynamic raw);
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  Content? dco_decode_opt_box_autoadd_content(dynamic raw);
+
+  @protected
+  NodeKind? dco_decode_opt_box_autoadd_node_kind(dynamic raw);
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  PathAssignment dco_decode_path_assignment(dynamic raw);
 
   @protected
   PeerEvent dco_decode_peer_event(dynamic raw);
@@ -65,13 +165,51 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PeerInfo dco_decode_peer_info(dynamic raw);
 
   @protected
+  (String, String) dco_decode_record_string_string(dynamic raw);
+
+  @protected
+  Tag dco_decode_tag(dynamic raw);
+
+  @protected
+  int dco_decode_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
+
+  @protected
   int dco_decode_u_8(dynamic raw);
 
   @protected
   void dco_decode_unit(dynamic raw);
 
   @protected
+  BigInt dco_decode_usize(dynamic raw);
+
+  @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+
+  @protected
+  DocumentRepository
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  DocumentRepository
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Map<String, String> sse_decode_Map_String_String_None(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  DocumentRepository
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    SseDeserializer deserializer,
+  );
 
   @protected
   RustStreamSink<PeerEvent> sse_decode_StreamSink_peer_event_Sse(
@@ -85,10 +223,55 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  Content sse_decode_box_autoadd_content(SseDeserializer deserializer);
+
+  @protected
+  Document sse_decode_box_autoadd_document(SseDeserializer deserializer);
+
+  @protected
+  DocumentQuery sse_decode_box_autoadd_document_query(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  HierarchyLink sse_decode_box_autoadd_hierarchy_link(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  NodeKind sse_decode_box_autoadd_node_kind(SseDeserializer deserializer);
+
+  @protected
+  PathAssignment sse_decode_box_autoadd_path_assignment(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Tag sse_decode_box_autoadd_tag(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
   ConnectionState sse_decode_connection_state(SseDeserializer deserializer);
 
   @protected
+  Content sse_decode_content(SseDeserializer deserializer);
+
+  @protected
+  Document sse_decode_document(SseDeserializer deserializer);
+
+  @protected
+  DocumentQuery sse_decode_document_query(SseDeserializer deserializer);
+
+  @protected
   HealthStatus sse_decode_health_status(SseDeserializer deserializer);
+
+  @protected
+  HierarchyLink sse_decode_hierarchy_link(SseDeserializer deserializer);
+
+  @protected
+  HierarchyPath sse_decode_hierarchy_path(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -100,10 +283,47 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
+  List<Document> sse_decode_list_document(SseDeserializer deserializer);
+
+  @protected
+  List<HierarchyPath> sse_decode_list_hierarchy_path(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<PeerInfo> sse_decode_list_peer_info(SseDeserializer deserializer);
 
   @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  List<(String, String)> sse_decode_list_record_string_string(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<Tag> sse_decode_list_tag(SseDeserializer deserializer);
+
+  @protected
+  NodeKind sse_decode_node_kind(SseDeserializer deserializer);
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  Content? sse_decode_opt_box_autoadd_content(SseDeserializer deserializer);
+
+  @protected
+  NodeKind? sse_decode_opt_box_autoadd_node_kind(SseDeserializer deserializer);
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  PathAssignment sse_decode_path_assignment(SseDeserializer deserializer);
 
   @protected
   PeerEvent sse_decode_peer_event(SseDeserializer deserializer);
@@ -115,14 +335,58 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PeerInfo sse_decode_peer_info(SseDeserializer deserializer);
 
   @protected
+  (String, String) sse_decode_record_string_string(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Tag sse_decode_tag(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_u_8(SseDeserializer deserializer);
 
   @protected
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
+  BigInt sse_decode_usize(SseDeserializer deserializer);
+
+  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    DocumentRepository self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    DocumentRepository self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_Map_String_String_None(
+    Map<String, String> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    DocumentRepository self,
     SseSerializer serializer,
   );
 
@@ -139,13 +403,64 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_content(Content self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_document(Document self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_document_query(
+    DocumentQuery self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_hierarchy_link(
+    HierarchyLink self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_node_kind(
+    NodeKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_path_assignment(
+    PathAssignment self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_tag(Tag self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
   void sse_encode_connection_state(
     ConnectionState self,
     SseSerializer serializer,
   );
 
   @protected
+  void sse_encode_content(Content self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_document(Document self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_document_query(DocumentQuery self, SseSerializer serializer);
+
+  @protected
   void sse_encode_health_status(HealthStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_hierarchy_link(HierarchyLink self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_hierarchy_path(HierarchyPath self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
@@ -157,11 +472,59 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_document(List<Document> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_hierarchy_path(
+    List<HierarchyPath> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_peer_info(List<PeerInfo> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_record_string_string(
+    List<(String, String)> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_tag(List<Tag> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_node_kind(NodeKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_content(
+    Content? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_node_kind(
+    NodeKind? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_path_assignment(
+    PathAssignment self,
     SseSerializer serializer,
   );
 
@@ -175,16 +538,50 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_peer_info(PeerInfo self, SseSerializer serializer);
 
   @protected
+  void sse_encode_record_string_string(
+    (String, String) self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_tag(Tag self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_8(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_usize(BigInt self, SseSerializer serializer);
 }
 
 // Section: wire_class
 
 class RustLibWire implements BaseWire {
   RustLibWire.fromExternalLibrary(ExternalLibrary lib);
+
+  void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+        ptr,
+      );
+
+  void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+        ptr,
+      );
 }
 
 @JS('wasm_bindgen')
@@ -192,4 +589,14 @@ external RustLibWasmModule get wasmModule;
 
 @JS()
 @anonymous
-extension type RustLibWasmModule._(JSObject _) implements JSObject {}
+extension type RustLibWasmModule._(JSObject _) implements JSObject {
+  external void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    int ptr,
+  );
+
+  external void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
+    int ptr,
+  );
+}
