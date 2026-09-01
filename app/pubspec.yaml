@@ -77,6 +77,13 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Flutter 3.44+ enables Swift Package Manager for the macOS Runner by
+  # default, which migrates it to a hybrid CocoaPods/SPM state and fails with
+  # "Unable to resolve module dependency: FlutterMacOS". The docer_rust_builder
+  # cargokit plugin is CocoaPods-only, so keep SPM off.
+  config:
+    enable-swift-package-manager: false
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

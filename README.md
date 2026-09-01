@@ -96,10 +96,17 @@ docer/
 
 | Tool | Version used | Notes |
 |------|-------------|-------|
-| Flutter | 3.44.2 (Dart 3.12.2) | any recent stable should work |
+| Flutter | 3.44.2 (Dart 3.12.2) | managed via `proto` (see below) |
 | Rust | 1.98.0 (stable) | `rustup` recommended |
 | `flutter_rust_bridge_codegen` | **2.13.0** | must match the pin below |
 | `cargo-expand` | latest | used by the codegen to parse macros |
+
+**Flutter is resolved through `proto`.** The repo root ships a `.prototools`
+file pinning `flutter = 3.44.2` plus a
+`[plugins.tools]` entry (`flutter = github://KonstantinKai/proto-flutter-plugin`)
+so the bare `flutter` command resolves through `~/.proto/shims`. Install
+[proto](https://moonrepo.dev/proto) and run `proto use` in the repo root so the
+pinned Flutter is installed and shimmed; do not rely on a system-wide Flutter.
 
 Install the FRB toolchain (prebuilt binaries via `cargo-binstall`, or compile
 with `cargo install`):
@@ -113,9 +120,22 @@ cargo binstall --no-confirm cargo-expand
 Platform toolchains (per target):
 
 - **macOS** — Xcode + Command Line Tools; CocoaPods (`brew install cocoapods`).
-- **Linux** — `clang`, `cmake`, `ninja`, GTK3: `sudo apt install clang cmake ninja-build libgtk-3-dev`.
-- **Windows** — Visual Studio 2022 with the "Desktop development with C++" workload.
-- **Android** — Android SDK + NDK (Flutter picks the NDK version it needs).
+  Swift Package Manager is kept **off** for the macOS Runner (see
+  `app/pubspec.yaml` → `flutter.config.enable-swift-package-manager: false`):
+  the `docer_rust_builder` cargokit plugin is CocoaPods-only, and Flutter 3.44+
+  enables SPM by default, which breaks the build with
+  `Unable to resolve module dependency: FlutterMacOS`.
+- **Linux** — `clang`, `cmake`, `ninja`, GTK3: `sudo apt install clang cmake ninja-build libgtk-3-dev`. (CI-only; see §12.)
+- **Windows** — Visual Studio 2022 with the "Desktop development with C++" workload. (CI-only; see §12.)
+- **Android** — Android SDK + NDK (Flutter picks the NDK version it needs), plus
+  the Rust Android targets:
+
+  ```bash
+  export ANDROID_HOME=~/Library/Android/sdk
+  sdkmanager --licenses            # accept the SDK licenses
+  rustup target add aarch64-linux-android armv7-linux-androideabi \
+      x86_64-linux-android i686-linux-android
+  ```
 
 > The FRB version is pinned in **three** places and they must match:
 > `core/Cargo.toml` (`flutter_rust_bridge = "=2.13.0"`), `app/pubspec.yaml`
@@ -126,6 +146,9 @@ Platform toolchains (per target):
 ## 4. Getting started
 
 ```bash
+# 0. Install the pinned Flutter via proto (see §3); resolves through ~/.proto/shims
+proto use
+
 # 1. Flutter dependencies
 cd app && flutter pub get && cd ..
 
@@ -326,6 +349,18 @@ conflict/reconciliation log).
 
 ### 12b. What was fixed in this pass
 
+* **Toolchain / packaging fixes (re-landed).** Flutter 3.44+ enables Swift
+  Package Manager by default, which migrates the macOS Runner to a hybrid
+  CocoaPods/SPM state and fails with `Unable to resolve module dependency:
+  FlutterMacOS` because the `docer_rust_builder` cargokit plugin is
+  CocoaPods-only. Fixed by setting
+  `flutter.config.enable-swift-package-manager: false` in `app/pubspec.yaml` and
+  stripping the `FlutterGeneratedPluginSwiftPackage` references from
+  `app/macos/Runner.xcodeproj`. Flutter is now resolved through `proto` via a
+  repo-root `.prototools` file (pinning `flutter = "3.44.2"` plus a
+  `[plugins.tools]` entry), and Android prerequisites (`ANDROID_HOME`, accepted
+  SDK licenses, Rust Android targets) are documented in §3.
+
 * **Near-duplicate index now actually wired to the sync bridge (was dead in
   production).** `SyncEngineImpl` had `attach_near_duplicate_index(...)` and a
   complete near-duplicate proposal path, but the process-wide bridge singleton
@@ -399,10 +434,10 @@ bridge; the UI surface and Rust logic were verified as follows:
 
 | Platform | Verified? | Notes |
 |----------|-----------|-------|
-| macOS (host) | Rust core ✅ · full app ⚠️ | `cargo build`/`test`/`clippy` and the cargokit link of `docer_core` succeed. `flutter build macos` reaches the Swift compile step then fails with `Unable to resolve module dependency: 'FlutterMacOS'` — a Flutter 3.44.2 + Xcode 26.6 CocoaPods/SPM toolchain issue, not a defect in this repo's code. |
-| Linux | ❌ not verifiable here | macOS host; Flutter does not cross-compile Linux from macOS. Built in CI. |
-| Windows | ❌ not verifiable here | macOS host; no Windows cross-compilation. Built in CI. |
-| Android | ❌ not verifiable here | SDK 36.1.0 + NDK 27 present, but `flutter doctor` reports licenses not accepted and the Rust Android targets are not installed, so `flutter build apk` cannot complete locally. Exercised in CI. |
+| macOS (host) | Rust core ✅ · full app ⚠️ | `cargo test`/`build`/`clippy` and the cargokit link of `docer_core` (both `arm64` and `x86_64`) succeed. Setting `flutter.config.enable-swift-package-manager: false` and stripping the `FlutterGeneratedPluginSwiftPackage` references from `Runner.xcodeproj` correctly switches the build back to CocoaPods (log shows `Running pod install...`), but the Swift compile of the Runner still fails with `Unable to resolve module dependency: 'FlutterMacOS'` because Flutter 3.44.2 + Xcode 26.6 does not emit the `FlutterMacOS.xcframework` entry into `FRAMEWORK_SEARCH_PATHS` for the CocoaPods-only macOS path. This is a toolchain incompatibility, not a repo defect. |
+| Linux | ❌ CI-only | macOS host; Flutter does not cross-compile Linux from macOS. Built in CI. |
+| Windows | ❌ CI-only | macOS host; no Windows cross-compilation. Built in CI. |
+| Android | ❌ CI-only | Requires `ANDROID_HOME=~/Library/Android/sdk`, accepted SDK licenses (`sdkmanager --licenses`), and the Rust Android targets (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android`); see §3. Exercised in CI. |
 
 ### 12e. Point-by-point confirmation of the integration asks
 
@@ -427,8 +462,13 @@ bridge; the UI surface and Rust logic were verified as follows:
 
 ### 12f. Known limitations (still true after this pass)
 
-* **macOS full app build** — blocked by the Flutter 3.44.2 + Xcode 26.6
-  `FlutterMacOS` module-resolution issue described in §12d.
+* **macOS full app build** — the Swift Package Manager migration of the Runner is
+  reversed by disabling SPM (`app/pubspec.yaml` →
+  `flutter.config.enable-swift-package-manager: false`) and stripping the
+  `FlutterGeneratedPluginSwiftPackage` references from `Runner.xcodeproj`. The
+  `docer_rust_builder` cargokit plugin is CocoaPods-only, so SPM must stay off.
+  A remaining Flutter 3.44.2 + Xcode 26.6 toolchain issue still prevents the
+  Swift compile from resolving the `FlutterMacOS` module (see §12d).
 * **Sync runtime backend** — the bridge's sync engine still runs over the
   in-memory [`InMemoryStore`](core/src/sync/testing.rs) + `LocalLink`
   in-process transport seam, not the durable SQLite
