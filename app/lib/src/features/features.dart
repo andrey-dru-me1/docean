@@ -12,4 +12,5 @@ export 'search.dart';
 export 'ai.dart';
 export 'auto_org.dart';
 export 'assistant.dart';
+export 'p2p.dart';
 export 'sync.dart';

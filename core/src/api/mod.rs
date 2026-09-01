@@ -6,6 +6,7 @@
 //! root to regenerate the Dart bindings in `app/lib/src/rust/`.
 
 pub mod health;
+pub mod p2p;
 
 /// One-time initialization, called automatically by the generated `RustLib.init()`.
 #[flutter_rust_bridge::frb(init)]
