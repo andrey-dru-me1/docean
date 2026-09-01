@@ -8,6 +8,7 @@
 pub mod health;
 pub mod p2p;
 pub mod storage;
+pub mod sync;
 
 /// One-time initialization, called automatically by the generated `RustLib.init()`.
 #[flutter_rust_bridge::frb(init)]

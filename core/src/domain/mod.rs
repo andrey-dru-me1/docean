@@ -41,7 +41,8 @@ pub struct Document {
 }
 
 /// A user-defined tag. Tags may be nested (e.g. `receipts/2026`) via [`Tag::parent`].
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Tag {
     pub name: String,
     pub parent: Option<String>,
@@ -49,7 +50,8 @@ pub struct Tag {
 }
 
 /// A directed parent/child edge used to assemble the folder hierarchy.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HierarchyLink {
     pub parent_id: DocumentId,
     pub child_id: DocumentId,

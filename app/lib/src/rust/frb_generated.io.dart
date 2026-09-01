@@ -6,6 +6,7 @@
 import 'api/health.dart';
 import 'api/p2p.dart';
 import 'api/storage.dart';
+import 'api/sync.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
@@ -55,6 +56,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustStreamSink<PeerEvent> dco_decode_StreamSink_peer_event_Sse(dynamic raw);
 
   @protected
+  RustStreamSink<SyncEventDto> dco_decode_StreamSink_sync_event_dto_Sse(
+    dynamic raw,
+  );
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -79,10 +85,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PathAssignment dco_decode_box_autoadd_path_assignment(dynamic raw);
 
   @protected
+  SyncConflictDto dco_decode_box_autoadd_sync_conflict_dto(dynamic raw);
+
+  @protected
+  SyncPhaseDto dco_decode_box_autoadd_sync_phase_dto(dynamic raw);
+
+  @protected
   Tag dco_decode_box_autoadd_tag(dynamic raw);
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
 
   @protected
   ConnectionState dco_decode_connection_state(dynamic raw);
@@ -133,6 +148,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
 
   @protected
+  List<SyncConflictDto> dco_decode_list_sync_conflict_dto(dynamic raw);
+
+  @protected
+  List<SyncResolutionDto> dco_decode_list_sync_resolution_dto(dynamic raw);
+
+  @protected
   List<Tag> dco_decode_list_tag(dynamic raw);
 
   @protected
@@ -148,7 +169,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   NodeKind? dco_decode_opt_box_autoadd_node_kind(dynamic raw);
 
   @protected
+  SyncConflictDto? dco_decode_opt_box_autoadd_sync_conflict_dto(dynamic raw);
+
+  @protected
+  SyncPhaseDto? dco_decode_opt_box_autoadd_sync_phase_dto(dynamic raw);
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
   @protected
   PathAssignment dco_decode_path_assignment(dynamic raw);
@@ -164,6 +194,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   (String, String) dco_decode_record_string_string(dynamic raw);
+
+  @protected
+  SyncConflictDto dco_decode_sync_conflict_dto(dynamic raw);
+
+  @protected
+  SyncConflictKindDto dco_decode_sync_conflict_kind_dto(dynamic raw);
+
+  @protected
+  SyncEventDto dco_decode_sync_event_dto(dynamic raw);
+
+  @protected
+  SyncEventKindDto dco_decode_sync_event_kind_dto(dynamic raw);
+
+  @protected
+  SyncPhaseDto dco_decode_sync_phase_dto(dynamic raw);
+
+  @protected
+  SyncResolutionDto dco_decode_sync_resolution_dto(dynamic raw);
 
   @protected
   Tag dco_decode_tag(dynamic raw);
@@ -215,6 +263,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<SyncEventDto> sse_decode_StreamSink_sync_event_dto_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
@@ -245,10 +298,23 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  SyncConflictDto sse_decode_box_autoadd_sync_conflict_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SyncPhaseDto sse_decode_box_autoadd_sync_phase_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   Tag sse_decode_box_autoadd_tag(SseDeserializer deserializer);
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   ConnectionState sse_decode_connection_state(SseDeserializer deserializer);
@@ -303,6 +369,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<SyncConflictDto> sse_decode_list_sync_conflict_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<SyncResolutionDto> sse_decode_list_sync_resolution_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<Tag> sse_decode_list_tag(SseDeserializer deserializer);
 
   @protected
@@ -318,7 +394,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   NodeKind? sse_decode_opt_box_autoadd_node_kind(SseDeserializer deserializer);
 
   @protected
+  SyncConflictDto? sse_decode_opt_box_autoadd_sync_conflict_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SyncPhaseDto? sse_decode_opt_box_autoadd_sync_phase_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   PathAssignment sse_decode_path_assignment(SseDeserializer deserializer);
@@ -334,6 +423,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   (String, String) sse_decode_record_string_string(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SyncConflictDto sse_decode_sync_conflict_dto(SseDeserializer deserializer);
+
+  @protected
+  SyncConflictKindDto sse_decode_sync_conflict_kind_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SyncEventDto sse_decode_sync_event_dto(SseDeserializer deserializer);
+
+  @protected
+  SyncEventKindDto sse_decode_sync_event_kind_dto(SseDeserializer deserializer);
+
+  @protected
+  SyncPhaseDto sse_decode_sync_phase_dto(SseDeserializer deserializer);
+
+  @protected
+  SyncResolutionDto sse_decode_sync_resolution_dto(
     SseDeserializer deserializer,
   );
 
@@ -395,6 +506,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_sync_event_dto_Sse(
+    RustStreamSink<SyncEventDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
@@ -431,10 +548,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_sync_conflict_dto(
+    SyncConflictDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_sync_phase_dto(
+    SyncPhaseDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_tag(Tag self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_connection_state(
@@ -497,6 +629,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_sync_conflict_dto(
+    List<SyncConflictDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_sync_resolution_dto(
+    List<SyncResolutionDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_tag(List<Tag> self, SseSerializer serializer);
 
   @protected
@@ -518,7 +662,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_sync_conflict_dto(
+    SyncConflictDto? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_sync_phase_dto(
+    SyncPhaseDto? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
 
   @protected
   void sse_encode_path_assignment(
@@ -538,6 +697,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_record_string_string(
     (String, String) self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_sync_conflict_dto(
+    SyncConflictDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_sync_conflict_kind_dto(
+    SyncConflictKindDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_sync_event_dto(SyncEventDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_event_kind_dto(
+    SyncEventKindDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_sync_phase_dto(SyncPhaseDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_resolution_dto(
+    SyncResolutionDto self,
     SseSerializer serializer,
   );
 

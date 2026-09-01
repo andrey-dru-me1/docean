@@ -1,44 +1,73 @@
-/// Peer-to-peer file sync with conflict resolution (mirrors `core::sync::SyncEngine`).
+/// Peer-to-peer file sync with conflict resolution (mirrors `core::sync`).
+///
+/// Thin, typed facade over the generated [`sync`] bindings. Use [`SyncClient`]
+/// or the top-level functions ([`start`], [`peers`], [`connect`], [`push`],
+/// [`pull`], [`conflicts`], [`events`]) from Dart to drive reconciliation and
+/// observe progress and conflict events.
 library;
 
+import '../rust/api/sync.dart' as bridge;
+import '../rust/api/sync.dart'
+    show
+        SyncConflictDto,
+        SyncConflictKindDto,
+        SyncEventDto,
+        SyncEventKindDto,
+        SyncPhaseDto,
+        SyncResolutionDto;
+
+export '../rust/api/sync.dart'
+    show
+        SyncConflictDto,
+        SyncConflictKindDto,
+        SyncEventDto,
+        SyncEventKindDto,
+        SyncPhaseDto,
+        SyncResolutionDto;
+
+/// A device participating in sync.
 class PeerId {
   const PeerId(this.value);
 
   final String value;
 }
 
-/// Outcome of reconciling a remote change with local state.
-sealed class ConflictResolution {
-  const ConflictResolution();
-}
+/// Start the sync engine.
+void start() => bridge.syncStart();
 
-class Merged extends ConflictResolution {
-  const Merged();
-}
+/// The peer ids the engine is currently connected to.
+List<String> peers() => bridge.syncPeers();
 
-class RemoteWon extends ConflictResolution {
-  const RemoteWon();
-}
+/// Register a peer the engine should try to sync with.
+void connect(String peerId) => bridge.syncConnect(peerId: peerId);
 
-class LocalWon extends ConflictResolution {
-  const LocalWon();
-}
+/// Replicate a single document (and its bytes) to all connected peers.
+void push(String documentId) => bridge.syncPush(documentId: documentId);
 
-class Forked extends ConflictResolution {
-  const Forked(this.documentId);
+/// Pull remote changes and reconcile; returns per-document conflict outcomes.
+List<SyncResolutionDto> pull() => bridge.syncPull();
 
-  final String documentId;
-}
+/// Conflicts currently awaiting manual resolution.
+List<SyncConflictDto> conflicts() => bridge.syncConflicts();
 
-/// P2P sync engine interface.
-abstract interface class SyncEngine {
-  Future<void> start();
+/// A `Stream` of sync events (progress, transfers, conflicts, done).
+Stream<SyncEventDto> events() => bridge.syncEvents();
 
-  List<PeerId> peers();
+/// Object-oriented facade over the sync bridge surface.
+class SyncClient {
+  const SyncClient();
 
-  Future<void> connect(PeerId peer);
+  void start() => bridge.syncStart();
 
-  Future<void> push(String documentId);
+  List<String> peers() => bridge.syncPeers();
 
-  Future<List<ConflictResolution>> pull();
+  void connect(String peerId) => bridge.syncConnect(peerId: peerId);
+
+  void push(String documentId) => bridge.syncPush(documentId: documentId);
+
+  List<SyncResolutionDto> pull() => bridge.syncPull();
+
+  List<SyncConflictDto> conflicts() => bridge.syncConflicts();
+
+  Stream<SyncEventDto> events() => bridge.syncEvents();
 }

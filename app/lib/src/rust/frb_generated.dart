@@ -6,6 +6,7 @@
 import 'api/health.dart';
 import 'api/p2p.dart';
 import 'api/storage.dart';
+import 'api/sync.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'domain.dart';
@@ -71,7 +72,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1556965842;
+  int get rustContentHash => 15283964;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -195,6 +196,20 @@ abstract class RustLibApi extends BaseApi {
   List<PeerInfo> crateApiP2PP2PListPeers();
 
   String crateApiP2PP2PLocalPeerId();
+
+  List<SyncConflictDto> crateApiSyncSyncConflicts();
+
+  void crateApiSyncSyncConnect({required String peerId});
+
+  Stream<SyncEventDto> crateApiSyncSyncEvents();
+
+  List<String> crateApiSyncSyncPeers();
+
+  List<SyncResolutionDto> crateApiSyncSyncPull();
+
+  void crateApiSyncSyncPush({required String documentId});
+
+  void crateApiSyncSyncStart();
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_DocumentRepository;
@@ -1122,6 +1137,172 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiP2Pp2PLocalPeerIdConstMeta =>
       const TaskConstMeta(debugName: "p2p_local_peer_id", argNames: []);
 
+  @override
+  List<SyncConflictDto> crateApiSyncSyncConflicts() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_sync_conflict_dto,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSyncSyncConflictsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncSyncConflictsConstMeta =>
+      const TaskConstMeta(debugName: "sync_conflicts", argNames: []);
+
+  @override
+  void crateApiSyncSyncConnect({required String peerId}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(peerId, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSyncSyncConnectConstMeta,
+        argValues: [peerId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncSyncConnectConstMeta =>
+      const TaskConstMeta(debugName: "sync_connect", argNames: ["peerId"]);
+
+  @override
+  Stream<SyncEventDto> crateApiSyncSyncEvents() {
+    final sink = RustStreamSink<SyncEventDto>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_StreamSink_sync_event_dto_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 29,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiSyncSyncEventsConstMeta,
+          argValues: [sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiSyncSyncEventsConstMeta =>
+      const TaskConstMeta(debugName: "sync_events", argNames: ["sink"]);
+
+  @override
+  List<String> crateApiSyncSyncPeers() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 30)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSyncSyncPeersConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncSyncPeersConstMeta =>
+      const TaskConstMeta(debugName: "sync_peers", argNames: []);
+
+  @override
+  List<SyncResolutionDto> crateApiSyncSyncPull() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 31)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_sync_resolution_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSyncSyncPullConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncSyncPullConstMeta =>
+      const TaskConstMeta(debugName: "sync_pull", argNames: []);
+
+  @override
+  void crateApiSyncSyncPush({required String documentId}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(documentId, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 32)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSyncSyncPushConstMeta,
+        argValues: [documentId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncSyncPushConstMeta =>
+      const TaskConstMeta(debugName: "sync_push", argNames: ["documentId"]);
+
+  @override
+  void crateApiSyncSyncStart() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 33)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSyncSyncStartConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncSyncStartConstMeta =>
+      const TaskConstMeta(debugName: "sync_start", argNames: []);
+
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_DocumentRepository => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository;
@@ -1180,6 +1361,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RustStreamSink<SyncEventDto> dco_decode_StreamSink_sync_event_dto_Sse(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
@@ -1228,6 +1417,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SyncConflictDto dco_decode_box_autoadd_sync_conflict_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_sync_conflict_dto(raw);
+  }
+
+  @protected
+  SyncPhaseDto dco_decode_box_autoadd_sync_phase_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_sync_phase_dto(raw);
+  }
+
+  @protected
   Tag dco_decode_box_autoadd_tag(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_tag(raw);
@@ -1237,6 +1438,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int dco_decode_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
+  }
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_u_64(raw);
   }
 
   @protected
@@ -1386,6 +1593,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<SyncConflictDto> dco_decode_list_sync_conflict_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_sync_conflict_dto).toList();
+  }
+
+  @protected
+  List<SyncResolutionDto> dco_decode_list_sync_resolution_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_sync_resolution_dto).toList();
+  }
+
+  @protected
   List<Tag> dco_decode_list_tag(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_tag).toList();
@@ -1416,9 +1635,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SyncConflictDto? dco_decode_opt_box_autoadd_sync_conflict_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_sync_conflict_dto(raw);
+  }
+
+  @protected
+  SyncPhaseDto? dco_decode_opt_box_autoadd_sync_phase_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_sync_phase_dto(raw);
+  }
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_64(raw);
   }
 
   @protected
@@ -1474,6 +1711,71 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       throw Exception('Expected 2 elements, got ${arr.length}');
     }
     return (dco_decode_String(arr[0]), dco_decode_String(arr[1]));
+  }
+
+  @protected
+  SyncConflictDto dco_decode_sync_conflict_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return SyncConflictDto(
+      documentId: dco_decode_String(arr[0]),
+      kind: dco_decode_sync_conflict_kind_dto(arr[1]),
+      localChecksum: dco_decode_String(arr[2]),
+      remoteChecksum: dco_decode_String(arr[3]),
+      localUpdatedAtMs: dco_decode_i_64(arr[4]),
+      remoteUpdatedAtMs: dco_decode_i_64(arr[5]),
+      forkedDocumentId: dco_decode_opt_String(arr[6]),
+      winner: dco_decode_String(arr[7]),
+    );
+  }
+
+  @protected
+  SyncConflictKindDto dco_decode_sync_conflict_kind_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return SyncConflictKindDto.values[raw as int];
+  }
+
+  @protected
+  SyncEventDto dco_decode_sync_event_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return SyncEventDto(
+      kind: dco_decode_sync_event_kind_dto(arr[0]),
+      peerId: dco_decode_String(arr[1]),
+      phase: dco_decode_opt_box_autoadd_sync_phase_dto(arr[2]),
+      documentId: dco_decode_opt_String(arr[3]),
+      bytes: dco_decode_opt_box_autoadd_u_64(arr[4]),
+      conflict: dco_decode_opt_box_autoadd_sync_conflict_dto(arr[5]),
+      results: dco_decode_list_sync_resolution_dto(arr[6]),
+    );
+  }
+
+  @protected
+  SyncEventKindDto dco_decode_sync_event_kind_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return SyncEventKindDto.values[raw as int];
+  }
+
+  @protected
+  SyncPhaseDto dco_decode_sync_phase_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return SyncPhaseDto.values[raw as int];
+  }
+
+  @protected
+  SyncResolutionDto dco_decode_sync_resolution_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return SyncResolutionDto(
+      kind: dco_decode_String(arr[0]),
+      documentId: dco_decode_opt_String(arr[1]),
+    );
   }
 
   @protected
@@ -1580,6 +1882,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RustStreamSink<SyncEventDto> sse_decode_StreamSink_sync_event_dto_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
@@ -1635,6 +1945,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SyncConflictDto sse_decode_box_autoadd_sync_conflict_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_sync_conflict_dto(deserializer));
+  }
+
+  @protected
+  SyncPhaseDto sse_decode_box_autoadd_sync_phase_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_sync_phase_dto(deserializer));
+  }
+
+  @protected
   Tag sse_decode_box_autoadd_tag(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_tag(deserializer));
@@ -1644,6 +1970,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_u_32(deserializer));
+  }
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_64(deserializer));
   }
 
   @protected
@@ -1840,6 +2172,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<SyncConflictDto> sse_decode_list_sync_conflict_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <SyncConflictDto>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_sync_conflict_dto(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<SyncResolutionDto> sse_decode_list_sync_resolution_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <SyncResolutionDto>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_sync_resolution_dto(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<Tag> sse_decode_list_tag(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -1892,11 +2252,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SyncConflictDto? sse_decode_opt_box_autoadd_sync_conflict_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_sync_conflict_dto(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  SyncPhaseDto? sse_decode_opt_box_autoadd_sync_phase_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_sync_phase_dto(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_u_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_64(deserializer));
     } else {
       return null;
     }
@@ -1952,6 +2349,87 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_field0 = sse_decode_String(deserializer);
     var var_field1 = sse_decode_String(deserializer);
     return (var_field0, var_field1);
+  }
+
+  @protected
+  SyncConflictDto sse_decode_sync_conflict_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_documentId = sse_decode_String(deserializer);
+    var var_kind = sse_decode_sync_conflict_kind_dto(deserializer);
+    var var_localChecksum = sse_decode_String(deserializer);
+    var var_remoteChecksum = sse_decode_String(deserializer);
+    var var_localUpdatedAtMs = sse_decode_i_64(deserializer);
+    var var_remoteUpdatedAtMs = sse_decode_i_64(deserializer);
+    var var_forkedDocumentId = sse_decode_opt_String(deserializer);
+    var var_winner = sse_decode_String(deserializer);
+    return SyncConflictDto(
+      documentId: var_documentId,
+      kind: var_kind,
+      localChecksum: var_localChecksum,
+      remoteChecksum: var_remoteChecksum,
+      localUpdatedAtMs: var_localUpdatedAtMs,
+      remoteUpdatedAtMs: var_remoteUpdatedAtMs,
+      forkedDocumentId: var_forkedDocumentId,
+      winner: var_winner,
+    );
+  }
+
+  @protected
+  SyncConflictKindDto sse_decode_sync_conflict_kind_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return SyncConflictKindDto.values[inner];
+  }
+
+  @protected
+  SyncEventDto sse_decode_sync_event_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_kind = sse_decode_sync_event_kind_dto(deserializer);
+    var var_peerId = sse_decode_String(deserializer);
+    var var_phase = sse_decode_opt_box_autoadd_sync_phase_dto(deserializer);
+    var var_documentId = sse_decode_opt_String(deserializer);
+    var var_bytes = sse_decode_opt_box_autoadd_u_64(deserializer);
+    var var_conflict = sse_decode_opt_box_autoadd_sync_conflict_dto(
+      deserializer,
+    );
+    var var_results = sse_decode_list_sync_resolution_dto(deserializer);
+    return SyncEventDto(
+      kind: var_kind,
+      peerId: var_peerId,
+      phase: var_phase,
+      documentId: var_documentId,
+      bytes: var_bytes,
+      conflict: var_conflict,
+      results: var_results,
+    );
+  }
+
+  @protected
+  SyncEventKindDto sse_decode_sync_event_kind_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return SyncEventKindDto.values[inner];
+  }
+
+  @protected
+  SyncPhaseDto sse_decode_sync_phase_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return SyncPhaseDto.values[inner];
+  }
+
+  @protected
+  SyncResolutionDto sse_decode_sync_resolution_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_kind = sse_decode_String(deserializer);
+    var var_documentId = sse_decode_opt_String(deserializer);
+    return SyncResolutionDto(kind: var_kind, documentId: var_documentId);
   }
 
   @protected
@@ -2070,6 +2548,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_StreamSink_sync_event_dto_Sse(
+    RustStreamSink<SyncEventDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_sync_event_dto,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
@@ -2133,6 +2628,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_sync_conflict_dto(
+    SyncConflictDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_sync_conflict_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_sync_phase_dto(
+    SyncPhaseDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_sync_phase_dto(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_tag(Tag self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_tag(self, serializer);
@@ -2142,6 +2655,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self, serializer);
   }
 
   @protected
@@ -2300,6 +2819,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_sync_conflict_dto(
+    List<SyncConflictDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_sync_conflict_dto(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_sync_resolution_dto(
+    List<SyncResolutionDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_sync_resolution_dto(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_tag(List<Tag> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
@@ -2351,12 +2894,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_sync_conflict_dto(
+    SyncConflictDto? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_sync_conflict_dto(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_sync_phase_dto(
+    SyncPhaseDto? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_sync_phase_dto(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_u_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_64(self, serializer);
     }
   }
 
@@ -2404,6 +2983,68 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.$1, serializer);
     sse_encode_String(self.$2, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_conflict_dto(
+    SyncConflictDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.documentId, serializer);
+    sse_encode_sync_conflict_kind_dto(self.kind, serializer);
+    sse_encode_String(self.localChecksum, serializer);
+    sse_encode_String(self.remoteChecksum, serializer);
+    sse_encode_i_64(self.localUpdatedAtMs, serializer);
+    sse_encode_i_64(self.remoteUpdatedAtMs, serializer);
+    sse_encode_opt_String(self.forkedDocumentId, serializer);
+    sse_encode_String(self.winner, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_conflict_kind_dto(
+    SyncConflictKindDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_event_dto(SyncEventDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_sync_event_kind_dto(self.kind, serializer);
+    sse_encode_String(self.peerId, serializer);
+    sse_encode_opt_box_autoadd_sync_phase_dto(self.phase, serializer);
+    sse_encode_opt_String(self.documentId, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.bytes, serializer);
+    sse_encode_opt_box_autoadd_sync_conflict_dto(self.conflict, serializer);
+    sse_encode_list_sync_resolution_dto(self.results, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_event_kind_dto(
+    SyncEventKindDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_phase_dto(SyncPhaseDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_resolution_dto(
+    SyncResolutionDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.kind, serializer);
+    sse_encode_opt_String(self.documentId, serializer);
   }
 
   @protected
