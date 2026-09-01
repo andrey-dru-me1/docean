@@ -11,6 +11,7 @@ pub mod auto_org;
 pub mod health;
 pub mod ingest;
 pub mod p2p;
+pub mod search;
 pub mod storage;
 pub mod sync;
 

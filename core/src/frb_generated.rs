@@ -40,7 +40,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1526555012;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1262652807;
 
 // Section: executor
 
@@ -1915,6 +1915,250 @@ fn wire__crate__api__p2p__p2p_local_peer_id_impl(
         },
     )
 }
+fn wire__crate__api__search__search_duplicates_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "search_duplicates",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let output_ok = crate::api::search::search_duplicates()?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__search__search_embed_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "search_embed",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_text = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::search::search_embed(api_text))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__search__search_embed_dims_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "search_embed_dims",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::search::search_embed_dims())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__search__search_exact_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "search_exact",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_query = <String>::sse_decode(&mut deserializer);
+            let api_limit = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let output_ok = crate::api::search::search_exact(api_query, api_limit)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__search__search_find_duplicates_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "search_find_duplicates",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_text = <String>::sse_decode(&mut deserializer);
+            let api_threshold = <f32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let output_ok =
+                    crate::api::search::search_find_duplicates(api_text, api_threshold)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__search__search_index_document_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "search_index_document",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_document_id = <String>::sse_decode(&mut deserializer);
+            let api_text = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let output_ok =
+                    crate::api::search::search_index_document(api_document_id, api_text)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__search__search_remove_document_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "search_remove_document",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_document_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let output_ok = crate::api::search::search_remove_document(api_document_id)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__search__search_semantic_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "search_semantic",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_query = <String>::sse_decode(&mut deserializer);
+            let api_limit = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let output_ok = crate::api::search::search_semantic(api_query, api_limit)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__sync__sync_conflicts_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -2398,6 +2642,20 @@ impl SseDecode for crate::api::assistant::DocumentRefDto {
     }
 }
 
+impl SseDecode for crate::api::search::DuplicatePairDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_a = <String>::sse_decode(deserializer);
+        let mut var_b = <String>::sse_decode(deserializer);
+        let mut var_similarity = <f32>::sse_decode(deserializer);
+        return crate::api::search::DuplicatePairDto {
+            a: var_a,
+            b: var_b,
+            similarity: var_similarity,
+        };
+    }
+}
+
 impl SseDecode for crate::api::ai::EmbedRequestDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2611,6 +2869,20 @@ impl SseDecode for Vec<crate::api::assistant::DocumentRefDto> {
     }
 }
 
+impl SseDecode for Vec<crate::api::search::DuplicatePairDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::search::DuplicatePairDto>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::domain::HierarchyPath> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2716,6 +2988,18 @@ impl SseDecode for Vec<(String, String)> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<(String, String)>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::search::SearchHitDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::search::SearchHitDto>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -3075,6 +3359,20 @@ impl SseDecode for crate::auto_org::rules::RuleSet {
     }
 }
 
+impl SseDecode for crate::api::search::SearchHitDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_documentId = <String>::sse_decode(deserializer);
+        let mut var_score = <f32>::sse_decode(deserializer);
+        let mut var_snippet = <Option<String>>::sse_decode(deserializer);
+        return crate::api::search::SearchHitDto {
+            document_id: var_documentId,
+            score: var_score,
+            snippet: var_snippet,
+        };
+    }
+}
+
 impl SseDecode for crate::api::sync::SyncConflictDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3383,7 +3681,7 @@ fn pde_ffi_dispatcher_primary_impl(
         40 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
         41 => wire__crate__api__storage__open_repository_impl(port, ptr, rust_vec_len, data_len),
         43 => wire__crate__api__p2p__p2p_events_impl(port, ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__sync__sync_events_impl(port, ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__sync__sync_events_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3418,12 +3716,20 @@ fn pde_ffi_dispatcher_sync_impl(
         42 => wire__crate__api__p2p__p2p_connect_impl(ptr, rust_vec_len, data_len),
         44 => wire__crate__api__p2p__p2p_list_peers_impl(ptr, rust_vec_len, data_len),
         45 => wire__crate__api__p2p__p2p_local_peer_id_impl(ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__sync__sync_conflicts_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__sync__sync_connect_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__sync__sync_peers_impl(ptr, rust_vec_len, data_len),
-        50 => wire__crate__api__sync__sync_pull_impl(ptr, rust_vec_len, data_len),
-        51 => wire__crate__api__sync__sync_push_impl(ptr, rust_vec_len, data_len),
-        52 => wire__crate__api__sync__sync_start_impl(ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__search__search_duplicates_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__search__search_embed_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__search__search_embed_dims_impl(ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__search__search_exact_impl(ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__search__search_find_duplicates_impl(ptr, rust_vec_len, data_len),
+        51 => wire__crate__api__search__search_index_document_impl(ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__search__search_remove_document_impl(ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__search__search_semantic_impl(ptr, rust_vec_len, data_len),
+        54 => wire__crate__api__sync__sync_conflicts_impl(ptr, rust_vec_len, data_len),
+        55 => wire__crate__api__sync__sync_connect_impl(ptr, rust_vec_len, data_len),
+        57 => wire__crate__api__sync__sync_peers_impl(ptr, rust_vec_len, data_len),
+        58 => wire__crate__api__sync__sync_pull_impl(ptr, rust_vec_len, data_len),
+        59 => wire__crate__api__sync__sync_push_impl(ptr, rust_vec_len, data_len),
+        60 => wire__crate__api__sync__sync_start_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3679,6 +3985,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::assistant::DocumentRefDto>
     for crate::api::assistant::DocumentRefDto
 {
     fn into_into_dart(self) -> crate::api::assistant::DocumentRefDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::search::DuplicatePairDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.a.into_into_dart().into_dart(),
+            self.b.into_into_dart().into_dart(),
+            self.similarity.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::search::DuplicatePairDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::search::DuplicatePairDto>
+    for crate::api::search::DuplicatePairDto
+{
+    fn into_into_dart(self) -> crate::api::search::DuplicatePairDto {
         self
     }
 }
@@ -4173,6 +4501,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::auto_org::rules::RuleSet>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::search::SearchHitDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.document_id.into_into_dart().into_dart(),
+            self.score.into_into_dart().into_dart(),
+            self.snippet.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::search::SearchHitDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::search::SearchHitDto>
+    for crate::api::search::SearchHitDto
+{
+    fn into_into_dart(self) -> crate::api::search::SearchHitDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::sync::SyncConflictDto {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -4561,6 +4911,15 @@ impl SseEncode for crate::api::assistant::DocumentRefDto {
     }
 }
 
+impl SseEncode for crate::api::search::DuplicatePairDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.a, serializer);
+        <String>::sse_encode(self.b, serializer);
+        <f32>::sse_encode(self.similarity, serializer);
+    }
+}
+
 impl SseEncode for crate::api::ai::EmbedRequestDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4733,6 +5092,16 @@ impl SseEncode for Vec<crate::api::assistant::DocumentRefDto> {
     }
 }
 
+impl SseEncode for Vec<crate::api::search::DuplicatePairDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::search::DuplicatePairDto>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::domain::HierarchyPath> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4819,6 +5188,16 @@ impl SseEncode for Vec<(String, String)> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <(String, String)>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::search::SearchHitDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::search::SearchHitDto>::sse_encode(item, serializer);
         }
     }
 }
@@ -5108,6 +5487,15 @@ impl SseEncode for crate::auto_org::rules::RuleSet {
         <Vec<crate::auto_org::rules::PlacementRule>>::sse_encode(self.placement, serializer);
         <Option<String>>::sse_encode(self.fallback_path, serializer);
         <String>::sse_encode(self.filename_template, serializer);
+    }
+}
+
+impl SseEncode for crate::api::search::SearchHitDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.document_id, serializer);
+        <f32>::sse_encode(self.score, serializer);
+        <Option<String>>::sse_encode(self.snippet, serializer);
     }
 }
 

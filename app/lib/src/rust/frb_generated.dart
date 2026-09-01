@@ -10,6 +10,7 @@ import 'api/auto_org.dart';
 import 'api/health.dart';
 import 'api/ingest.dart';
 import 'api/p2p.dart';
+import 'api/search.dart';
 import 'api/storage.dart';
 import 'api/sync.dart';
 import 'auto_org/config.dart';
@@ -79,7 +80,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1526555012;
+  int get rustContentHash => -1262652807;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -269,6 +270,34 @@ abstract class RustLibApi extends BaseApi {
   List<PeerInfo> crateApiP2PP2PListPeers();
 
   String crateApiP2PP2PLocalPeerId();
+
+  List<DuplicatePairDto> crateApiSearchSearchDuplicates();
+
+  Float32List crateApiSearchSearchEmbed({required String text});
+
+  int crateApiSearchSearchEmbedDims();
+
+  List<SearchHitDto> crateApiSearchSearchExact({
+    required String query,
+    required int limit,
+  });
+
+  List<String> crateApiSearchSearchFindDuplicates({
+    required String text,
+    required double threshold,
+  });
+
+  void crateApiSearchSearchIndexDocument({
+    required String documentId,
+    required String text,
+  });
+
+  void crateApiSearchSearchRemoveDocument({required String documentId});
+
+  List<SearchHitDto> crateApiSearchSearchSemantic({
+    required String query,
+    required int limit,
+  });
 
   List<SyncConflictDto> crateApiSyncSyncConflicts();
 
@@ -1777,12 +1806,224 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "p2p_local_peer_id", argNames: []);
 
   @override
-  List<SyncConflictDto> crateApiSyncSyncConflicts() {
+  List<DuplicatePairDto> crateApiSearchSearchDuplicates() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 46)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_duplicate_pair_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSearchSearchDuplicatesConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSearchSearchDuplicatesConstMeta =>
+      const TaskConstMeta(debugName: "search_duplicates", argNames: []);
+
+  @override
+  Float32List crateApiSearchSearchEmbed({required String text}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(text, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 47)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_f_32_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSearchSearchEmbedConstMeta,
+        argValues: [text],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSearchSearchEmbedConstMeta =>
+      const TaskConstMeta(debugName: "search_embed", argNames: ["text"]);
+
+  @override
+  int crateApiSearchSearchEmbedDims() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 48)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_32,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSearchSearchEmbedDimsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSearchSearchEmbedDimsConstMeta =>
+      const TaskConstMeta(debugName: "search_embed_dims", argNames: []);
+
+  @override
+  List<SearchHitDto> crateApiSearchSearchExact({
+    required String query,
+    required int limit,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(query, serializer);
+          sse_encode_u_32(limit, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_search_hit_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSearchSearchExactConstMeta,
+        argValues: [query, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSearchSearchExactConstMeta => const TaskConstMeta(
+    debugName: "search_exact",
+    argNames: ["query", "limit"],
+  );
+
+  @override
+  List<String> crateApiSearchSearchFindDuplicates({
+    required String text,
+    required double threshold,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(text, serializer);
+          sse_encode_f_32(threshold, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 50)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSearchSearchFindDuplicatesConstMeta,
+        argValues: [text, threshold],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSearchSearchFindDuplicatesConstMeta =>
+      const TaskConstMeta(
+        debugName: "search_find_duplicates",
+        argNames: ["text", "threshold"],
+      );
+
+  @override
+  void crateApiSearchSearchIndexDocument({
+    required String documentId,
+    required String text,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(documentId, serializer);
+          sse_encode_String(text, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 51)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSearchSearchIndexDocumentConstMeta,
+        argValues: [documentId, text],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSearchSearchIndexDocumentConstMeta =>
+      const TaskConstMeta(
+        debugName: "search_index_document",
+        argNames: ["documentId", "text"],
+      );
+
+  @override
+  void crateApiSearchSearchRemoveDocument({required String documentId}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(documentId, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 52)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSearchSearchRemoveDocumentConstMeta,
+        argValues: [documentId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSearchSearchRemoveDocumentConstMeta =>
+      const TaskConstMeta(
+        debugName: "search_remove_document",
+        argNames: ["documentId"],
+      );
+
+  @override
+  List<SearchHitDto> crateApiSearchSearchSemantic({
+    required String query,
+    required int limit,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(query, serializer);
+          sse_encode_u_32(limit, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 53)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_search_hit_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSearchSearchSemanticConstMeta,
+        argValues: [query, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSearchSearchSemanticConstMeta =>
+      const TaskConstMeta(
+        debugName: "search_semantic",
+        argNames: ["query", "limit"],
+      );
+
+  @override
+  List<SyncConflictDto> crateApiSyncSyncConflicts() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 54)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_sync_conflict_dto,
@@ -1805,7 +2046,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(peerId, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 47)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 55)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -1833,7 +2074,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 48,
+              funcId: 56,
               port: port_,
             );
           },
@@ -1859,7 +2100,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 57)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
@@ -1881,7 +2122,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 50)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 58)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_sync_resolution_dto,
@@ -1904,7 +2145,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(documentId, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 51)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 59)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -1926,7 +2167,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 52)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 60)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -2281,6 +2522,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DuplicatePairDto dco_decode_duplicate_pair_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return DuplicatePairDto(
+      a: dco_decode_String(arr[0]),
+      b: dco_decode_String(arr[1]),
+      similarity: dco_decode_f_32(arr[2]),
+    );
+  }
+
+  @protected
   EmbedRequestDto dco_decode_embed_request_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2448,6 +2702,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<DuplicatePairDto> dco_decode_list_duplicate_pair_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_duplicate_pair_dto).toList();
+  }
+
+  @protected
   List<HierarchyPath> dco_decode_list_hierarchy_path(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_hierarchy_path).toList();
@@ -2505,6 +2765,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_record_string_string).toList();
+  }
+
+  @protected
+  List<SearchHitDto> dco_decode_list_search_hit_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_search_hit_dto).toList();
   }
 
   @protected
@@ -2742,6 +3008,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       placement: dco_decode_list_placement_rule(arr[0]),
       fallbackPath: dco_decode_opt_String(arr[1]),
       filenameTemplate: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
+  SearchHitDto dco_decode_search_hit_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return SearchHitDto(
+      documentId: dco_decode_String(arr[0]),
+      score: dco_decode_f_32(arr[1]),
+      snippet: dco_decode_opt_String(arr[2]),
     );
   }
 
@@ -3239,6 +3518,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  DuplicatePairDto sse_decode_duplicate_pair_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_a = sse_decode_String(deserializer);
+    var var_b = sse_decode_String(deserializer);
+    var var_similarity = sse_decode_f_32(deserializer);
+    return DuplicatePairDto(a: var_a, b: var_b, similarity: var_similarity);
+  }
+
+  @protected
   EmbedRequestDto sse_decode_embed_request_dto(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_text = sse_decode_String(deserializer);
@@ -3426,6 +3714,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<DuplicatePairDto> sse_decode_list_duplicate_pair_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <DuplicatePairDto>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_duplicate_pair_dto(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<HierarchyPath> sse_decode_list_hierarchy_path(
     SseDeserializer deserializer,
   ) {
@@ -3534,6 +3836,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <(String, String)>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_record_string_string(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<SearchHitDto> sse_decode_list_search_hit_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <SearchHitDto>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_search_hit_dto(deserializer));
     }
     return ans_;
   }
@@ -3850,6 +4166,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       placement: var_placement,
       fallbackPath: var_fallbackPath,
       filenameTemplate: var_filenameTemplate,
+    );
+  }
+
+  @protected
+  SearchHitDto sse_decode_search_hit_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_documentId = sse_decode_String(deserializer);
+    var var_score = sse_decode_f_32(deserializer);
+    var var_snippet = sse_decode_opt_String(deserializer);
+    return SearchHitDto(
+      documentId: var_documentId,
+      score: var_score,
+      snippet: var_snippet,
     );
   }
 
@@ -4394,6 +4723,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_duplicate_pair_dto(
+    DuplicatePairDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.a, serializer);
+    sse_encode_String(self.b, serializer);
+    sse_encode_f_32(self.similarity, serializer);
+  }
+
+  @protected
   void sse_encode_embed_request_dto(
     EmbedRequestDto self,
     SseSerializer serializer,
@@ -4547,6 +4887,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_duplicate_pair_dto(
+    List<DuplicatePairDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_duplicate_pair_dto(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_hierarchy_path(
     List<HierarchyPath> self,
     SseSerializer serializer,
@@ -4659,6 +5011,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_record_string_string(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_search_hit_dto(
+    List<SearchHitDto> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_search_hit_dto(item, serializer);
     }
   }
 
@@ -4924,6 +5288,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_placement_rule(self.placement, serializer);
     sse_encode_opt_String(self.fallbackPath, serializer);
     sse_encode_String(self.filenameTemplate, serializer);
+  }
+
+  @protected
+  void sse_encode_search_hit_dto(SearchHitDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.documentId, serializer);
+    sse_encode_f_32(self.score, serializer);
+    sse_encode_opt_String(self.snippet, serializer);
   }
 
   @protected

@@ -150,6 +150,16 @@ pub struct NearDuplicateMatch {
     pub similarity: f32,
 }
 
+/// An unordered pair of near-duplicate documents plus their estimated Jaccard
+/// similarity, produced by [`NearDuplicateIndex::candidates`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct NearDuplicatePair {
+    pub a: String,
+    pub b: String,
+    /// Estimated Jaccard similarity of the two documents' shingle sets.
+    pub similarity: f32,
+}
+
 /// A shared, MinHash + LSH backed index of document similarity.
 ///
 /// Owned by the search layer; handed (as an `Arc<Mutex<_>>`) to the sync layer
@@ -273,6 +283,50 @@ impl NearDuplicateIndex {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         matches
+    }
+
+    /// Enumerate every unordered pair of indexed documents that share at least
+    /// one LSH band bucket, with their estimated Jaccard similarity. This is the
+    /// all-pairs form used to power global deduplication (e.g. a "duplicates"
+    /// view), versus [`NearDuplicateIndex::query`] which finds near-duplicates of
+    /// a single probe text.
+    pub fn candidates(&self) -> Vec<NearDuplicatePair> {
+        let mut pairs: HashSet<(String, String), FastMap> =
+            HashSet::with_hasher(FastMap::default());
+        for band in &self.bands {
+            for bucket in band.values() {
+                for i in 0..bucket.len() {
+                    for j in (i + 1)..bucket.len() {
+                        let (a, b) = (&bucket[i], &bucket[j]);
+                        let key = if a <= b {
+                            (a.clone(), b.clone())
+                        } else {
+                            (b.clone(), a.clone())
+                        };
+                        pairs.insert(key);
+                    }
+                }
+            }
+        }
+
+        let mut out: Vec<NearDuplicatePair> = pairs
+            .into_iter()
+            .filter_map(|(a, b)| {
+                let sa = self.signatures.get(&a)?.hashes.clone();
+                let sb = self.signatures.get(&b)?.hashes.clone();
+                Some(NearDuplicatePair {
+                    a,
+                    b,
+                    similarity: signature_similarity(&sa, &sb),
+                })
+            })
+            .collect();
+        out.sort_by(|x, y| {
+            y.similarity
+                .partial_cmp(&x.similarity)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        out
     }
 
     /// Direct signature access for testing/inspection.

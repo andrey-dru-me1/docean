@@ -13,6 +13,7 @@ import 'api/auto_org.dart';
 import 'api/health.dart';
 import 'api/ingest.dart';
 import 'api/p2p.dart';
+import 'api/search.dart';
 import 'api/storage.dart';
 import 'api/sync.dart';
 import 'auto_org/config.dart';
@@ -174,6 +175,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DocumentRefDto dco_decode_document_ref_dto(dynamic raw);
 
   @protected
+  DuplicatePairDto dco_decode_duplicate_pair_dto(dynamic raw);
+
+  @protected
   EmbedRequestDto dco_decode_embed_request_dto(dynamic raw);
 
   @protected
@@ -228,6 +232,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<DocumentRefDto> dco_decode_list_document_ref_dto(dynamic raw);
 
   @protected
+  List<DuplicatePairDto> dco_decode_list_duplicate_pair_dto(dynamic raw);
+
+  @protected
   List<HierarchyPath> dco_decode_list_hierarchy_path(dynamic raw);
 
   @protected
@@ -256,6 +263,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
+
+  @protected
+  List<SearchHitDto> dco_decode_list_search_hit_dto(dynamic raw);
 
   @protected
   List<SyncConflictDto> dco_decode_list_sync_conflict_dto(dynamic raw);
@@ -336,6 +346,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RuleSet dco_decode_rule_set(dynamic raw);
+
+  @protected
+  SearchHitDto dco_decode_search_hit_dto(dynamic raw);
 
   @protected
   SyncConflictDto dco_decode_sync_conflict_dto(dynamic raw);
@@ -549,6 +562,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DocumentRefDto sse_decode_document_ref_dto(SseDeserializer deserializer);
 
   @protected
+  DuplicatePairDto sse_decode_duplicate_pair_dto(SseDeserializer deserializer);
+
+  @protected
   EmbedRequestDto sse_decode_embed_request_dto(SseDeserializer deserializer);
 
   @protected
@@ -609,6 +625,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<DuplicatePairDto> sse_decode_list_duplicate_pair_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<HierarchyPath> sse_decode_list_hierarchy_path(
     SseDeserializer deserializer,
   );
@@ -643,6 +664,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<(String, String)> sse_decode_list_record_string_string(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<SearchHitDto> sse_decode_list_search_hit_dto(
     SseDeserializer deserializer,
   );
 
@@ -735,6 +761,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RuleSet sse_decode_rule_set(SseDeserializer deserializer);
+
+  @protected
+  SearchHitDto sse_decode_search_hit_dto(SseDeserializer deserializer);
 
   @protected
   SyncConflictDto sse_decode_sync_conflict_dto(SseDeserializer deserializer);
@@ -992,6 +1021,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_duplicate_pair_dto(
+    DuplicatePairDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_embed_request_dto(
     EmbedRequestDto self,
     SseSerializer serializer,
@@ -1064,6 +1099,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_duplicate_pair_dto(
+    List<DuplicatePairDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_hierarchy_path(
     List<HierarchyPath> self,
     SseSerializer serializer,
@@ -1114,6 +1155,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_record_string_string(
     List<(String, String)> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_search_hit_dto(
+    List<SearchHitDto> self,
     SseSerializer serializer,
   );
 
@@ -1224,6 +1271,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_rule_set(RuleSet self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_search_hit_dto(SearchHitDto self, SseSerializer serializer);
 
   @protected
   void sse_encode_sync_conflict_dto(
