@@ -446,17 +446,16 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
-  /// The "Re-organize all documents" bulk pass, now scoped to the selection:
-  /// runs the deterministic organizer (the former Settings-screen action) over
-  /// the whole library through the injected organizer. The pass is corpus-wide
-  /// by design (it re-examines every document), so the toolbar exposes it only
-  /// when the user has a selection.
+  /// Re-organize **only** the selected documents.  The async
+  /// [BulkOrganizer.reorganizeSelected] bridge runs on Rust's worker pool
+  /// (via `#[frb]` async), so the Flutter UI isolate stays responsive while the
+  /// deterministic organizer runs over the corpus.
   Future<void> _reorganizeSelected() async {
-    final ids = List.of(_selected);
+    final ids = Set<String>.of(_selected);
     if (ids.isEmpty || _busy) return;
     setState(() => _busy = true);
     try {
-      final result = await widget.bulkOrganizer.reorganizeAll();
+      final result = await widget.bulkOrganizer.reorganizeSelected(ids);
       if (!mounted) return;
       _showSnack(
         context,

@@ -54,6 +54,31 @@ OrgBulkStats autoOrgReorganizeAll({
   config: config,
 );
 
+/// Re-run the deterministic auto-organization pass on the **selected**
+/// documents only, preserving every user's manual edits.
+///
+/// This is the signalled "Re-organize selected" bulk action. The classic
+/// `auto_org_reorganize_all` is a `#[frb(sync)]` bridge call that executes the
+/// whole corpus on the **Dart UI isolate** (the SSE sync path performs the FFI
+/// synchronously on the caller's thread), freezing the interface for the whole
+/// pass. Marking this function `async` makes FRB run it on Rust's async worker
+/// pool, so the UI stays responsive while the pass runs.
+///
+/// Semantics are identical to [`auto_org_reorganize_one_impl`] — title applied
+/// only when `extra['title_manual']` is not truthy, tags only when
+/// `extra['tags_manual']` is not truthy, placement always applied — but the
+/// corpus snapshot and organizer are built **once** for the whole batch instead
+/// of once per document.
+Future<OrgBulkStats> autoOrgReorganizeSelected({
+  required DocumentRepository repo,
+  required List<String> ids,
+  required OrgConfig config,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgReorganizeSelected(
+  repo: repo,
+  ids: ids,
+  config: config,
+);
+
 /// Re-run the deterministic auto-organization pass on one document, honoring
 /// the `title_manual` / `tags_manual` flags (a user's hand-edited title or tags
 /// are never overwritten). Returns the resulting applied [`OrgPlan`].

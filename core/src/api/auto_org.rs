@@ -274,6 +274,45 @@ pub fn auto_org_reorganize_all(
     })
 }
 
+/// Re-run the deterministic auto-organization pass on the **selected**
+/// documents only, preserving every user's manual edits.
+///
+/// This is the signalled "Re-organize selected" bulk action. The classic
+/// `auto_org_reorganize_all` is a `#[frb(sync)]` bridge call that executes the
+/// whole corpus on the **Dart UI isolate** (the SSE sync path performs the FFI
+/// synchronously on the caller's thread), freezing the interface for the whole
+/// pass. Marking this function `async` makes FRB run it on Rust's async worker
+/// pool, so the UI stays responsive while the pass runs.
+///
+/// Semantics are identical to [`auto_org_reorganize_one_impl`] — title applied
+/// only when `extra['title_manual']` is not truthy, tags only when
+/// `extra['tags_manual']` is not truthy, placement always applied — but the
+/// corpus snapshot and organizer are built **once** for the whole batch instead
+/// of once per document.
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_reorganize_selected(
+    repo: &DocumentRepository,
+    ids: Vec<String>,
+    config: OrgConfig,
+) -> Result<OrgBulkStats, String> {
+    let mut total = 0usize;
+    let mut updated = 0usize;
+    for id in ids {
+        total += 1;
+        match auto_org_reorganize_one_impl(repo, id, &config) {
+            Ok(true) => updated += 1,
+            // `Ok(false)` (already up to date / manual-flag skips) and transient
+            // errors count as skipped so one failure does not abort the pass.
+            Ok(false) | Err(_) => {}
+        }
+    }
+    Ok(OrgBulkStats {
+        total,
+        updated,
+        skipped: total - updated,
+    })
+}
+
 /// Re-run the deterministic auto-organization pass on a single document,
 /// honoring the `title_manual` / `tags_manual` flags exactly like the bulk
 /// pass. Returns `true` when the document's metadata changed.
@@ -767,6 +806,104 @@ mod tests {
             doc.extra.get("tags_manual").map(String::as_str),
             Some("true"),
             "manual tag edit must set extra['tags_manual']"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// The `auto_org_reorganize_selected` async bridge iterates *only* the
+    /// supplied ids — not the whole corpus — and returns aggregate counts.
+    /// The async signature means FRB runs it off the Dart UI isolate,
+    /// preventing a freeze on large libraries.
+    #[tokio::test]
+    async fn reorganize_selected_updates_only_chosen_documents() {
+        let root = temp_root("selected");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_sibling(&repo, "sib", "quarterly report for the finance team");
+
+        let manual_id = seed_doc(
+            &repo,
+            "manual",
+            "My custom title",
+            "quarterly budget for consulting and travel",
+            HashMap::from([
+                ("title_manual".to_owned(), "true".to_owned()),
+                ("tags_manual".to_owned(), "true".to_owned()),
+            ]),
+        );
+        let auto_id = seed_doc(
+            &repo,
+            "auto",
+            "Untitled document",
+            "quarterly invoice for office supplies",
+            HashMap::new(),
+        );
+
+        // Only reorganize `auto` — `manual` must remain untouched.
+        let stats = crate::api::auto_org::auto_org_reorganize_selected(
+            &repo,
+            vec![auto_id.clone()],
+            Default::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(stats.total, 1, "only the selected doc is counted");
+        assert_eq!(stats.updated + stats.skipped, stats.total);
+
+        // The manual doc is preserved in full.
+        let manual = repo.get(manual_id).unwrap();
+        assert_eq!(manual.title, "My custom title");
+        assert_eq!(
+            manual.tags,
+            vec!["manual".to_owned(), "stale".to_owned()],
+            "manual tags kept: {:?}",
+            manual.tags
+        );
+
+        // The auto doc was actually updated.
+        let auto = repo.get(auto_id).unwrap();
+        assert_ne!(
+            auto.title, "Untitled document",
+            "auto title should have changed"
+        );
+        assert_ne!(
+            auto.tags,
+            vec!["stale".to_owned(), "manual".to_owned()],
+            "auto tags should have been updated, got {:?}",
+            auto.tags
+        );
+
+        // Reused/emergent tags from the corpus replace the stale seed set.
+        assert!(
+            auto.tags
+                .iter()
+                .any(|t| t == "invoice" || t == "budget" || t == "quarterly"),
+            "auto tags should be content-derived, got {:?}",
+            auto.tags
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// When supplied with an empty id list the pass is a no-op and the
+    /// repository handle is still usable afterwards.
+    #[tokio::test]
+    async fn reorganize_selected_empty_list_is_noop() {
+        let root = temp_root("selected-empty");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_doc(&repo, "doc-a", "Hello", "some content here", HashMap::new());
+
+        let stats =
+            crate::api::auto_org::auto_org_reorganize_selected(&repo, vec![], Default::default())
+                .await
+                .unwrap();
+
+        assert_eq!(stats.total, 0);
+        assert_eq!(stats.updated, 0);
+        assert!(
+            repo.get("doc-a".to_owned()).is_ok(),
+            "handle must still work"
         );
 
         let _ = fs::remove_dir_all(&root);

@@ -18,31 +18,38 @@ import '../rust/api/auto_org.dart'
         autoOrgDefaultConfig,
         autoOrgOrganize,
         autoOrgReorganizeAll,
-        autoOrgReorganizeOne;
+        autoOrgReorganizeOne,
+        autoOrgReorganizeSelected;
 import '../rust/api/search.dart' as search_bridge;
-import '../rust/api/storage.dart'
-    show DocumentRepository, openRepository;
+import '../rust/api/storage.dart' show DocumentRepository, openRepository;
 import '../rust/domain.dart' show Document, NodeKind;
 import '../rust/storage.dart' show DocumentQuery;
 import '../ui/document_view.dart' show DocumentSummary;
-import 'repository.dart'
-    show defaultRepositoryRoot, openSharedRepository;
+import 'repository.dart' show defaultRepositoryRoot, openSharedRepository;
 
-/// The heavy-lifting bulk re-organization pipeline (`reorganizeAll`).
+/// The heavy-lifting bulk re-organization pipeline.
 ///
 /// Kept out of [DocumentService] so fakes/tests of the Documents bulk toolkit
 /// don't need to implement it; the production instance runs the deterministic
-/// auto-organization pass over every document.
+/// auto-organization pass via the Rust bridge.
 abstract interface class BulkOrganizer {
   /// Re-run the deterministic auto-organization pass across **all** documents,
   /// preserving every user's manual edits (the `title_manual` / `tags_manual`
   /// flags are honored inside the core, so hand-edited metadata is never
   /// clobbered). Returns aggregate counts; the pass needs no AI provider.
   Future<ReorganizeResult> reorganizeAll();
+
+  /// Re-run the deterministic auto-organization pass on **only** the given
+  /// [ids], preserving every user's manual edits.  The async signature ensures
+  /// the heavy Rust work runs off the UI isolate.
+  Future<ReorganizeResult> reorganizeSelected(Set<String> ids);
 }
 
-/// The production [BulkOrganizer] backed by the Rust bridge's
-/// `auto_org_reorganize_all` bulk pass.
+/// The production [BulkOrganizer] backed by the Rust bridge.
+///
+/// Uses `autoOrgReorganizeAll` for the corpus-wide pass and the async
+/// `autoOrgReorganizeSelected` for the selection-scoped action (runs on
+/// Rust's async worker pool so the Flutter UI isolate is never blocked).
 class DocerBulkOrganizer implements BulkOrganizer {
   const DocerBulkOrganizer();
 
@@ -51,6 +58,26 @@ class DocerBulkOrganizer implements BulkOrganizer {
     final repo = await openSharedRepository();
     final stats = autoOrgReorganizeAll(
       repo: repo,
+      config: autoOrgDefaultConfig(),
+    );
+    return ReorganizeResult(
+      total: stats.total.toInt(),
+      updated: stats.updated.toInt(),
+      skipped: stats.skipped.toInt(),
+    );
+  }
+
+  @override
+  Future<ReorganizeResult> reorganizeSelected(Set<String> ids) async {
+    if (ids.isEmpty) {
+      return const ReorganizeResult(total: 0, updated: 0, skipped: 0);
+    }
+    final repo = await openSharedRepository();
+    // autoOrgReorganizeSelected is a `#[frb]` async bridge: FRB runs it on
+    // Rust's worker pool, so the Dart UI isolate stays responsive.
+    final stats = await autoOrgReorganizeSelected(
+      repo: repo,
+      ids: ids.toList(),
       config: autoOrgDefaultConfig(),
     );
     return ReorganizeResult(
@@ -68,11 +95,12 @@ class NoopBulkOrganizer implements BulkOrganizer {
   const NoopBulkOrganizer();
 
   @override
-  Future<ReorganizeResult> reorganizeAll() async => const ReorganizeResult(
-    total: 0,
-    updated: 0,
-    skipped: 0,
-  );
+  Future<ReorganizeResult> reorganizeAll() async =>
+      const ReorganizeResult(total: 0, updated: 0, skipped: 0);
+
+  @override
+  Future<ReorganizeResult> reorganizeSelected(Set<String> ids) async =>
+      const ReorganizeResult(total: 0, updated: 0, skipped: 0);
 }
 
 /// The document-library service contract. Implement with the Rust bridge,

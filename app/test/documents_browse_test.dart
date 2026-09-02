@@ -659,10 +659,18 @@ class _FakeBulkOrganizer implements BulkOrganizer {
 
   final ReorganizeResult Function() _result;
   int calls = 0;
+  Set<String>? lastSelectedIds;
 
   @override
   Future<ReorganizeResult> reorganizeAll() async {
     calls++;
+    return _result();
+  }
+
+  @override
+  Future<ReorganizeResult> reorganizeSelected(Set<String> ids) async {
+    calls++;
+    lastSelectedIds = ids;
     return _result();
   }
 }
