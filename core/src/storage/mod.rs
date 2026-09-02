@@ -123,4 +123,8 @@ pub trait DocumentStore {
     fn put_tag(&mut self, tag: Tag) -> Result<(), StorageError>;
 
     fn list_tags(&self) -> Result<Vec<Tag>, StorageError>;
+
+    /// Replace the full tag set on a document, creating tag-catalog entries as
+    /// needed. No-op on documents that don't exist (see [`StorageError::NotFound`]).
+    fn set_tags(&mut self, document_id: &DocumentId, tags: &[String]) -> Result<(), StorageError>;
 }

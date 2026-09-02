@@ -61,5 +61,12 @@ abstract class DocumentRepository implements RustOpaqueInterface {
   /// Fetch a document's raw bytes.
   Future<Uint8List> readBytes({required String id});
 
+  /// Replace the full tag set on a document (creating tag-catalog entries as
+  /// needed) so the UI can add/remove tags without re-putting raw bytes.
+  Future<void> setTags({
+    required String documentId,
+    required List<String> tags,
+  });
+
   Future<void> unassignPath({required String documentId, required String path});
 }

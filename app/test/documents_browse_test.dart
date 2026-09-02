@@ -159,6 +159,22 @@ class _FailingDocumentService implements DocumentService {
       throw StateError('repository unavailable');
 
   @override
+  Future<DocumentSummary> getDocument(String id) async =>
+      throw StateError('repository unavailable');
+
+  @override
+  Future<String?> getContent(String id) async =>
+      throw StateError('repository unavailable');
+
+  @override
+  Future<List<int>> readBytes(String id) async =>
+      throw StateError('repository unavailable');
+
+  @override
+  Future<void> setTags(String id, List<String> tags) async =>
+      throw StateError('repository unavailable');
+
+  @override
   Future<List<String>> listTags() async =>
       throw StateError('repository unavailable');
 

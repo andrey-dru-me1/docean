@@ -58,6 +58,9 @@ dependencies:
   # Cross-platform path manipulation for the repository root.
   path: ^1.9.1
 
+  # Opens a temp copy of a document with the OS default application.
+  url_launcher: ^6.3.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

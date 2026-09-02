@@ -325,6 +325,49 @@ fn tags_put_and_list() {
 }
 
 #[test]
+fn set_tags_replaces_document_tags_without_rewriting_bytes() {
+    let mut store = temp_store("set_tags");
+    store
+        .put(doc("d1", "one", &["work", "old"]), b"the raw payload")
+        .unwrap();
+    let checksum = store.get(&"d1".to_owned()).unwrap().checksum_sha256;
+
+    // Replacing the tag set must not touch the blob or other metadata.
+    store
+        .set_tags(&"d1".to_owned(), &["receipts".to_owned(), "new".to_owned()])
+        .unwrap();
+
+    let got = store.get(&"d1".to_owned()).unwrap();
+    // The document_tags join is always read back in the store's sorted order.
+    assert_eq!(got.tags, vec!["new", "receipts"]);
+    assert_eq!(got.checksum_sha256, checksum);
+    assert_eq!(
+        store.read_bytes(&"d1".to_owned()).unwrap(),
+        b"the raw payload"
+    );
+
+    // New tag names are created in the catalog so they surface in list_tags.
+    let names: Vec<String> = store
+        .list_tags()
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert!(names.contains(&"receipts".to_owned()));
+    assert!(names.contains(&"new".to_owned()));
+
+    // Clearing the set removes all assignments.
+    store.set_tags(&"d1".to_owned(), &[]).unwrap();
+    assert!(store.get(&"d1".to_owned()).unwrap().tags.is_empty());
+
+    // Unknown documents are a storage error, not a silent no-op.
+    let err = store
+        .set_tags(&"nope".to_owned(), &["x".to_owned()])
+        .unwrap_err();
+    assert!(matches!(err, StorageError::NotFound(id) if id == "nope"));
+}
+
+#[test]
 fn persistence_survives_reopen() {
     let root = std::env::temp_dir().join(format!(
         "docer-persist-{}-{}",

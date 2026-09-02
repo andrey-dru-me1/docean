@@ -151,4 +151,12 @@ impl DocumentRepository {
     pub fn list_tags(&self) -> Result<Vec<Tag>, String> {
         self.store()?.list_tags().map_err(|e| e.to_string())
     }
+
+    /// Replace the full tag set on a document (creating tag-catalog entries as
+    /// needed) so the UI can add/remove tags without re-putting raw bytes.
+    pub fn set_tags(&self, document_id: String, tags: Vec<String>) -> Result<(), String> {
+        self.store()?
+            .set_tags(&document_id, &tags)
+            .map_err(|e| e.to_string())
+    }
 }

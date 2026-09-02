@@ -171,6 +171,7 @@ class _MainShellState extends State<MainShell> {
       MaterialPageRoute<void>(
         builder: (_) => DocumentDetailView(
           document: doc,
+          documentService: widget.documentService,
           onBack: () => Navigator.of(context).pop(),
         ),
       ),

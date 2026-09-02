@@ -509,4 +509,38 @@ impl DocumentStore for SqliteDocumentStore {
             Ok(tags)
         })
     }
+
+    fn set_tags(&mut self, document_id: &DocumentId, tags: &[String]) -> Result<(), StorageError> {
+        self.with_conn_mut(|conn| {
+            let tx = conn.transaction()?;
+
+            let known: i64 = tx.query_row(
+                "SELECT count(*) FROM documents WHERE id = ?1",
+                [document_id],
+                |r| r.get(0),
+            )?;
+            if known == 0 {
+                return Err(StorageError::NotFound(document_id.clone()));
+            }
+
+            tx.execute(
+                "DELETE FROM document_tags WHERE document_id = ?1",
+                [document_id],
+            )?;
+            for tag in tags {
+                let tag = tag.trim();
+                if tag.is_empty() {
+                    continue;
+                }
+                tx.execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [tag])?;
+                tx.execute(
+                    "INSERT INTO document_tags(document_id, tag) VALUES (?1, ?2)",
+                    params![document_id, tag],
+                )?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
+    }
 }
