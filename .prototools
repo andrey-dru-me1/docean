@@ -1,4 +1,0 @@
-flutter = "3.44.2"
-
-[plugins.tools]
-flutter = "github://KonstantinKai/proto-flutter-plugin"
