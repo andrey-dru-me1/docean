@@ -12,6 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::api::auto_org::organize_document;
 use crate::api::search::index_document_from_repository;
 use crate::api::storage::DocumentRepository;
 use crate::ingest::{
@@ -136,23 +137,40 @@ pub fn ingest_files(
             }
         };
 
-        let mut store = match repo.store() {
-            Ok(s) => s,
-            Err(e) => return Err(e),
+        let ingest_result = {
+            let mut store = match repo.store() {
+                Ok(s) => s,
+                Err(e) => return Err(e),
+            };
+
+            pipeline.ingest(
+                &mut *store,
+                std::slice::from_ref(&info),
+                &opts,
+                Some(&mut ffi_sink),
+            )
         };
 
-        match pipeline.ingest(
-            &mut *store,
-            std::slice::from_ref(&info),
-            &opts,
-            Some(&mut ffi_sink),
-        ) {
+        // The `store` guard is dropped above so the re-locking calls below
+        // (`repo.get`/`repo.put` inside auto-org + search wiring) don't deadlock
+        // the shared `Arc<Mutex<_>>`.
+        match ingest_result {
             Ok(ids) => {
-                // The file is durably persisted (metadata + blob + content).
-                // Feed the in-memory search index from the persisted store so the
-                // just-uploaded document is immediately searchable. This is the
-                // wiring point between the SQLite repository and the search UI.
+                // The file is durably persisted (metadata + blob + content) and
+                // its extracted text was written via `put_content`. Run the
+                // deterministic auto-organization pipeline (tags + title +
+                // placement) and then feed the in-memory search index from the
+                // persisted store so the just-uploaded document is immediately
+                // searchable with its applied tags/title. This is the wiring
+                // point between the SQLite repository and the search UI.
                 for id in ids {
+                    if let Err(e) =
+                        organize_document(repo, &id, crate::auto_org::config::OrgConfig::default())
+                    {
+                        eprintln!(
+                            "ingest: auto-organization failed for {id} (tags/title left unchanged): {e}"
+                        );
+                    }
                     if let Err(e) = index_document_from_repository(repo, &id) {
                         eprintln!("ingest: failed to index {id} into search: {e}");
                     }
@@ -192,3 +210,178 @@ pub fn ingest_files(
 // temporary stand-in during development. They have been removed now that
 // `flutter_rust_bridge_codegen generate` has been run; the canonical impls
 // live in `core/src/frb_generated.rs`.
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use crate::api::search::{search_query, SearchMode, SearchRequestDto};
+    use crate::api::storage::open_repository;
+    use crate::ingest::{FileInfo, IngestPipeline, ProgressEvent};
+
+    /// A temp root for a fresh on-disk repository.
+    fn temp_root(tag: &str) -> std::path::PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let mut p = std::env::temp_dir();
+        p.push(format!(
+            "docer-ingest-bridge-{tag}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    /// Write a sample file to `root` and return its path.
+    fn write_sample(root: &std::path::Path, name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = root.join(name);
+        fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    /// A no-op progress sink whose `add` never closes the stream.
+    struct NoopSink;
+
+    impl crate::ingest::ProgressSink for NoopSink {
+        fn add(&mut self, _event: ProgressEvent) -> bool {
+            true
+        }
+    }
+
+    /// `ingest_files` needs an FRB `StreamSink`; for unit tests we run the
+    /// underlying pipeline directly (which is exactly what `ingest_files`
+    /// does) and then simulate the post-ingest auto-org + search wiring.
+    #[test]
+    fn ingested_file_gets_auto_tags_and_content_derived_title() {
+        let root = temp_root("auto-org");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let src = temp_root("auto-org-src");
+        let path = write_sample(
+            &src,
+            "meeting_notes.txt",
+            b"quarterly invoice summary for acme corporation total due payable",
+        );
+
+        // Drive the same steps `ingest_files` performs: pipeline ingest, then
+        // auto-organize the persisted document.
+        let mut store = repo.store().unwrap();
+        let info = FileInfo::from_path(&path).unwrap();
+        let ids = IngestPipeline::new()
+            .ingest(&mut *store, &[info], &Default::default(), Some(&mut NoopSink))
+            .unwrap();
+        drop(store);
+
+        let id = &ids[0];
+        let plan = crate::api::auto_org::organize_document(
+            &repo,
+            id,
+            crate::auto_org::config::OrgConfig::default(),
+        )
+        .unwrap();
+
+        let doc = repo.get(id.clone()).unwrap();
+        assert!(
+            !doc.tags.is_empty(),
+            "auto-organization should have tagged the ingested file, got {:?}",
+            doc.tags
+        );
+        assert_eq!(doc.tags, plan.tags);
+        assert!(
+            !doc.title.is_empty(),
+            "title must be non-empty after auto-organization"
+        );
+        assert_ne!(
+            doc.title, "meeting_notes",
+            "title should be content-derived, not the raw file stem"
+        );
+        // Content-derived: the template renders top keywords from the text, so
+        // the title must contain at least one term from the file body (and not
+        // just the original file stem).
+        assert!(
+            doc.title.contains("invoice")
+                || doc.title.contains("quarterly")
+                || doc.title.contains("acme")
+                || doc.title.contains("corporation")
+                || doc.title.contains("payable"),
+            "title should derive from body keywords, got {:?}",
+            doc.title
+        );
+
+        // The original source file must NOT have been renamed on disk.
+        assert!(path.exists(), "source file must not be renamed/removed");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "quarterly invoice summary for acme corporation total due payable");
+
+        // `ingest_files` re-indexes the persisted store after organizing.
+        crate::api::search::index_document_from_repository(&repo, id).unwrap();
+
+        // The applied metadata is visible to search (tags set via search metadata).
+        let hits = search_query(SearchRequestDto {
+            text: "invoice".to_owned(),
+            mode: SearchMode::Exact,
+            tags: vec![],
+            paths: vec![],
+            limit: None,
+        });
+        assert!(
+            hits.iter().any(|h| h.document_id == *id),
+            "ingested doc should be searchable after wiring"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&src);
+    }
+
+    /// The bridge `ingest_files` function wires the deterministic organizer in;
+    /// verify the *search metadata* (tags) reflects the applied plan.
+    #[test]
+    fn search_metadata_reflects_applied_tags() {
+        let root = temp_root("search-tags");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let src = temp_root("search-tags-src");
+        let path = write_sample(
+            &src,
+            "doc_a.txt",
+            b"invoice for office supplies from acme corporation",
+        );
+
+        // Pipeline + auto-organize (as `ingest_files` does), then re-index.
+        let mut store = repo.store().unwrap();
+        let info = FileInfo::from_path(&path).unwrap();
+        let ids = IngestPipeline::new()
+            .ingest(&mut *store, &[info], &Default::default(), None)
+            .unwrap();
+        drop(store);
+
+        let id = &ids[0];
+        let _plan = crate::api::auto_org::organize_document(
+            &repo,
+            id,
+            crate::auto_org::config::OrgConfig::default(),
+        )
+        .unwrap();
+        crate::api::search::index_document_from_repository(&repo, id).unwrap();
+
+        let hits = search_query(SearchRequestDto {
+            text: "invoice".to_owned(),
+            mode: SearchMode::Exact,
+            tags: vec![],
+            paths: vec![],
+            limit: None,
+        });
+        let hit = hits
+            .iter()
+            .find(|h| h.document_id == *id)
+            .expect("doc should be searchable");
+        assert!(
+            !hit.tags.is_empty(),
+            "search metadata should carry the auto-applied tags: {:?}",
+            hit.tags
+        );
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&src);
+    }
+}

@@ -159,6 +159,22 @@ impl DeterministicOrganizer {
             }
         }
 
+        // Fallback to keyword rules when the statistical paths produced nothing
+        // (e.g. the *first* document ingested into an empty corpus: clustering
+        // needs >= 2 docs and k-NN needs already-tagged neighbors). Non-empty
+        // tags are required by the ingestion auto-organization contract.
+        if tags.is_empty() {
+            let kw = keywords::extract_keywords(&doc.text, Some(&model), None, keywords::DEFAULT_TOP_K);
+            for term in kw {
+                if tags.len() >= 8 {
+                    break;
+                }
+                if !tags.contains(&term) {
+                    tags.push(term);
+                }
+            }
+        }
+
         // --- Step 3: deterministic rename via keywords ------------------
         let kw = keywords::extract_keywords(&doc.text, Some(&model), None, keywords::DEFAULT_TOP_K);
         let extension = extension_of(&doc.mime_type, &doc.title);

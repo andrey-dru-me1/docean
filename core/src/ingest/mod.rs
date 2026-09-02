@@ -3,8 +3,10 @@
 //! **Boundary:** accept files dropped into the app, compute their content hash,
 //! copy the bytes into the content-addressed [`BlobStore`], and extract a
 //! plain-text layer. Produces a [`Document`] (metadata record) plus a [`Content`]
-//! row per file. No tagging, renaming, or auto-organization happens here — that
-//! belongs to `crate::auto_org`.
+//! row per file. The pipeline itself stores metadata with **empty tags**; the
+//! deterministic auto-organization pass (tags + title + placement) is applied
+//! *after* a file is persisted, by [`crate::api::ingest::ingest_files`] via
+//! `crate::auto_org`.
 //!
 //! # Pipeline stages (per file)
 //!

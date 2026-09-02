@@ -10,6 +10,7 @@ use crate::auto_org::config::{OrgConfig, OrgPlan};
 use crate::auto_org::generative::generate_filename;
 use crate::auto_org::organizer::{Corpus, CorpusDoc, DeterministicOrganizer};
 use crate::auto_org::rules::RuleSet;
+use crate::domain::PathAssignment;
 use crate::storage::DocumentQuery;
 
 /// Build an in-memory corpus from every document in the repository, including
@@ -34,6 +35,56 @@ fn build_corpus(repo: &DocumentRepository) -> Result<Corpus, String> {
     Ok(corpus)
 }
 
+/// Run the deterministic (non-generative) organizer on `document_id` and apply
+/// the resulting [`OrgPlan`] to the persisted metadata.
+///
+/// This is the **auto-organization entry point used by the ingestion pipeline**:
+/// it takes the repository by *reference* (no ownership transfer, so the shared
+/// `Arc<Mutex<_>>` handle is not disposed), runs [`DeterministicOrganizer`]
+/// against the current corpus, and then durably applies the suggestions:
+///
+/// * **Tags** — replace the document's tags with `plan.tags`.
+/// * **Title** — set it to `plan.suggested_title` when present and non-empty.
+///   The original source file on disk is **never** renamed, only the document's
+///   title metadata.
+/// * **Placement** — when the plan resolves a hierarchy path, assign the
+///   document to it (many-to-many) so it is browsable and searchable there too.
+///
+/// The pipeline is deterministic and needs **no AI provider**: [`OrgConfig`]
+/// defaults disable the generative tier, falling back to the keyword rules in
+/// [`crate::auto_org`]. Returns the applied plan (callers may log it or use it
+/// to feed the search index).
+pub(crate) fn organize_document(
+    repo: &DocumentRepository,
+    document_id: &str,
+    config: OrgConfig,
+) -> Result<OrgPlan, String> {
+    let corpus = build_corpus(repo)?;
+    let organizer = DeterministicOrganizer::new(config);
+    let plan = organizer.organize(&corpus, document_id);
+
+    let mut doc = repo.get(document_id.to_owned())?;
+    doc.tags = plan.tags.clone();
+    if let Some(title) = plan.suggested_title.as_ref().filter(|t| !t.trim().is_empty()) {
+        // Trim trailing separators: templates like `{keywords}-{date}` can leave
+        // a dangling `-` when a placeholder (e.g. `{date}`) is empty. Never let
+        // the trimming produce an empty title — fall back to the raw suggestion.
+        let trimmed = title.trim().trim_end_matches(['-', '_', '.', ' ']).to_owned();
+        doc.title = if trimmed.is_empty() { title.clone() } else { trimmed };
+    }
+    repo.put(doc, repo.read_bytes(document_id.to_owned())?)?;
+
+    if let Some(path) = plan.suggested_path.as_ref().filter(|p| !p.trim().is_empty()) {
+        repo.assign_path(PathAssignment {
+            document_id: document_id.to_owned(),
+            path: path.clone(),
+            position: 0,
+        })?;
+    }
+
+    Ok(plan)
+}
+
 /// Run the deterministic (non-generative) organizer on `document_id`, returning
 /// the [`OrgPlan`] of suggested tags, placement, rename, and dedup.
 #[flutter_rust_bridge::frb(sync)]
@@ -42,6 +93,8 @@ pub fn auto_org_organize(
     document_id: String,
     config: OrgConfig,
 ) -> Result<OrgPlan, String> {
+    // Build a fresh corpus snapshot from the repository (borrowed, then released)
+    // so the shared handle is never moved/disposed across the FRB boundary.
     let corpus = build_corpus(&repo)?;
     let organizer = DeterministicOrganizer::new(config);
     Ok(organizer.organize(&corpus, &document_id))
