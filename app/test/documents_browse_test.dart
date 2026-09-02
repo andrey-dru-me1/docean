@@ -321,21 +321,21 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // No selection chrome in browse mode.
+      // No selection bar in browse mode, but the checkbox is always visible.
       expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
-      expect(find.byKey(const ValueKey('select-check-s-1')), findsNothing);
+      expect(find.byKey(const ValueKey('select-check-s-1')), findsOneWidget);
 
-      // The toolbar 'Select' button enters selection mode.
+      // The 'Select all' button enters selection mode with all docs selected.
       await tester.tap(find.byKey(const ValueKey('select-documents')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
-      expect(find.text('0 selected'), findsOneWidget);
-      // Tiles now show the selection checkbox overlay.
+      expect(find.text('2 selected'), findsOneWidget);
+      // Tiles show the selection checkbox overlay.
       expect(find.byKey(const ValueKey('select-check-s-1')), findsOneWidget);
       expect(find.byKey(const ValueKey('select-check-s-2')), findsOneWidget);
 
-      // Tapping a checkbox toggles that document (via the tile handler).
+      // Tapping a checkbox deselects that document.
       await tester.tap(find.byKey(const ValueKey('select-check-s-1')));
       await tester.pumpAndSettle();
       expect(find.text('1 selected'), findsOneWidget);
@@ -453,8 +453,8 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('select-documents')));
       await tester.pumpAndSettle();
-      // Select only d-1.
-      await tester.tap(find.byKey(const ValueKey('select-check-d-1')));
+      // 'Select all' auto-selects both; deselect d-2 to keep only d-1.
+      await tester.tap(find.byKey(const ValueKey('select-check-d-2')));
       await tester.pumpAndSettle();
       expect(find.text('1 selected'), findsOneWidget);
 

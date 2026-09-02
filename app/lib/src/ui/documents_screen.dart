@@ -154,8 +154,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
-  /// The browsing chrome: filter field, tag/path filter chips, and a "Select"
-  /// button that enters selection mode.
+  /// The browsing chrome: filter field, tag/path filter chips, and a "Select all"
+  /// icon button that enters selection mode with all filtered documents selected.
   Widget _buildFilterBar(BuildContext context) {
     final filtered = _filtered;
     return Padding(
@@ -176,17 +176,16 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              OutlinedButton.icon(
+              IconButton(
                 key: const ValueKey('select-documents'),
-                onPressed: filtered.isEmpty ? null : _enterSelectionMode,
-                icon: const Icon(Icons.checklist, size: 18),
-                label: const Text('Select'),
-                // Dense desktop-first chrome: stays compact next to the filter
-                // field but keeps a tap target on touch devices.
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                ),
+                tooltip: 'Select all',
+                onPressed: filtered.isEmpty
+                    ? null
+                    : () {
+                        _selectAllFiltered();
+                        _enterSelectionMode();
+                      },
+                icon: const Icon(Icons.select_all, size: 20),
               ),
             ],
           ),
@@ -810,16 +809,17 @@ class _DocumentPreviewTile extends StatelessWidget {
   final DocumentSummary document;
   final DocumentPreviewLoader loader;
 
-  /// Invoked when the tile is tapped: opens the document in browse mode, or
-  /// toggles selection in selection mode.
+  /// Invoked when the tile (or its checkbox) is tapped: opens the document in
+  /// browse mode, or toggles selection in selection mode. Tapping the
+  /// always-visible checkbox in browse mode enters selection mode.
   final VoidCallback onTapTile;
 
   /// Invoked on long-press (always enters selection mode with this tile
   /// pre-selected).
   final VoidCallback onLongPress;
 
-  /// Whether the grid is in selection mode (shows the checkbox overlay and
-  /// routes taps to selection toggling).
+  /// Whether the grid is in selection mode (routes taps to selection toggling
+  /// and shows the primary-tinted overlay wash).
   final bool selectionMode;
 
   /// Whether this tile's document is currently selected.
@@ -851,10 +851,24 @@ class _DocumentPreviewTile extends StatelessWidget {
             // progressively darker toward the bottom so the title stays
             // readable over any preview content.
             const IgnorePointer(child: _TileScrim()),
+            // Always-visible select checkbox in the bottom-right corner.
+            Positioned(
+              bottom: 36,
+              right: 8,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.surface.withValues(alpha: 0.85),
+                  shape: BoxShape.circle,
+                ),
+                child: Checkbox(
+                  key: ValueKey('select-check-${document.id}'),
+                  value: selectionMode ? selected : false,
+                  onChanged: (_) => onTapTile(),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ),
             if (selectionMode)
-              // Selection overlay: a primary-tinted wash plus a checkbox in
-              // the top-left corner (the tag chips still peek through at the
-              // same top edge, so the overlay is gentle).
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -862,29 +876,10 @@ class _DocumentPreviewTile extends StatelessWidget {
                   ),
                 ),
               ),
-            if (selectionMode)
-              Positioned(
-                top: 8,
-                left: 8,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: scheme.surface.withValues(alpha: 0.9),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Checkbox(
-                    key: ValueKey('select-check-${document.id}'),
-                    value: selected,
-                    onChanged: (_) => onTapTile(),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ),
             if (document.tags.isNotEmpty)
               Positioned(
                 top: 8,
-                // In selection mode the checkbox occupies the top-left corner;
-                // push the tag chips to the right so they don't overlap it.
-                left: selectionMode ? 48 : 8,
+                left: 8,
                 right: 8,
                 child: Wrap(
                   spacing: 4,
