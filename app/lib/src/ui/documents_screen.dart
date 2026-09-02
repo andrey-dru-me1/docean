@@ -151,7 +151,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           color: tagColorFor(tag),
                           fontWeight: FontWeight.w600,
                         ),
-                        backgroundColor: tagTintFor(tag),
+                        backgroundColor: tagTintFor(context, tag),
                         side: BorderSide(
                           color: tagColorFor(tag).withValues(alpha: 0.45),
                         ),

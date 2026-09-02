@@ -17,7 +17,15 @@ import 'package:docer/src/ui/document_preview_view.dart'
 import 'package:docer/src/ui/document_view.dart'
     show DocumentDetailView, DocumentSummary;
 
-Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
+Widget _wrap(Widget child) =>
+    MaterialApp(theme: _panelTheme(), home: Scaffold(body: child));
+
+/// A large-frame theme so the panel's [Card] isn't squeezed by preview text
+/// (Material 3 Card heights behave correctly even when unconstrained).
+ThemeData _panelTheme() => ThemeData(
+  useMaterial3: true,
+  colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+);
 
 /// A tiny valid PNG (10×10 solid teal) encoded via package:image.
 Uint8List _pngBytes() =>
@@ -248,6 +256,15 @@ void main() {
 
       expect(find.byType(Image), findsOneWidget);
       expect(find.byType(DocumentPlaceholder), findsNothing);
+
+      // The preview ships in an A4-aspect (210×297) paper container.
+      final a4Frame = tester.widget<AspectRatio>(
+        find.byWidgetPredicate(
+          (w) => w is AspectRatio && (w.aspectRatio - 210 / 297).abs() < 1e-9,
+        ),
+      );
+      expect(a4Frame.aspectRatio, closeTo(210 / 297, 0.001));
+      expect(a4Frame.aspectRatio, closeTo(1 / 1.414, 0.01));
     });
 
     testWidgets('PDF preview degrades to nothing (keeps content viewer)', (

@@ -231,7 +231,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           color: tagColorFor(tag),
                           fontWeight: FontWeight.w600,
                         ),
-                        backgroundColor: tagTintFor(tag),
+                        backgroundColor: tagTintFor(context, tag),
                         side: BorderSide(
                           color: tagColorFor(tag).withValues(alpha: 0.45),
                         ),
@@ -370,7 +370,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                     color: tagColorFor(tag),
                                     fontWeight: FontWeight.w600,
                                   ),
-                                  backgroundColor: tagTintFor(tag),
+                                  backgroundColor: tagTintFor(context, tag),
                                   side: BorderSide(
                                     color: tagColorFor(
                                       tag,

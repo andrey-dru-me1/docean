@@ -1,6 +1,7 @@
 /// Rendering helpers shared across the search/chat UI.
 library;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../features/search_service.dart' show HighlightSpan;
@@ -37,8 +38,27 @@ Color tagColorFor(String name) {
   return kTagPalette[hash % kTagPalette.length];
 }
 
-/// The washed-out background tint used by tag chips for a given tag name.
-Color tagTintFor(String name) => tagColorFor(name).withValues(alpha: 0.16);
+/// The mixed tint used as a tag chip background for a given tag name on a
+/// given surface.
+///
+/// The palette is a set of *dark* material 900 shades ([kTagPalette]), so a
+/// plain `color.withValues(alpha: 0.16)` wash renders as a near-black smudge
+/// on the dark theme's already-dark surface — low contrast and hard to read.
+/// In dark mode the tint is instead the *light* hue of the same tag blended
+/// into the surface, producing a clearly-visible pastel colored pill with dark
+/// labels staying readable; light themes keep the original washed-out
+/// translucent wash. The caller supplies the surface color (typically
+/// `ColorScheme.surface`) so the blend always matches the chip's backdrop.
+Color tagTintFor(BuildContext context, String name) {
+  final scheme = Theme.of(context).colorScheme;
+  if (scheme.brightness == Brightness.light) {
+    return tagColorFor(name).withValues(alpha: 0.16);
+  }
+  final light = HSLColor.fromColor(
+    tagColorFor(name),
+  ).withLightness(0.82).toColor();
+  return Color.alphaBlend(light.withValues(alpha: 0.55), scheme.surface);
+}
 
 /// A compact, colored tag chip with no avatar icon.
 ///
@@ -65,26 +85,30 @@ class TagChip extends StatelessWidget {
   final bool selected;
 
   /// Renders the chip on top of a visual preview (e.g. the Documents grid
-  /// tiles): the washed-out tint is replaced with a dark translucent scrim and
-  /// the label turns white so tag text stays readable over arbitrary image
-  /// content, while a faint ring keeps the tag color identity.
+  /// tiles): the washed-out tint is replaced with a translucent tint of the
+  /// tag's own color and a tag-colored ring, so the chip retains its color
+  /// identity while a white label (with a soft shadow) stays readable over
+  /// arbitrary image content.
   final bool overlay;
 
   @override
   Widget build(BuildContext context) {
     final color = tagColorFor(label);
     final background = overlay
-        ? Colors.black.withValues(alpha: 0.45)
+        // A translucent tint of the tag's own color (instead of a mono dark
+        // scrim) so on-preview chips keep their deterministic color identity
+        // while still scrimming arbitrary image content underneath.
+        ? color.withValues(alpha: 0.55)
         : selected
-        ? tagTintFor(label).withValues(alpha: 0.38)
-        : tagTintFor(label);
+        ? tagTintFor(context, label).withValues(alpha: 0.38)
+        : tagTintFor(context, label);
     final labelColor = overlay ? Colors.white : color;
     return Chip(
       visualDensity: VisualDensity.compact,
       backgroundColor: background,
       side: BorderSide(
         color: overlay
-            ? Colors.white.withValues(alpha: 0.28)
+            ? color.withValues(alpha: 0.85)
             : color.withValues(alpha: 0.45),
       ),
       labelStyle: TextStyle(
@@ -95,8 +119,8 @@ class TagChip extends StatelessWidget {
             ? const [Shadow(color: Colors.black45, blurRadius: 3)]
             : null,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 2),
       label: Text(label),
     );
   }
@@ -105,6 +129,59 @@ class TagChip extends StatelessWidget {
 /// Read a [HighlightSpan]'s byte range as ints for slicing a snippet substring.
 (int, int) spanRange(HighlightSpan span) =>
     (span.start.toInt(), span.end.toInt());
+
+/// The delete (X) affordance for a tag chip that supports removal.
+///
+/// Desktop (mouse pointer) users get a clean chip that reveals the X **only on
+/// hover** (`MouseRegion`), keeping the tag row compact and uncluttered; touch
+/// platforms always show the X so the delete action stays reachable (and long
+/// press remains available on the chip itself as an alternative).
+class TagDeleteIcon extends StatefulWidget {
+  const TagDeleteIcon({super.key, required this.color});
+
+  final Color color;
+
+  @override
+  State<TagDeleteIcon> createState() => _TagDeleteIconState();
+}
+
+class _TagDeleteIconState extends State<TagDeleteIcon> {
+  bool _hovering = false;
+
+  /// Whether a non-mouse pointer (touch/stylus) has interacted so far.
+  ///
+  /// There is no declarative "is this device touch-only?" in `MediaQuery` on
+  /// desktop, so we watch incoming pointer events instead: a touch/stylus
+  /// `PointerDown` marks the device as touch and keeps the X always visible
+  /// (the delete action stays reachable and long-press remains an
+  /// alternative); a pure mouse device stays clean until hover.
+  bool _touchInteraction = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = _hovering || _touchInteraction;
+    return Listener(
+      onPointerDown: (event) {
+        if (event.kind != PointerDeviceKind.mouse) {
+          setState(() => _touchInteraction = true);
+        }
+      },
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: IgnorePointer(
+          ignoring: !visible,
+          child: AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOut,
+            child: Icon(Icons.clear, size: 16, color: widget.color),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Renders a snippet with the query-matching spans emphasized.
 class HighlightedSnippet extends StatelessWidget {

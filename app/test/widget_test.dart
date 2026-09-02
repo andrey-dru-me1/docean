@@ -223,14 +223,32 @@ void main() {
 
       // Tapping opens the detail inline (no new route).
       await tester.tap(find.text('Wide report'));
+
+      // The panel animates in via AnimatedSwitcher/AnimatedSize: it must not
+      // already be fully laid out on the very first frame after the tap.
+      await tester.pump();
+      final switcher = tester.widget<AnimatedSwitcher>(
+        find.byKey(const ValueKey('detail-panel-switcher')),
+      );
+      expect(switcher.duration, const Duration(milliseconds: 200));
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is AnimatedSize &&
+              w.duration == const Duration(milliseconds: 200),
+        ),
+        findsOneWidget,
+      );
       await tester.pumpAndSettle();
 
       // The detail panel is rendered alongside the list.
       expect(find.text('Suggest title & tags'), findsOneWidget);
       expect(find.textContaining('Body of the wide report'), findsOneWidget);
 
-      // Closing the panel dismisses it.
+      // Closing the panel dismisses it (after the exit transition completes).
       await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+      expect(find.text('Suggest title & tags'), findsOneWidget);
       await tester.pumpAndSettle();
       expect(find.text('Suggest title & tags'), findsNothing);
     },

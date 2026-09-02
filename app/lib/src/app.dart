@@ -365,20 +365,48 @@ class _MainShellState extends State<MainShell> {
             ),
             const VerticalDivider(width: 1),
             Expanded(child: pages[_index]),
-            if (_selectedDocument != null) ...[
-              const VerticalDivider(width: 1),
-              // Master-detail two-pane layout: the selected document's info/
-              // detail is shown alongside the list instead of a new route.
-              SizedBox(
-                width: 420,
-                child: DocumentDetailView(
-                  key: ValueKey(_selectedDocument!.id),
-                  document: _selectedDocument!,
-                  documentService: widget.documentService,
-                  onBack: () => setState(() => _selectedDocument = null),
-                ),
+            // Master-detail two-pane layout: the selected document's info/
+            // detail is shown alongside the list instead of a new route.
+            //
+            // An AnimatedSwitcher + AnimatedSize pair animates the panel's
+            // appearance/disappearance (fade+slide in, slide out) instead of
+            // the panel popping in/out instantly when a document is selected
+            // or the panel is closed.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              alignment: Alignment.centerLeft,
+              child: AnimatedSwitcher(
+                key: const ValueKey('detail-panel-switcher'),
+                duration: const Duration(milliseconds: 200),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder:
+                    (child, animation) => SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(1, 0),
+                        end: Offset.zero,
+                      ).animate(
+                        CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                      ),
+                      child: FadeTransition(opacity: animation, child: child),
+                    ),
+                child: _selectedDocument == null
+                    ? const SizedBox.shrink(
+                        key: ValueKey('no-selection'),
+                      )
+                    : SizedBox(
+                        key: ValueKey(_selectedDocument!.id),
+                        width: 420,
+                        child: DocumentDetailView(
+                          document: _selectedDocument!,
+                          documentService: widget.documentService,
+                          onBack: () =>
+                              setState(() => _selectedDocument = null),
+                        ),
+                      ),
               ),
-            ],
+            ),
           ],
         ),
       );

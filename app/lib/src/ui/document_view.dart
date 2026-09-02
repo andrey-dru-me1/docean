@@ -8,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart' show DocumentService;
 import 'document_preview_view.dart' show DocumentPreviewPanel;
-import 'widgets.dart' show tagColorFor, tagTintFor;
+import 'widgets.dart' show TagDeleteIcon, tagColorFor, tagTintFor;
 
 /// A compact summary of a document enough to open it in a detail view.
 ///
@@ -587,8 +587,11 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
             label: Text(tag),
             visualDensity: VisualDensity.compact,
             labelStyle: Theme.of(context).textTheme.labelSmall,
-            backgroundColor: tagTintFor(tag),
+            backgroundColor: tagTintFor(context, tag),
             side: BorderSide(color: tagColorFor(tag).withValues(alpha: 0.45)),
+            deleteIcon: _savingTags
+                ? null
+                : TagDeleteIcon(color: tagColorFor(tag)),
             deleteIconColor: tagColorFor(tag),
             onDeleted: _savingTags
                 ? null

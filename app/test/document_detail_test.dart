@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -31,6 +32,19 @@ DocumentSummary _doc({
 /// second (hinted 'Add a tag…').
 Finder _titleField() => find.byType(TextField).first;
 Finder _tagField() => find.byType(TextField).last;
+
+/// The delete (X) affordance on an [InputChip] whose label text is [tagLabel].
+///
+/// The X lives inside a manageable-size [TagDeleteIcon]; with a touch pointer
+/// (widget-test default) it is always visible, so this finder is stable
+/// regardless of how far the chip has scrolled.
+Finder _deleteIconFor(String tagLabel) {
+  final chip = find.ancestor(
+    of: find.text(tagLabel),
+    matching: find.byType(InputChip),
+  );
+  return find.descendant(of: chip, matching: find.byIcon(Icons.clear));
+}
 
 void main() {
   group('DocumentDetailView', () {
@@ -139,17 +153,12 @@ void main() {
 
       expect(find.byType(InputChip), findsNWidgets(2));
 
-      // Tap the delete affordance on the 'tax' chip.
-      final taxChip = find.ancestor(
-        of: find.text('tax'),
-        matching: find.byType(InputChip),
-      );
-      final deleteIcon = find.descendant(
-        of: taxChip,
-        matching: find.byIcon(Icons.clear),
-      );
-      expect(deleteIcon, findsOneWidget);
-      await tester.tap(deleteIcon);
+      // Tap the delete affordance on the 'tax' chip. With the default touch
+      // pointer the X is always visible, so this finder is stable even while
+      // the chip is off-screen mid-list.
+      expect(_deleteIconFor('tax'), findsOneWidget);
+      // The chip may be mid-scroll offscreen; the delete still fires.
+      await tester.tap(_deleteIconFor('tax'), warnIfMissed: false);
       await tester.pumpAndSettle();
 
       expect(service.setTagsCount, 1);
@@ -157,6 +166,54 @@ void main() {
       expect(find.byType(InputChip), findsOneWidget);
       expect(find.text('tax'), findsNothing);
     });
+
+    testWidgets(
+      'shows the delete X only while the tag chip is hovered on desktop',
+      (tester) async {
+        final doc = _doc(tags: const ['finance', 'tax']);
+        final service = FakeDocumentService(
+          documents: [doc],
+          contentByDocumentId: {'doc-1': 'Report body'},
+        );
+
+        // Default viewport so the tags row is comfortably on-screen.
+        tester.view.physicalSize = const Size(1200, 1200);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        final taxChip = find.ancestor(
+          of: find.text('tax'),
+          matching: find.byType(InputChip),
+        );
+        // Mouse hover over the chip; the X is inside a TagDeleteIcon whose
+        // AnimatedOpacity fades in.
+        final mouse = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await mouse.addPointer(location: tester.getCenter(taxChip));
+        await tester.pumpAndSettle();
+        expect(_deleteIconFor('tax'), findsOneWidget);
+
+        // Move the pointer away; the X fades back out but the icon (with
+        // opacity 0) still exists inside the chip's delete slot.
+        await mouse.moveTo(
+          tester.getTopLeft(find.byType(DocumentDetailView)) + const Offset(10, 700),
+        );
+        await tester.pumpAndSettle();
+        final opacity = tester.widget<AnimatedOpacity>(
+          find.descendant(
+            of: taxChip,
+            matching: find.byType(AnimatedOpacity),
+          ),
+        );
+        expect(opacity.opacity, 0);
+      },
+    );
 
     testWidgets('manually renaming the title persists through the service', (
       tester,
