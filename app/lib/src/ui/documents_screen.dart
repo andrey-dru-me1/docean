@@ -262,7 +262,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         icon: Icons.folder_open,
         title: 'No documents yet',
         subtitle:
-            'Use "Add files" on the Search tab to ingest your first file.',
+            'Drag files anywhere on this page, or tap the upload icon at the '
+            'top, to add your first library document.',
       );
     }
     final filtered = _filtered;

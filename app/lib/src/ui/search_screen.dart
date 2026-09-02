@@ -2,13 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart' show DocumentService;
-import '../features/ingest_service.dart' show IngestService;
 import '../features/search_service.dart'
     show SearchHitDto, SearchMode, SearchService;
 import 'document_preview_view.dart' show DocumentPlaceholder, DocumentThumbnail;
 import 'document_view.dart' show DocumentSummary;
-import 'ingest_panel.dart'
-    show IngestPanel, PathPicker, pickPathsWithFilePicker;
 import 'widgets.dart' show EmptyState, HighlightedSnippet, TagChip;
 
 /// What a search result should do when tapped.
@@ -19,19 +16,15 @@ class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
     required this.searchService,
-    required this.ingestService,
     required this.onOpenDocument,
     required this.tags,
     this.paths = const [],
     this.documentService,
     this.previewLoader,
     this.onConfigureAi,
-    this.pickPaths,
-    this.onFilesIngested,
   });
 
   final SearchService searchService;
-  final IngestService ingestService;
   final DocumentOpener onOpenDocument;
 
   /// Resolves document metadata for search-result thumbnails. Search hits only
@@ -45,10 +38,6 @@ class SearchScreen extends StatefulWidget {
   /// synchronous (isolate-free) thumbnailer.
   final DocumentPreviewLoader? previewLoader;
 
-  /// Injected file picker for the ingestion panel (defaults to the native
-  /// `file_picker`); tests inject a fake.
-  final PathPicker? pickPaths;
-
   /// Available tag names for the filter dropdown / chips.
   final List<String> tags;
 
@@ -56,10 +45,6 @@ class SearchScreen extends StatefulWidget {
   final List<String> paths;
 
   final VoidCallback? onConfigureAi;
-
-  /// Invoked after the ingestion panel finishes a batch, so owning shells can
-  /// refresh other surfaces (e.g. the Documents browse tab).
-  final VoidCallback? onFilesIngested;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -255,15 +240,6 @@ class _SearchScreenState extends State<SearchScreen> {
             ],
           ),
         ),
-        IngestPanel(
-          ingestService: widget.ingestService,
-          onFilesIngested: () {
-            _runSearch();
-            widget.onFilesIngested?.call();
-          },
-          pickPaths: widget.pickPaths ?? pickPathsWithFilePicker,
-        ),
-        const Divider(height: 1),
         Expanded(child: _buildResults()),
       ],
     );

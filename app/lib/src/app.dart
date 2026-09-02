@@ -14,7 +14,9 @@ import 'rust_health.dart';
 import 'ui/chat_screen.dart' show ChatScreen;
 import 'ui/document_view.dart' show DocumentDetailView, DocumentSummary;
 import 'ui/documents_screen.dart' show DocumentsScreen;
-import 'ui/ingest_panel.dart' show PathPicker;
+import 'ui/documents_upload_page.dart' show DocumentsUploadPage;
+import 'ui/ingest_panel.dart'
+    show IngestPanelState, PathPicker, pickPathsWithFilePicker;
 import 'ui/provider_screen.dart' show ProviderScreen;
 import 'ui/search_screen.dart' show DocumentOpener, SearchScreen;
 
@@ -176,6 +178,11 @@ class _MainShellState extends State<MainShell> {
   /// Bumped when ingestion finishes so the Documents browse tab reloads.
   final ValueNotifier<int> _documentsRefreshTick = ValueNotifier<int>(0);
 
+  /// Reaches the shared ingestion panel hosted on the Documents page, so the
+  /// app-bar "Upload files" action can open the file picker from anywhere.
+  final GlobalKey<IngestPanelState> _ingestPanelKey =
+      GlobalKey<IngestPanelState>();
+
   @override
   void initState() {
     super.initState();
@@ -257,6 +264,22 @@ class _MainShellState extends State<MainShell> {
     ).push(MaterialPageRoute<void>(builder: (_) => const P2pSyncScreen()));
   }
 
+  /// The app-bar "Upload files" action. The shared ingestion panel lives on the
+  /// Documents page; in the wide layout the other tabs are not mounted, so when
+  /// it isn't available we switch to Documents and open the picker once the
+  /// panel has mounted next frame.
+  void _uploadFromAppBar() {
+    final panel = _ingestPanelKey.currentState;
+    if (panel != null) {
+      panel.openPicker();
+      return;
+    }
+    setState(() => _index = 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ingestPanelKey.currentState?.openPicker();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
@@ -283,25 +306,31 @@ class _MainShellState extends State<MainShell> {
       );
     }
 
-    final documents = DocumentsScreen(
-      documentService: widget.documentService,
-      onOpenDocument: _openDocument,
-      refreshTick: _documentsRefreshTick,
-      // The selection toolbar owns the bulk "Re-organize all documents" action
-      // (formerly on the Settings screen). Wire the production bridge-backed
-      // organizer so the toolbar action actually runs the deterministic pass.
-      bulkOrganizer: const DocerBulkOrganizer(),
+    final documents = DocumentsUploadPage(
+      ingestPanelKey: _ingestPanelKey,
+      ingestService: widget.ingestService,
+      pickPaths: widget.pickPaths ?? pickPathsWithFilePicker,
+      onFilesIngested: () => _documentsRefreshTick.value++,
+      // Only the visible Documents tab is a drop target: an offstage copy must
+      // never swallow drops meant for the tab the user is actually looking at.
+      enabled: _index == 0,
+      child: DocumentsScreen(
+        documentService: widget.documentService,
+        onOpenDocument: _openDocument,
+        refreshTick: _documentsRefreshTick,
+        // The selection toolbar owns the bulk "Re-organize all documents" action
+        // (formerly on the Settings screen). Wire the production bridge-backed
+        // organizer so the toolbar action actually runs the deterministic pass.
+        bulkOrganizer: const DocerBulkOrganizer(),
+      ),
     );
     final search = SearchScreen(
       searchService: widget.searchService,
-      ingestService: widget.ingestService,
       onOpenDocument: _openDocument,
       documentService: widget.documentService,
       tags: widget.tags,
       paths: widget.paths,
-      pickPaths: widget.pickPaths,
       onConfigureAi: () => setState(() => _index = 3),
-      onFilesIngested: () => _documentsRefreshTick.value++,
     );
     final chat = ChatScreen(
       assistantService: widget.assistantService,
@@ -318,6 +347,12 @@ class _MainShellState extends State<MainShell> {
         appBar: AppBar(
           title: const Text('Docer'),
           actions: [
+            IconButton(
+              key: const ValueKey('upload-files'),
+              tooltip: 'Upload files',
+              onPressed: _uploadFromAppBar,
+              icon: const Icon(Icons.upload_file),
+            ),
             IconButton(
               tooltip: 'P2P & Sync',
               onPressed: _openP2p,
@@ -408,6 +443,12 @@ class _MainShellState extends State<MainShell> {
       appBar: AppBar(
         title: Text(['Documents', 'Search', 'Chat', 'Providers'][_index]),
         actions: [
+          IconButton(
+            key: const ValueKey('upload-files'),
+            tooltip: 'Upload files',
+            onPressed: _uploadFromAppBar,
+            icon: const Icon(Icons.upload_file),
+          ),
           IconButton(
             tooltip: 'P2P & Sync',
             onPressed: _openP2p,

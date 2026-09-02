@@ -10,7 +10,6 @@ import 'package:docer/src/features/document_preview.dart'
     show DocumentPreviewLoader;
 import 'package:docer/src/features/document_service.dart'
     show FakeDocumentService;
-import 'package:docer/src/features/ingest_service.dart' show FakeIngestService;
 import 'package:docer/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
 import 'package:docer/src/features/search_service.dart'
@@ -140,7 +139,6 @@ void main() {
         _wrap(
           SearchScreen(
             searchService: _FakeSearchService(),
-            ingestService: FakeIngestService(const []),
             onOpenDocument: opened.add,
             tags: const ['finance', 'tax'],
             paths: const ['/work'],
@@ -172,7 +170,6 @@ void main() {
         _wrap(
           SearchScreen(
             searchService: _FakeSearchService(),
-            ingestService: FakeIngestService(const []),
             onOpenDocument: (_) {},
             tags: const [],
           ),
@@ -188,7 +185,6 @@ void main() {
         _wrap(
           SearchScreen(
             searchService: fake,
-            ingestService: FakeIngestService(const []),
             onOpenDocument: (_) {},
             tags: const ['finance', 'tax'],
           ),
@@ -236,7 +232,6 @@ void main() {
           _wrap(
             SearchScreen(
               searchService: _FakeSearchService(),
-              ingestService: FakeIngestService(const []),
               onOpenDocument: (_) {},
               tags: const ['finance'],
               documentService: docs,

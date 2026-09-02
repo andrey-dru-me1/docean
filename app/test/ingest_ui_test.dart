@@ -150,50 +150,37 @@ void main() {
   });
 
   group('SearchScreen integration', () {
-    testWidgets('refreshes search results after ingestion completes', (
-      tester,
-    ) async {
-      final ingest = _RecordingIngestService([
-        const IngestEvent(
-          kind: 'completed',
-          fileName: 'note.txt',
-          percent: 100,
-          documentId: 'doc-9',
-          error: '',
-        ),
-      ]);
+    testWidgets('keeps upload UI off the Search tab', (tester) async {
       final search = _FakeSearchService();
 
       await tester.pumpWidget(
         _wrap(
           SearchScreen(
             searchService: search,
-            ingestService: ingest,
             onOpenDocument: (_) {},
             tags: const [],
-            pickPaths: () async => ['/tmp/note.txt'],
           ),
         ),
       );
 
-      // Run an initial query so there is something to refresh.
+      // The Search surface is purely a search surface: no drop zone, no
+      // "Add files" button, no upload icon.
+      expect(find.textContaining('Drop files here'), findsNothing);
+      expect(find.text('Add files'), findsNothing);
+      expect(find.byIcon(Icons.upload_file), findsNothing);
+
+      // Searching still works.
       await tester.enterText(find.byType(TextField), 'note');
       await tester.tap(find.byIcon(Icons.arrow_forward));
       await tester.pumpAndSettle();
-      final before = search.queryCount;
-      expect(before, greaterThan(0));
-
-      await tester.tap(find.text('Add files'));
-      await tester.pumpAndSettle();
-
-      // The search service was re-queried after ingestion finished.
-      expect(search.queryCount, greaterThan(before));
+      expect(search.queryCount, greaterThan(0));
     });
   });
 
   group('MainShell ingestion → browse refresh', () {
     testWidgets(
-      'ingesting a file makes it appear in the Documents browse list',
+      'uploading from the Documents page adds the file to the browse list '
+      'and keeps upload UI off the Search tab',
       (tester) async {
         final ingest = _RecordingIngestService([
           const IngestEvent(
@@ -224,17 +211,32 @@ void main() {
         // Documents tab is the default; nothing has been ingested yet.
         expect(find.text('No documents yet'), findsOneWidget);
 
-        // Go to the Search tab and ingest a file through the panel.
-        await tester.tap(find.text('Search'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Add files'));
+        // The app-bar upload icon at the top of the Documents page opens the
+        // file picker (evidenced by the fake picker resolving a path).
+        await tester.tap(find.byIcon(Icons.upload_file));
         await tester.pumpAndSettle();
 
         // Ingestion completed: the refresh tick fired, the browse view
-        // re-queried SQLite, and the new file is now listed.
-        await tester.tap(find.text('Documents'));
+        // re-queried SQLite, and the new file is now listed in the grid.
+        expect(ingest.calls, hasLength(1));
+        expect(ingest.calls.first, contains('/tmp/newfile.txt'));
+        expect(
+          find.descendant(
+            of: find.byType(GridView),
+            matching: find.text('newfile.txt'),
+          ),
+          findsOneWidget,
+        );
+        // The upload progress strip (with the completed file row) shows on the
+        // Documents page, next to the grid.
+        expect(find.text('Done'), findsOneWidget);
+
+        // Drag-and-drop + "Add files" now live on the Documents page only:
+        // the Search tab carries no upload surface.
+        await tester.tap(find.text('Search'));
         await tester.pumpAndSettle();
-        expect(find.text('newfile.txt'), findsOneWidget);
+        expect(find.text('Add files'), findsNothing);
+        expect(find.textContaining('Drop files here'), findsNothing);
       },
     );
   });
