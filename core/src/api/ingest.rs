@@ -108,7 +108,7 @@ fn to_ingest_option(
 /// FRB worker thread (blocking) while events flow through the sink.
 #[flutter_rust_bridge::frb]
 pub fn ingest_files(
-    repo: DocumentRepository,
+    repo: &DocumentRepository,
     paths: Vec<String>,
     destination_path: Option<String>,
     title_override: Option<String>,

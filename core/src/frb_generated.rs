@@ -1695,7 +1695,9 @@ fn wire__crate__api__ingest__ingest_files_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_repo = <DocumentRepository>::sse_decode(&mut deserializer);
+            let api_repo = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
             let api_paths = <Vec<String>>::sse_decode(&mut deserializer);
             let api_destination_path = <Option<String>>::sse_decode(&mut deserializer);
             let api_title_override = <Option<String>>::sse_decode(&mut deserializer);
@@ -1707,8 +1709,22 @@ fn wire__crate__api__ingest__ingest_files_impl(
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
+                    let mut api_repo_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_repo, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_repo_guard = Some(api_repo.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_repo_guard = api_repo_guard.unwrap();
                     let output_ok = crate::api::ingest::ingest_files(
-                        api_repo,
+                        &*api_repo_guard,
                         api_paths,
                         api_destination_path,
                         api_title_override,
