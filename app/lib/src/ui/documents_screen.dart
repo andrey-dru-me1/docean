@@ -55,7 +55,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   List<String> _tags = [];
   List<String> _paths = [];
   String _query = '';
-  String? _tagFilter;
+  final Set<String> _tagFilters = {};
   String? _pathFilter;
   bool _loading = true;
   Object? _error;
@@ -134,7 +134,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   List<DocumentSummary> get _filtered {
     final q = _query.trim().toLowerCase();
     return _all.where((d) {
-      if (_tagFilter != null && !d.tags.contains(_tagFilter)) return false;
+      if (_tagFilters.isNotEmpty && !_tagFilters.any(d.tags.contains)) return false;
       if (_pathFilter != null && !d.paths.contains(_pathFilter)) return false;
       if (q.isNotEmpty &&
           !d.title.toLowerCase().contains(q) &&
@@ -169,13 +169,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         children: [
           Row(
             children: [
-              Expanded(
+              SizedBox(
+                width: 260,
                 child: TextField(
                   onChanged: (v) => setState(() => _query = v),
                   decoration: const InputDecoration(
                     labelText: 'Filter documents',
                     prefixIcon: Icon(Icons.filter_list),
                     border: OutlineInputBorder(),
+                    isDense: true,
                   ),
                 ),
               ),
@@ -203,9 +205,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   TagChip(
                     key: ValueKey('filter-$tag'),
                     label: tag,
-                    selected: _tagFilter == tag,
-                    onSelected: (v) =>
-                        setState(() => _tagFilter = v ? tag : null),
+                    selected: _tagFilters.contains(tag),
+                    onSelected: (v) => setState(() {
+                      if (v) {
+                        _tagFilters.add(tag);
+                      } else {
+                        _tagFilters.remove(tag);
+                      }
+                    }),
                   ),
               ],
             ),
