@@ -638,6 +638,67 @@ void main() {
       expect(service.suggestTagsCount, 2);
       expect(find.textContaining('0/2'), findsNothing);
     });
+
+    testWidgets(
+      'tapping a tag on a preview tile toggles the tag filter',
+      (tester) async {
+        final opened = <DocumentSummary>[];
+        final service = FakeDocumentService(
+          documents: [
+            _doc('doc-f', 'Finance report', tags: const ['finance']),
+            _doc('doc-p', 'Personal notes', tags: const ['personal']),
+            _doc('doc-b', 'Both tags', tags: const ['finance', 'personal']),
+          ],
+          tags: const ['finance', 'personal'],
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            DocumentsScreen(
+              documentService: service,
+              onOpenDocument: opened.add,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // All three documents are visible initially.
+        expect(find.text('Finance report'), findsOneWidget);
+        expect(find.text('Personal notes'), findsOneWidget);
+        expect(find.text('Both tags'), findsOneWidget);
+
+        // Tap the 'finance' tag on the first preview tile to filter.
+        await tester.tap(
+          find.byKey(const ValueKey('tile-tag-tap-finance')),
+        );
+        await tester.pumpAndSettle();
+
+        // Only documents with the 'finance' tag remain visible.
+        expect(find.text('Finance report'), findsOneWidget);
+        expect(find.text('Personal notes'), findsNothing);
+        expect(find.text('Both tags'), findsOneWidget);
+
+        // The filter bar tag chip for 'finance' is now selected.
+        expect(
+          find.widgetWithText(FilterChip, 'finance'),
+          findsOneWidget,
+        );
+
+        // Tapping the same tag on a tile again should REMOVE the filter.
+        await tester.tap(
+          find.byKey(const ValueKey('tile-tag-tap-finance')),
+        );
+        await tester.pumpAndSettle();
+
+        // All documents are visible again.
+        expect(find.text('Finance report'), findsOneWidget);
+        expect(find.text('Personal notes'), findsOneWidget);
+        expect(find.text('Both tags'), findsOneWidget);
+
+        // Tapping a tag on a tile does NOT open the document.
+        expect(opened, isEmpty);
+      },
+    );
   });
 }
 

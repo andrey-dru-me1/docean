@@ -299,6 +299,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 ? () => _toggleSelected(document.id)
                 : () => widget.onOpenDocument(document),
             onLongPress: () => _enterSelectionMode(document.id),
+            onTagTap: _toggleTagFilter,
           );
         },
       ),
@@ -327,6 +328,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   void _toggleSelected(String id) {
     setState(() {
       if (!_selected.add(id)) _selected.remove(id);
+    });
+  }
+
+  /// Toggle a tag in the filter bar: clicking a tag that is already the active
+  /// filter removes it; clicking a tag that is not active sets it as the filter.
+  void _toggleTagFilter(String tag) {
+    setState(() {
+      _tagFilter = _tagFilter == tag ? null : tag;
     });
   }
 
@@ -804,6 +813,7 @@ class _DocumentPreviewTile extends StatelessWidget {
     required this.onLongPress,
     this.selectionMode = false,
     this.selected = false,
+    this.onTagTap,
   });
 
   final DocumentSummary document;
@@ -824,6 +834,11 @@ class _DocumentPreviewTile extends StatelessWidget {
 
   /// Whether this tile's document is currently selected.
   final bool selected;
+
+  /// Called when a tag chip on the preview overlay is tapped. The argument is
+  /// the tag name. Tapping a tag toggles it in the filter bar (adds if absent,
+  /// removes if already active) without opening the document.
+  final ValueChanged<String>? onTagTap;
 
   @override
   Widget build(BuildContext context) {
@@ -886,10 +901,15 @@ class _DocumentPreviewTile extends StatelessWidget {
                   runSpacing: 4,
                   children: [
                     for (final tag in document.tags)
-                      TagChip(
-                        key: ValueKey('tile-tag-$tag'),
-                        label: tag,
-                        overlay: true,
+                      GestureDetector(
+                        key: ValueKey('tile-tag-tap-$tag'),
+                        onTap: onTagTap != null ? () => onTagTap!(tag) : null,
+                        behavior: HitTestBehavior.opaque,
+                        child: TagChip(
+                          key: ValueKey('tile-tag-$tag'),
+                          label: tag,
+                          overlay: true,
+                        ),
                       ),
                   ],
                 ),
