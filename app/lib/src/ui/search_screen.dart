@@ -279,7 +279,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         ),
                       ),
                       Text(
-                        '${(hit.score * 100).round()}%',
+                        '${((hit.score * 100).round()).clamp(0, 100)}%',
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ],

@@ -119,6 +119,47 @@ fn hybrid_search_combines_and_deduplicates() {
 }
 
 #[test]
+fn every_dto_score_is_relevance_in_0_to_1_for_all_modes() {
+    // Repeated keywords push the exact (FTS5) score > 1 under the old
+    // `exp(-rank)` mapping; unrelated vocabulary yields negative cosine under
+    // the old raw-cosine semantic mapping. Both must land in `[0, 1]` now.
+    index_doc("s1_rep", "search search search search search", &[], &[]);
+    index_doc(
+        "s1_unrelated",
+        "aardvark zephyr quixotic klaxon fjord",
+        &[],
+        &[],
+    );
+    index_doc(
+        "s1_office",
+        "office supplies and the office printer invoice",
+        &[],
+        &[],
+    );
+    index_doc("s1_cookie", "chocolate chip cookie recipe", &[], &[]);
+
+    for mode in [
+        SearchMode::Exact,
+        SearchMode::Semantic,
+        SearchMode::Hybrid,
+    ] {
+        let hits = search("office supplies", mode);
+        assert!(
+            !hits.is_empty(),
+            "mode {mode:?} should return results for 'office supplies'"
+        );
+        for h in &hits {
+            assert!(
+                (0.0..=1.0).contains(&h.score),
+                "mode {mode:?}: {} has score {} outside [0,1]",
+                h.document_id,
+                h.score
+            );
+        }
+    }
+}
+
+#[test]
 fn tag_and_path_filters_restrict_results() {
     index_doc(
         "t5_a",

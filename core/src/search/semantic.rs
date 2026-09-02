@@ -133,7 +133,11 @@ impl SearchIndex for SemanticMemorySearch {
             .vectors
             .iter()
             .map(|(id, v)| {
-                let score: f32 = v.iter().zip(&qv).map(|(a, b)| a * b).sum();
+                // Since `hash_embed` produces L2-normalized vectors, the dot
+                // product equals cosine similarity in `[-1, 1]`. Remap to a
+                // `[0, 1]` relevance score (same contract as the engine's
+                // other backends) and drop non-positive results.
+                let score = super::relevance((v.iter().zip(&qv).map(|(a, b)| a * b).sum::<f32>() + 1.0) / 2.0);
                 SearchHit {
                     document_id: id.clone(),
                     score,

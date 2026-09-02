@@ -152,11 +152,24 @@ fn compute_highlights(snippet: &str, query: &str) -> Vec<HighlightSpan> {
     spans
 }
 
+/// Clamp an arbitrary (possibly non-finite) score into the `[0, 1]` relevance
+/// contract the UI renders as a percentage.
+fn normalize_score(raw: f32) -> f32 {
+    if !raw.is_finite() {
+        return 0.0;
+    }
+    raw.clamp(0.0, 1.0)
+}
+
 /// Merge two result sets, de-duplicating by document id and keeping the higher
 /// score per document.
+///
+/// The inputs already carry `[0, 1]` relevance scores; normalize defensively so
+/// the merge preserves the contract for every returned hit.
 fn merge_hits(a: Vec<SearchHit>, b: Vec<SearchHit>) -> Vec<SearchHit> {
     let mut map: HashMap<String, SearchHit> = HashMap::new();
-    for hit in a.into_iter().chain(b) {
+    for mut hit in a.into_iter().chain(b) {
+        hit.score = normalize_score(hit.score);
         map.entry(hit.document_id.clone())
             .and_modify(|existing| {
                 if hit.score > existing.score {
@@ -182,7 +195,9 @@ fn to_dto(
     let snippet = hit.snippet.clone().unwrap_or_default();
     SearchHitDto {
         document_id: hit.document_id.clone(),
-        score: hit.score,
+        // The UI renders the score as a percentage, so enforce the `[0, 1]`
+        // relevance contract at the FFI boundary (guards non-finite values too).
+        score: normalize_score(hit.score),
         snippet: snippet.clone(),
         highlights: compute_highlights(&snippet, query),
         tags: meta

@@ -30,6 +30,21 @@ pub use fts::{FtsError, FtsHit, FtsIndex};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+/// Squash any unbounded similarity/rank metric into a relevance score in
+/// `[0, 1]` (the UI renders it as a percentage via `score * 100`).
+///
+/// The search backends give scores on incompatible scales (FTS5 BM25-like rank
+/// and raw cosine similarity), so every public entry point funnels its raw
+/// score through this helper to guarantee the contract: `0.0 <= score <= 1.0`.
+/// It also guards against `NaN` (e.g. FTS5 emits `FloatRange` sentinels) by
+/// mapping non-finite inputs to `0.0`.
+pub(crate) fn relevance(raw: f32) -> f32 {
+    if !raw.is_finite() {
+        return 0.0;
+    }
+    raw.clamp(0.0, 1.0)
+}
+
 mod near_dup;
 
 pub use near_dup::{
@@ -129,7 +144,7 @@ impl SearchIndex for MemorySearch {
             .map(|(id, body)| {
                 let body_terms = MemorySearch::tokenize(body);
                 let overlap = qterms.iter().filter(|t| body_terms.contains(t)).count();
-                let score = overlap as f32 / qterms.len() as f32;
+                let score = relevance(overlap as f32 / qterms.len() as f32);
                 SearchHit {
                     document_id: id.clone(),
                     score,
@@ -246,13 +261,17 @@ impl SearchEngine {
     /// Exact full-text search (FTS5).
     pub fn search_exact(&self, query: &str, limit: usize) -> anyhow::Result<Vec<SearchHit>> {
         let hits = self.fts.search(query, limit)?;
-        // FTS5 `rank` is negative BM25 (closer to 0 = better); map to a
-        // decreasingly relevant positive score.
+        // FTS5 `rank` is negative BM25 (more negative = stronger match), so
+        // `-h.score` is the positive BM25 "goodness". Feed it through a sigmoid
+        // to bound the score to `[0, 1]`: `1 / (1 + exp(-bm25))` ==
+        // `1 / (1 + exp(h.score))`. Strong matches land near 1.0, weak near 0.5,
+        // preserving the FTS5 ordering. FTS5 emits a `FloatRange` sentinel (NaN)
+        // for perfect matches, which `relevance` collapses to the clamped value.
         Ok(hits
             .into_iter()
             .map(|h| SearchHit {
                 document_id: h.document_id,
-                score: (-h.score).exp(),
+                score: relevance(1.0 / (1.0 + h.score.exp())),
                 snippet: h.snippet.map(strip_marks),
             })
             .collect())
@@ -260,6 +279,10 @@ impl SearchEngine {
 
     /// Semantic search: embed the query and return the nearest chunks by cosine
     /// similarity with snippets.
+    ///
+    /// Raw cosine similarity lives in `[-1, 1]`; remap it to `[0, 1]` (the UI
+    /// renders the score as a percentage), where `0.0` is maximally dissimilar
+    /// and `1.0` is identical.
     pub fn search_semantic(&self, query: &str, limit: usize) -> anyhow::Result<Vec<SearchHit>> {
         let qvec = embed(query);
         Ok(self
@@ -268,7 +291,7 @@ impl SearchEngine {
             .into_iter()
             .map(|h| SearchHit {
                 document_id: h.document_id,
-                score: h.score,
+                score: relevance((h.score + 1.0) / 2.0),
                 snippet: Some(h.snippet),
             })
             .collect())
@@ -333,15 +356,25 @@ impl SearchIndex for SearchEngine {
 
 /// Merge exact and semantic hits, preferring exact matches but backfilling with
 /// semantic when under `limit`.
+///
+/// Both inputs already carry `[0, 1]` relevance scores, but clamp defensively so
+/// the merged result preserves the normalized contract for every returned hit.
 fn merge(exact: Vec<SearchHit>, semantic: Vec<SearchHit>, limit: usize) -> Vec<SearchHit> {
-    let mut out = exact;
+    let mut out = exact
+        .into_iter()
+        .map(|mut h| {
+            h.score = relevance(h.score);
+            h
+        })
+        .collect::<Vec<_>>();
     let seen: std::collections::HashSet<DocumentId> =
         out.iter().map(|h| h.document_id.clone()).collect();
-    for h in semantic {
+    for mut h in semantic {
         if out.len() >= limit {
             break;
         }
         if !seen.contains(&h.document_id) {
+            h.score = relevance(h.score);
             out.push(h);
         }
     }
@@ -413,5 +446,81 @@ mod tests {
             .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].document_id, "x");
+    }
+
+    #[test]
+    fn engine_scores_are_relevance_in_0_to_1_for_all_modes() {
+        let mut e = SearchEngine::new();
+        // Repeated keywords drive FTS5 BM25 rank far enough negative that the
+        // old `exp(-rank)` mapping produced scores > 1 (e.g. ~2.14 or worse).
+        e.index_document(&"rep".to_owned(), "search search search search search")
+            .unwrap();
+        // Cosine similarity for the unrelated keyword below is strongly
+        // negative; the old raw-cosine mapping surfaced negative percentages.
+        e.index_document(
+            &"unrelated".to_owned(),
+            "aardvark zephyr quixotic klaxon fjord",
+        )
+        .unwrap();
+        e.index_document(
+            &"office".to_owned(),
+            "office supplies and the office printer invoice",
+        )
+        .unwrap();
+        e.index_document(&"cookie".to_owned(), "chocolate chip cookie recipe")
+            .unwrap();
+
+        let exact = e.search_exact("search", 10).unwrap();
+        assert!(
+            exact.iter().any(|h| h.document_id == "rep"),
+            "repeated-term doc should be the top exact hit"
+        );
+        let sem = e.search_semantic("office supplies", 10).unwrap();
+        assert!(
+            sem.iter().any(|h| h.document_id == "office"),
+            "semantic should rank the office doc first for 'office supplies'"
+        );
+        let hybrid = e
+            .search(
+                &Query::Hybrid {
+                    text: "office".to_owned(),
+                    semantic: "office supplies".to_owned(),
+                },
+                10,
+            )
+            .unwrap();
+        assert!(
+            hybrid.iter().any(|h| h.document_id == "office"),
+            "hybrid should include the relevant office doc"
+        );
+
+        for (label, hits) in [
+            ("exact", exact),
+            ("semantic", sem),
+            ("hybrid", hybrid),
+        ] {
+            assert!(!hits.is_empty(), "{label} query returned no hits");
+            for h in &hits {
+                assert!(
+                    (0.0..=1.0).contains(&h.score),
+                    "{label} hit {} has score {} outside [0,1]",
+                    h.document_id,
+                    h.score
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn relevance_normalizes_finite_and_non_finite_inputs() {
+        for raw in [-2.0f32, -1.0, 0.0, 0.5, 1.0, 2.0, 1e9] {
+            let s = relevance(raw);
+            assert!((0.0..=1.0).contains(&s), "raw {raw} -> {s}");
+        }
+        // NaN (FTS5 `FloatRange` sentinel for perfect matches) and infinities
+        // must not leak out of the score contract.
+        assert_eq!(relevance(f32::NAN), 0.0);
+        assert_eq!(relevance(f32::INFINITY), 0.0);
+        assert_eq!(relevance(f32::NEG_INFINITY), 0.0);
     }
 }
