@@ -494,11 +494,7 @@ mod tests {
             "hybrid should include the relevant office doc"
         );
 
-        for (label, hits) in [
-            ("exact", exact),
-            ("semantic", sem),
-            ("hybrid", hybrid),
-        ] {
+        for (label, hits) in [("exact", exact), ("semantic", sem), ("hybrid", hybrid)] {
             assert!(!hits.is_empty(), "{label} query returned no hits");
             for h in &hits {
                 assert!(

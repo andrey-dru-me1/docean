@@ -9,7 +9,9 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'storage.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_corpus`
+// These functions are ignored because they are not marked as `pub`: `any`, `apply_plan`, `auto_org_reorganize_one_impl`, `build_corpus`, `flag_is_set`, `organize_document`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ApplyCounts`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
 
 /// Run the deterministic (non-generative) organizer on `document_id`, returning
 /// the [`OrgPlan`] of suggested tags, placement, rename, and dedup.
@@ -18,6 +20,48 @@ OrgPlan autoOrgOrganize({
   required String documentId,
   required OrgConfig config,
 }) => RustLib.instance.api.crateApiAutoOrgAutoOrgOrganize(
+  repo: repo,
+  documentId: documentId,
+  config: config,
+);
+
+/// Re-run the deterministic auto-organization pass across **all** documents,
+/// preserving every user's manual edits.
+///
+/// Iterates [`DocumentStore::query`], runs the same [`DeterministicOrganizer`]
+/// as ingestion, and applies the suggestion through the *normal* update paths:
+///
+/// * title applied only when `extra['title_manual']` is **not** truthy;
+/// * tags applied only when `extra['tags_manual']` is **not** truthy;
+/// * placement always applied (a hierarchy move is not part of the manual
+///   title/tag contract).
+///
+/// Each applied change is written via [`DocumentRepository::update_title`] /
+/// [`DocumentRepository::set_tags`] and the fresh tags/paths are mirrored into
+/// the in-memory search index via [`crate::api::search::search_set_metadata`]
+/// (that mirror also happens inside the two update paths). The pass needs **no
+/// AI provider** — it is the same deterministic pipeline used at ingestion.
+OrgBulkStats autoOrgReorganizeAll({
+  required DocumentRepository repo,
+  required OrgConfig config,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgReorganizeAll(
+  repo: repo,
+  config: config,
+);
+
+/// Re-run the deterministic auto-organization pass on one document, honoring
+/// the `title_manual` / `tags_manual` flags (a user's hand-edited title or tags
+/// are never overwritten). Returns the resulting applied [`OrgPlan`].
+///
+/// Bridges the per-file "Suggest title & tags" button in the document detail
+/// view: instead of applying suggestions naively on the Dart side, the button
+/// can call this and let the core apply only the parts the user has not
+/// manually set, then refresh the search metadata.
+OrgPlan autoOrgReorganizeOne({
+  required DocumentRepository repo,
+  required String documentId,
+  required OrgConfig config,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgReorganizeOne(
   repo: repo,
   documentId: documentId,
   config: config,
@@ -44,3 +88,33 @@ OrgConfig autoOrgDefaultConfig() =>
 /// A convenience default [`RuleSet`] (empty placement rules + `/inbox` fallback).
 RuleSet autoOrgDefaultRules() =>
     RustLib.instance.api.crateApiAutoOrgAutoOrgDefaultRules();
+
+/// The aggregate outcome of a bulk re-organization pass over the whole library.
+class OrgBulkStats {
+  /// Documents examined by the pass.
+  final BigInt total;
+
+  /// Documents whose tags/title/placement changed as a result.
+  final BigInt updated;
+
+  /// Documents left untouched (already matching, or manual-edit flags set).
+  final BigInt skipped;
+
+  const OrgBulkStats({
+    required this.total,
+    required this.updated,
+    required this.skipped,
+  });
+
+  @override
+  int get hashCode => total.hashCode ^ updated.hashCode ^ skipped.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OrgBulkStats &&
+          runtimeType == other.runtimeType &&
+          total == other.total &&
+          updated == other.updated &&
+          skipped == other.skipped;
+}

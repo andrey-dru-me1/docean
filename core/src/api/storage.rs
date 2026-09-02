@@ -13,7 +13,10 @@ use crate::storage::{DocumentQuery, DocumentStore, SqliteDocumentStore};
 ///
 /// Wraps [`SqliteDocumentStore`] behind an `Arc<Mutex<_>>` so it can be shared
 /// and called from the single-threaded Dart isolate without `&mut self` across
-/// the FFI boundary.
+/// the FFI boundary. `Clone` is a cheap handle copy onto the same underlying
+/// store (used internally so consumers can keep using a repository after
+/// handing one to a consuming bridge function).
+#[derive(Clone)]
 pub struct DocumentRepository {
     inner: Arc<Mutex<SqliteDocumentStore>>,
 }
@@ -154,9 +157,63 @@ impl DocumentRepository {
 
     /// Replace the full tag set on a document (creating tag-catalog entries as
     /// needed) so the UI can add/remove tags without re-putting raw bytes.
+    ///
+    /// This is a *user* tag edit, so the persisted `extra` map is marked with
+    /// `tags_manual = "true"`. Bulk auto-organization therefore preserves the
+    /// user's assignment instead of clobbering it.
     pub fn set_tags(&self, document_id: String, tags: Vec<String>) -> Result<(), String> {
-        self.store()?
-            .set_tags(&document_id, &tags)
-            .map_err(|e| e.to_string())
+        let mut doc = self.get(document_id.clone())?;
+        doc.tags = tags.clone();
+        doc.extra
+            .insert("tags_manual".to_owned(), "true".to_owned());
+        doc.updated_at_ms = crate::api::storage::now_ms();
+        let bytes = self.read_bytes(document_id.clone())?;
+        self.put(doc, bytes)?;
+
+        // Mirror the tags (and the unchanged paths) into the in-memory search
+        // metadata so results can be filtered by them immediately.
+        let paths = self
+            .paths_of(document_id.clone())?
+            .into_iter()
+            .map(|p| p.path)
+            .collect();
+        crate::api::search::search_set_metadata(document_id, tags, paths);
+        Ok(())
     }
+
+    /// Rename a document through the repository (`repo.put`, reusing the stored
+    /// raw bytes so the rename never depends on re-ingestion).
+    ///
+    /// This is a *user* rename, so the persisted `extra` map is marked with
+    /// `title_manual = "true"`. Bulk auto-organization therefore preserves the
+    /// user's title instead of clobbering it.
+    pub fn update_title(&self, document_id: String, title: String) -> Result<(), String> {
+        let mut doc = self.get(document_id.clone())?;
+        doc.title = title;
+        doc.extra
+            .insert("title_manual".to_owned(), "true".to_owned());
+        doc.updated_at_ms = crate::api::storage::now_ms();
+        let tags = doc.tags.clone();
+        let bytes = self.read_bytes(document_id.clone())?;
+        self.put(doc, bytes)?;
+
+        // Mirror the (unchanged) tags and paths into the search metadata so the
+        // renamed document stays filterable with its existing assignments.
+        let paths = self
+            .paths_of(document_id.clone())?
+            .into_iter()
+            .map(|p| p.path)
+            .collect();
+        crate::api::search::search_set_metadata(document_id, tags, paths);
+        Ok(())
+    }
+}
+
+/// Current wall-clock time in milliseconds (shared by metadata update paths).
+pub(crate) fn now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }

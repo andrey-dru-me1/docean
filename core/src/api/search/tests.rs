@@ -138,11 +138,7 @@ fn every_dto_score_is_relevance_in_0_to_1_for_all_modes() {
     );
     index_doc("s1_cookie", "chocolate chip cookie recipe", &[], &[]);
 
-    for mode in [
-        SearchMode::Exact,
-        SearchMode::Semantic,
-        SearchMode::Hybrid,
-    ] {
+    for mode in [SearchMode::Exact, SearchMode::Semantic, SearchMode::Hybrid] {
         let hits = search("office supplies", mode);
         assert!(
             !hits.is_empty(),

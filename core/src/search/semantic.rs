@@ -137,7 +137,9 @@ impl SearchIndex for SemanticMemorySearch {
                 // product equals cosine similarity in `[-1, 1]`. Remap to a
                 // `[0, 1]` relevance score (same contract as the engine's
                 // other backends) and drop non-positive results.
-                let score = super::relevance((v.iter().zip(&qv).map(|(a, b)| a * b).sum::<f32>() + 1.0) / 2.0);
+                let score = super::relevance(
+                    (v.iter().zip(&qv).map(|(a, b)| a * b).sum::<f32>() + 1.0) / 2.0,
+                );
                 SearchHit {
                     document_id: id.clone(),
                     score,

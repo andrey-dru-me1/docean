@@ -207,7 +207,9 @@ void main() {
         await tester.tap(find.text('Suggest title & tags'));
         await tester.pumpAndSettle();
 
-        expect(service.suggestCount, 1);
+        // The per-file button now reuses the core re-organize-one path, which
+        // honors the manual-edit flags internally.
+        expect(service.reorganizeOneCount, 1);
         expect(service.updateTitleCount, 1);
         expect(service.lastTitle, 'Suggested title');
         expect(service.setTagsCount, 1);
@@ -244,7 +246,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // The suggestion ran, but the title was NOT overwritten.
-        expect(service.suggestCount, 1);
+        expect(service.reorganizeOneCount, 1);
         expect(service.updateTitleCount, 0);
         expect(service.lastTitle, isNull);
         expect(find.text('User title'), findsOneWidget);
@@ -278,7 +280,7 @@ void main() {
       await tester.tap(find.text('Suggest title & tags'));
       await tester.pumpAndSettle();
 
-      expect(service.suggestCount, 1);
+      expect(service.reorganizeOneCount, 1);
       expect(service.updateTitleCount, 1);
       expect(service.lastTitle, 'Suggested title');
       // Tags were NOT overwritten.

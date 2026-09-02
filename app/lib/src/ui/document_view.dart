@@ -226,48 +226,25 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     }
   }
 
-  /// Runs the auto-organization bridge and applies the suggestion, honoring the
-  /// manual-edit flags: a title is applied only when the user has *not*
-  /// manually renamed it, and tags only when the user has *not* manually tagged
-  /// the document. When the flags are absent the suggestion is applied.
+  /// Runs the auto-organization bridge through the per-file re-organization
+  /// variant ([DocumentService.reorganizeOne]), which honors the
+  /// `title_manual`/`tags_manual` flags *inside the core*: a title is applied
+  /// only when the user has *not* manually renamed it, and tags only when the
+  /// user has *not* manually tagged the document. The core applies the changes
+  /// and refreshes the search metadata; this view then re-reads the document
+  /// so the UI reflects whatever was applied.
   Future<void> _suggestMetadata() async {
     if (_suggesting) return;
     setState(() => _suggesting = true);
     try {
-      final plan = await widget.documentService.suggestMetadata(
-        widget.document.id,
-      );
-      if (!mounted) return;
-      // Re-read fresh metadata: the flags may have been set since the widget
-      // was built (e.g. the companion task persisted a manual edit).
-      final fresh = await widget.documentService.getDocument(
-        widget.document.id,
-      );
-      if (!mounted) return;
-
-      final applyTitle =
-          !fresh.titleManuallyEdited &&
-          plan.title != null &&
-          plan.title!.trim().isNotEmpty;
-      final applyTags = !fresh.tagsManuallyEdited && plan.tags.isNotEmpty;
-
-      if (applyTitle) {
-        await widget.documentService.updateTitle(
-          widget.document.id,
-          plan.title!.trim(),
-        );
-      }
-      if (applyTags) {
-        await widget.documentService.setTags(
-          widget.document.id,
-          List.of(plan.tags),
-        );
-      }
-
+      await widget.documentService.reorganizeOne(widget.document.id);
       final refreshed = await widget.documentService.getDocument(
         widget.document.id,
       );
       if (!mounted) return;
+      final changed =
+          refreshed.title != _doc.title ||
+          refreshed.tags.join('\u0000') != _doc.tags.join('\u0000');
       setState(() {
         _doc = refreshed;
         _titleController.text = refreshed.title;
@@ -276,7 +253,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            applyTitle || applyTags
+            changed
                 ? 'Suggested title & tags applied'
                 : 'No new suggestions to apply',
           ),

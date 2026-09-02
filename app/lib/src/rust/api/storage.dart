@@ -8,7 +8,8 @@ import '../frb_generated.dart';
 import '../storage.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `store`
+// These functions are ignored because they are not marked as `pub`: `now_ms`, `store`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
 
 /// Open (or create) a document repository rooted at `root` on disk.
 Future<DocumentRepository> openRepository({required String root}) =>
@@ -63,10 +64,22 @@ abstract class DocumentRepository implements RustOpaqueInterface {
 
   /// Replace the full tag set on a document (creating tag-catalog entries as
   /// needed) so the UI can add/remove tags without re-putting raw bytes.
+  ///
+  /// This is a *user* tag edit, so the persisted `extra` map is marked with
+  /// `tags_manual = "true"`. Bulk auto-organization therefore preserves the
+  /// user's assignment instead of clobbering it.
   Future<void> setTags({
     required String documentId,
     required List<String> tags,
   });
 
   Future<void> unassignPath({required String documentId, required String path});
+
+  /// Rename a document through the repository (`repo.put`, reusing the stored
+  /// raw bytes so the rename never depends on re-ingestion).
+  ///
+  /// This is a *user* rename, so the persisted `extra` map is marked with
+  /// `title_manual = "true"`. Bulk auto-organization therefore preserves the
+  /// user's title instead of clobbering it.
+  Future<void> updateTitle({required String documentId, required String title});
 }

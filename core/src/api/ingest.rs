@@ -270,7 +270,12 @@ mod tests {
         let mut store = repo.store().unwrap();
         let info = FileInfo::from_path(&path).unwrap();
         let ids = IngestPipeline::new()
-            .ingest(&mut *store, &[info], &Default::default(), Some(&mut NoopSink))
+            .ingest(
+                &mut *store,
+                &[info],
+                &Default::default(),
+                Some(&mut NoopSink),
+            )
             .unwrap();
         drop(store);
 
@@ -312,7 +317,10 @@ mod tests {
 
         // The original source file must NOT have been renamed on disk.
         assert!(path.exists(), "source file must not be renamed/removed");
-        assert_eq!(fs::read_to_string(&path).unwrap(), "quarterly invoice summary for acme corporation total due payable");
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "quarterly invoice summary for acme corporation total due payable"
+        );
 
         // `ingest_files` re-indexes the persisted store after organizing.
         crate::api::search::index_document_from_repository(&repo, id).unwrap();

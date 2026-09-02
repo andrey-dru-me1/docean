@@ -9,7 +9,12 @@
 /// native library.
 library;
 
-import '../rust/api/auto_org.dart' show autoOrgDefaultConfig, autoOrgOrganize;
+import '../rust/api/auto_org.dart'
+    show
+        autoOrgDefaultConfig,
+        autoOrgOrganize,
+        autoOrgReorganizeAll,
+        autoOrgReorganizeOne;
 import '../rust/api/search.dart' as search_bridge;
 import '../rust/api/storage.dart' show DocumentRepository;
 import '../rust/domain.dart' show Document, NodeKind;
@@ -51,6 +56,18 @@ abstract interface class DocumentService {
   /// `title_manual`/`tags_manual` flags on the document's `extra` metadata.
   Future<SuggestionPlan> suggestMetadata(String id);
 
+  /// Re-run the deterministic auto-organization pass across **all** documents,
+  /// preserving every user's manual edits (the `title_manual` / `tags_manual`
+  /// flags are honored inside the core, so hand-edited metadata is never
+  /// clobbered). Returns aggregate counts; the pass needs no AI provider.
+  Future<ReorganizeResult> reorganizeAll();
+
+  /// Re-run the deterministic auto-organization pass on a single document,
+  /// honoring the manual-edit flags exactly like the bulk pass. Returns the
+  /// resulting applied plan. Bridges the per-file "Suggest title & tags" button
+  /// so suggestions are applied by the core without clobbering manual edits.
+  Future<SuggestionPlan> reorganizeOne(String id);
+
   /// All tag names known to the repository (`repo.listTags`).
   Future<List<String>> listTags();
 
@@ -81,6 +98,27 @@ class SuggestionPlan {
   /// Whether anything meaningful was suggested at all (a non-blank title or at
   /// least one tag).
   bool get isEmpty => (title == null || title!.trim().isEmpty) && tags.isEmpty;
+}
+
+/// The aggregate outcome of a bulk re-organization pass (`org_bulk_stats`).
+class ReorganizeResult {
+  const ReorganizeResult({
+    required this.total,
+    required this.updated,
+    required this.skipped,
+  });
+
+  /// Documents examined by the pass.
+  final int total;
+
+  /// Documents whose tags/title/placement changed as a result.
+  final int updated;
+
+  /// Documents left untouched (already matching, or manual-edit flags set).
+  final int skipped;
+
+  /// Whether anything was actually changed by the pass.
+  bool get changedAnything => updated > 0;
 }
 
 /// The default implementation backed by the Rust bridge.
@@ -195,6 +233,38 @@ class BridgeDocumentService implements DocumentService {
     return SuggestionPlan(title: plan.suggestedTitle, tags: List.of(plan.tags));
   }
 
+  /// Re-run the deterministic auto-organization pass across **all** documents,
+  /// preserving every user's manual edits (the core honors the
+  /// `title_manual`/`tags_manual` flags and refreshes the search metadata).
+  @override
+  Future<ReorganizeResult> reorganizeAll() async {
+    final repo = await _repo();
+    final stats = autoOrgReorganizeAll(
+      repo: repo,
+      config: autoOrgDefaultConfig(),
+    );
+    return ReorganizeResult(
+      total: stats.total.toInt(),
+      updated: stats.updated.toInt(),
+      skipped: stats.skipped.toInt(),
+    );
+  }
+
+  /// Re-run the deterministic auto-organization pass on a single document,
+  /// honoring the manual-edit flags. Returns the resulting applied plan.
+  @override
+  Future<SuggestionPlan> reorganizeOne(String id) async {
+    final repo = await _repo();
+    final plan = autoOrgReorganizeOne(
+      repo: repo,
+      documentId: id,
+      config: autoOrgDefaultConfig(),
+    );
+    // The core applies only the parts the user has not manually set; the
+    // returned plan is the (possibly partially applied) suggestion.
+    return SuggestionPlan(title: plan.suggestedTitle, tags: List.of(plan.tags));
+  }
+
   /// A copy of [doc] with a new title and a refreshed `updated_at` timestamp.
   Document _withTitle(Document doc, String title) => Document(
     id: doc.id,
@@ -298,6 +368,20 @@ class FakeDocumentService implements DocumentService {
   /// How many times [suggestMetadata] has been called (auto-suggest assertion).
   int suggestCount = 0;
 
+  /// How many times [reorganizeAll] has been called (Settings assertion).
+  int reorganizeAllCount = 0;
+
+  /// How many times [reorganizeOne] has been called (detail-button assertion).
+  int reorganizeOneCount = 0;
+
+  /// The result returned by [reorganizeAll] (Settings assertion). Defaults to
+  /// a no-op pass so tests can count calls without loading the native library.
+  ReorganizeResult reorganizeResult = const ReorganizeResult(
+    total: 0,
+    updated: 0,
+    skipped: 0,
+  );
+
   DocumentSummary _byId(String id) => documents.firstWhere(
     (d) => d.id == id,
     orElse: () => throw StateError('document $id not found'),
@@ -356,6 +440,30 @@ class FakeDocumentService implements DocumentService {
     suggestCount++;
     _byId(id); // Throw if the id is unknown, mirroring the repository.
     final plan = suggestion ?? const SuggestionPlan(title: null, tags: []);
+    return SuggestionPlan(title: plan.title, tags: List.of(plan.tags));
+  }
+
+  @override
+  Future<ReorganizeResult> reorganizeAll() async {
+    reorganizeAllCount++;
+    return reorganizeResult;
+  }
+
+  @override
+  Future<SuggestionPlan> reorganizeOne(String id) async {
+    reorganizeOneCount++;
+    final doc = _byId(id);
+    final plan = suggestion ?? const SuggestionPlan(title: null, tags: []);
+    // Mirror the core's manual-edit contract: apply only what the user has not
+    // explicitly set by hand.
+    if (!doc.tagsManuallyEdited && plan.tags.isNotEmpty) {
+      await setTags(id, List.of(plan.tags));
+    }
+    if (!doc.titleManuallyEdited &&
+        plan.title != null &&
+        plan.title!.trim().isNotEmpty) {
+      await updateTitle(id, plan.title!.trim());
+    }
     return SuggestionPlan(title: plan.title, tags: List.of(plan.tags));
   }
 

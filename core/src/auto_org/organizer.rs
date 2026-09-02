@@ -164,7 +164,8 @@ impl DeterministicOrganizer {
         // needs >= 2 docs and k-NN needs already-tagged neighbors). Non-empty
         // tags are required by the ingestion auto-organization contract.
         if tags.is_empty() {
-            let kw = keywords::extract_keywords(&doc.text, Some(&model), None, keywords::DEFAULT_TOP_K);
+            let kw =
+                keywords::extract_keywords(&doc.text, Some(&model), None, keywords::DEFAULT_TOP_K);
             for term in kw {
                 if tags.len() >= 8 {
                     break;

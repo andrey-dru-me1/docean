@@ -17,6 +17,7 @@ import 'ui/documents_screen.dart' show DocumentsScreen;
 import 'ui/ingest_panel.dart' show PathPicker;
 import 'ui/provider_screen.dart' show ProviderScreen;
 import 'ui/search_screen.dart' show DocumentOpener, SearchScreen;
+import 'ui/settings_screen.dart' show SettingsScreen;
 
 /// Root widget. All services are injectable so widget tests can run headlessly
 /// without the native library; the app uses the bridge-backed defaults.
@@ -229,6 +230,15 @@ class _MainShellState extends State<MainShell> {
     ).push(MaterialPageRoute<void>(builder: (_) => const P2pSyncScreen()));
   }
 
+  /// Opens the Settings screen (bulk auto-organization + manual-edit actions).
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(documentService: widget.documentService),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
@@ -283,6 +293,11 @@ class _MainShellState extends State<MainShell> {
               tooltip: 'P2P & Sync',
               onPressed: _openP2p,
               icon: const Icon(Icons.swap_horiz),
+            ),
+            IconButton(
+              tooltip: 'Settings',
+              onPressed: _openSettings,
+              icon: const Icon(Icons.settings_outlined),
             ),
             ?healthChip,
           ],
@@ -343,6 +358,11 @@ class _MainShellState extends State<MainShell> {
             tooltip: 'P2P & Sync',
             onPressed: _openP2p,
             icon: const Icon(Icons.swap_horiz),
+          ),
+          IconButton(
+            tooltip: 'Settings',
+            onPressed: _openSettings,
+            icon: const Icon(Icons.settings_outlined),
           ),
           ?healthChip,
         ],

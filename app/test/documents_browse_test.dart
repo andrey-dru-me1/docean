@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:docer/src/features/document_service.dart'
-    show DocumentService, FakeDocumentService, SuggestionPlan;
+    show DocumentService, FakeDocumentService, ReorganizeResult, SuggestionPlan;
 import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
 import 'package:docer/src/ui/documents_screen.dart' show DocumentsScreen;
 
@@ -180,6 +180,14 @@ class _FailingDocumentService implements DocumentService {
 
   @override
   Future<SuggestionPlan> suggestMetadata(String id) async =>
+      throw StateError('repository unavailable');
+
+  @override
+  Future<ReorganizeResult> reorganizeAll() async =>
+      throw StateError('repository unavailable');
+
+  @override
+  Future<SuggestionPlan> reorganizeOne(String id) async =>
       throw StateError('repository unavailable');
 
   @override

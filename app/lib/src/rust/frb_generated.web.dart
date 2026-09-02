@@ -324,6 +324,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
   @protected
+  OrgBulkStats dco_decode_org_bulk_stats(dynamic raw);
+
+  @protected
   OrgConfig dco_decode_org_config(dynamic raw);
 
   @protected
@@ -754,6 +757,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  OrgBulkStats sse_decode_org_bulk_stats(SseDeserializer deserializer);
 
   @protected
   OrgConfig sse_decode_org_config(SseDeserializer deserializer);
@@ -1278,6 +1284,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_org_bulk_stats(OrgBulkStats self, SseSerializer serializer);
 
   @protected
   void sse_encode_org_config(OrgConfig self, SseSerializer serializer);

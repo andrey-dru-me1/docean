@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:docer/src/app.dart';
 import 'package:docer/src/features/document_service.dart'
     show FakeDocumentService;
+import 'package:docer/src/ui/settings_screen.dart' show SettingsScreen;
 import 'package:docer/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
 import 'package:docer/src/rust/api/ai.dart' show ActiveProviderInfo;
@@ -164,4 +165,26 @@ void main() {
       expect(find.text('Suggest title & tags'), findsNothing);
     },
   );
+
+  testWidgets('Settings is reachable from the shell', (
+    WidgetTester tester,
+  ) async {
+    final docs = FakeDocumentService();
+    await tester.pumpWidget(
+      DocerApp(
+        healthCheck: _fakeStatus,
+        providerService: _FakeProviderService(),
+        documentService: docs,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The app bar has a settings affordance.
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+
+    // The Settings screen is shown with the bulk re-organization action.
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.text('Re-organize all documents'), findsOneWidget);
+  });
 }

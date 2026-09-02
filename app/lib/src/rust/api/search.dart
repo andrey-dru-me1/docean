@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'storage.dart';
 
-// These functions are ignored because they are not marked as `pub`: `compute_highlights`, `dispatch_to_dto`, `engine`, `find_offsets`, `index_document_from_repository`, `merge_hits`, `metadata`, `shared_near_dup_index`, `to_dto`
+// These functions are ignored because they are not marked as `pub`: `compute_highlights`, `dispatch_to_dto`, `engine`, `find_offsets`, `index_document_from_repository`, `merge_hits`, `metadata`, `normalize_score`, `shared_near_dup_index`, `to_dto`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Index (or re-index) a document's extracted text across exact, semantic, and
