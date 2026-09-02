@@ -390,11 +390,46 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('select-documents')));
       await tester.pumpAndSettle();
 
+      // Deselect one so the toolbar button reads "Select all" (not "Clear").
+      await tester.tap(find.byKey(const ValueKey('select-check-f-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+
       await tester.tap(find.byKey(const ValueKey('select-all')));
       await tester.pumpAndSettle();
 
       // Only the filtered docs are selected (the 'personal' one is hidden).
       expect(find.text('2 selected'), findsOneWidget);
+    });
+
+    testWidgets('Clear deselects everything after Select all', (tester) async {
+      final service = FakeDocumentService(
+        documents: [
+          _doc('c-1', 'Clear one'),
+          _doc('c-2', 'Clear two'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        _wrap(
+          DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Enter selection mode with everything selected.
+      await tester.tap(find.byKey(const ValueKey('select-documents')));
+      await tester.pumpAndSettle();
+      expect(find.text('2 selected'), findsOneWidget);
+
+      // The toolbar button now reads "Clear"; tapping it deselects everything.
+      expect(find.text('Clear'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('select-all')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('0 selected'), findsOneWidget);
+      expect(find.text('Clear'), findsNothing);
+      expect(find.text('Select all'), findsOneWidget);
     });
 
     testWidgets('bulk add/remove tag touches every selected document', (
@@ -415,8 +450,6 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('select-documents')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('select-all')));
       await tester.pumpAndSettle();
       expect(find.text('2 selected'), findsOneWidget);
 
@@ -516,8 +549,6 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('select-documents')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('select-all')));
-      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('bulk-suggest-tags')));
       await tester.pumpAndSettle();
@@ -556,8 +587,6 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('select-documents')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('select-all')));
-      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('bulk-suggest-title')));
       await tester.pumpAndSettle();
@@ -590,8 +619,6 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('select-documents')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('select-all')));
-      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('bulk-reorganize')));
       await tester.pumpAndSettle();
@@ -618,8 +645,6 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('select-documents')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('select-all')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('bulk-suggest-tags')));

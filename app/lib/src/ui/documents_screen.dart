@@ -350,6 +350,18 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     });
   }
 
+  /// Toggle the current filtered selection: when every filtered document is
+  /// already selected, deselect them all ("Clear"); otherwise select them all.
+  void _toggleSelectAll() {
+    setState(() {
+      if (_allFilteredSelected) {
+        _selected.removeWhere(_filtered.map((d) => d.id).toSet().contains);
+      } else {
+        _selected.addAll(_filtered.map((d) => d.id));
+      }
+    });
+  }
+
   /// Whether _every_ currently-filtered document is selected.
   bool get _allFilteredSelected {
     final filtered = _filtered;
@@ -386,7 +398,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               const Spacer(),
               TextButton.icon(
                 key: const ValueKey('select-all'),
-                onPressed: _busy ? null : _selectAllFiltered,
+                onPressed: _busy ? null : _toggleSelectAll,
                 icon: Icon(
                   _allFilteredSelected ? Icons.deselect : Icons.select_all,
                   size: 18,
