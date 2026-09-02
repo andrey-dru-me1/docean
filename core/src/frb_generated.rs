@@ -1700,15 +1700,34 @@ fn wire__crate__api__auto_org__auto_org_generate_filename_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_repo = <DocumentRepository>::sse_decode(&mut deserializer);
+            let api_repo = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
             let api_document_id = <String>::sse_decode(&mut deserializer);
             let api_model = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
+                        let mut api_repo_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_repo, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_repo_guard =
+                                        Some(api_repo.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_repo_guard = api_repo_guard.unwrap();
                         let output_ok = crate::api::auto_org::auto_org_generate_filename(
-                            api_repo,
+                            &*api_repo_guard,
                             api_document_id,
                             api_model,
                         )
@@ -1742,13 +1761,32 @@ fn wire__crate__api__auto_org__auto_org_organize_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_repo = <DocumentRepository>::sse_decode(&mut deserializer);
+            let api_repo = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
             let api_document_id = <String>::sse_decode(&mut deserializer);
             let api_config = <crate::auto_org::config::OrgConfig>::sse_decode(&mut deserializer);
             deserializer.end();
             transform_result_sse::<_, String>((move || {
-                let output_ok =
-                    crate::api::auto_org::auto_org_organize(api_repo, api_document_id, api_config)?;
+                let mut api_repo_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_repo, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_repo_guard = Some(api_repo.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_repo_guard = api_repo_guard.unwrap();
+                let output_ok = crate::api::auto_org::auto_org_organize(
+                    &*api_repo_guard,
+                    api_document_id,
+                    api_config,
+                )?;
                 std::result::Result::Ok(output_ok)
             })())
         },
@@ -1775,12 +1813,28 @@ fn wire__crate__api__auto_org__auto_org_reorganize_all_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_repo = <DocumentRepository>::sse_decode(&mut deserializer);
+            let api_repo = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
             let api_config = <crate::auto_org::config::OrgConfig>::sse_decode(&mut deserializer);
             deserializer.end();
             transform_result_sse::<_, String>((move || {
+                let mut api_repo_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_repo, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_repo_guard = Some(api_repo.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_repo_guard = api_repo_guard.unwrap();
                 let output_ok =
-                    crate::api::auto_org::auto_org_reorganize_all(api_repo, api_config)?;
+                    crate::api::auto_org::auto_org_reorganize_all(&*api_repo_guard, api_config)?;
                 std::result::Result::Ok(output_ok)
             })())
         },
@@ -1807,13 +1861,29 @@ fn wire__crate__api__auto_org__auto_org_reorganize_one_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_repo = <DocumentRepository>::sse_decode(&mut deserializer);
+            let api_repo = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
             let api_document_id = <String>::sse_decode(&mut deserializer);
             let api_config = <crate::auto_org::config::OrgConfig>::sse_decode(&mut deserializer);
             deserializer.end();
             transform_result_sse::<_, String>((move || {
+                let mut api_repo_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_repo, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_repo_guard = Some(api_repo.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_repo_guard = api_repo_guard.unwrap();
                 let output_ok = crate::api::auto_org::auto_org_reorganize_one(
-                    api_repo,
+                    &*api_repo_guard,
                     api_document_id,
                     api_config,
                 )?;

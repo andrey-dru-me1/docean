@@ -15,6 +15,11 @@ import 'storage.dart';
 
 /// Run the deterministic (non-generative) organizer on `document_id`, returning
 /// the [`OrgPlan`] of suggested tags, placement, rename, and dedup.
+///
+/// The repository is taken by *reference* (FRB `Auto_Ref` encoding), so the
+/// shared `Arc<Mutex<_>>` handle is borrowed rather than owned/disposed. Callers
+/// may reuse the same repository handle for later bridge calls (e.g. the ingest
+/// pipeline or a subsequent reorganize) without hitting a disposed opaque.
 OrgPlan autoOrgOrganize({
   required DocumentRepository repo,
   required String documentId,

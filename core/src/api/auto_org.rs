@@ -198,15 +198,20 @@ pub(crate) fn organize_document(
 
 /// Run the deterministic (non-generative) organizer on `document_id`, returning
 /// the [`OrgPlan`] of suggested tags, placement, rename, and dedup.
+///
+/// The repository is taken by *reference* (FRB `Auto_Ref` encoding), so the
+/// shared `Arc<Mutex<_>>` handle is borrowed rather than owned/disposed. Callers
+/// may reuse the same repository handle for later bridge calls (e.g. the ingest
+/// pipeline or a subsequent reorganize) without hitting a disposed opaque.
 #[flutter_rust_bridge::frb(sync)]
 pub fn auto_org_organize(
-    repo: DocumentRepository,
+    repo: &DocumentRepository,
     document_id: String,
     config: OrgConfig,
 ) -> Result<OrgPlan, String> {
-    // Build a fresh corpus snapshot from the repository (borrowed, then released)
-    // so the shared handle is never moved/disposed across the FRB boundary.
-    let corpus = build_corpus(&repo)?;
+    // Build a fresh corpus snapshot from the repository (borrowed) so the shared
+    // handle is never moved/disposed across the FRB boundary.
+    let corpus = build_corpus(repo)?;
     let organizer = DeterministicOrganizer::new(config);
     Ok(organizer.organize(&corpus, &document_id))
 }
@@ -241,7 +246,7 @@ pub struct OrgBulkStats {
 /// AI provider** — it is the same deterministic pipeline used at ingestion.
 #[flutter_rust_bridge::frb(sync)]
 pub fn auto_org_reorganize_all(
-    repo: DocumentRepository,
+    repo: &DocumentRepository,
     config: OrgConfig,
 ) -> Result<OrgBulkStats, String> {
     let docs = repo.query(DocumentQuery {
@@ -254,7 +259,7 @@ pub fn auto_org_reorganize_all(
 
     for doc in &docs {
         total += 1;
-        match auto_org_reorganize_one_impl(&repo, doc.id.clone(), &config) {
+        match auto_org_reorganize_one_impl(repo, doc.id.clone(), &config) {
             Ok(true) => updated += 1,
             // `Ok(false)` (already up to date / manual-flag skips) and transient
             // errors count as skipped so one failure does not abort the pass.
@@ -318,16 +323,16 @@ fn auto_org_reorganize_one_impl(
 /// manually set, then refresh the search metadata.
 #[flutter_rust_bridge::frb(sync)]
 pub fn auto_org_reorganize_one(
-    repo: DocumentRepository,
+    repo: &DocumentRepository,
     document_id: String,
     config: OrgConfig,
 ) -> Result<OrgPlan, String> {
     // Compute the suggestion first (so it can be returned even when nothing
     // was applied due to manual-edit flags), then apply honoring the flags.
-    let corpus = build_corpus(&repo)?;
+    let corpus = build_corpus(repo)?;
     let organizer = DeterministicOrganizer::new(config.clone());
     let plan = organizer.organize(&corpus, &document_id);
-    let _ = auto_org_reorganize_one_impl(&repo, document_id, &config)?;
+    let _ = auto_org_reorganize_one_impl(repo, document_id, &config)?;
     Ok(plan)
 }
 
@@ -336,11 +341,11 @@ pub fn auto_org_reorganize_one(
 /// should fall back to the deterministic template title.
 #[flutter_rust_bridge::frb]
 pub async fn auto_org_generate_filename(
-    repo: DocumentRepository,
+    repo: &DocumentRepository,
     document_id: String,
     model: String,
 ) -> Result<String, String> {
-    let corpus = build_corpus(&repo)?;
+    let corpus = build_corpus(repo)?;
     let Some(doc) = corpus.docs.iter().find(|d| d.id == document_id) else {
         return Err(format!("document {document_id} not found"));
     };
@@ -487,7 +492,7 @@ mod tests {
         );
 
         let plan = crate::api::auto_org::auto_org_reorganize_one(
-            repo.clone(),
+            &repo,
             target.clone(),
             Default::default(),
         )
@@ -532,12 +537,8 @@ mod tests {
             HashMap::new(),
         );
 
-        crate::api::auto_org::auto_org_reorganize_one(
-            repo.clone(),
-            target.clone(),
-            Default::default(),
-        )
-        .unwrap();
+        crate::api::auto_org::auto_org_reorganize_one(&repo, target.clone(), Default::default())
+            .unwrap();
 
         let doc = repo.get(target).unwrap();
         // The auto suggestion applied: title derived from content + tags reused.
@@ -581,8 +582,8 @@ mod tests {
             HashMap::new(),
         );
 
-        let stats = crate::api::auto_org::auto_org_reorganize_all(repo.clone(), Default::default())
-            .unwrap();
+        let stats =
+            crate::api::auto_org::auto_org_reorganize_all(&repo, Default::default()).unwrap();
 
         assert_eq!(stats.total, 3, "sib + manual + auto");
         assert_eq!(stats.updated + stats.skipped, stats.total);
@@ -620,6 +621,117 @@ mod tests {
         assert!(
             stats.updated >= 1,
             "at least the auto doc should count as updated"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Regression guard for the `DroppableDisposedException` class of bugs: the
+    /// FRB bridge used to encode the `DocumentRepository` argument as *owned*
+    /// (`Auto_Owned`), so each of the four auto-org bridge calls transferred
+    /// (and disposed) the shared `RustArc` handle. A later call on the same
+    /// cached Dart handle (e.g. tapping "Suggest title & tags" a second time,
+    /// after `auto_org_organize` had already disposed it) then reused a
+    /// disposed opaque and threw.
+    ///
+    /// All four functions now take `&DocumentRepository` (borrowed / `Auto_Ref`
+    /// encoding), so the same handle must stay usable across *any number* of
+    /// sequential bridge calls. This test mirrors the two-calls-on-one-handle
+    /// guard added when `ingest_files` got the same fix.
+    #[test]
+    fn same_repository_handle_survives_multiple_reorganize_one_calls() {
+        let root = temp_root("reuse-handle");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_sibling(&repo, "sib", "quarterly report for the finance team");
+        let target = seed_doc(
+            &repo,
+            "doc-a",
+            "Untagged draft",
+            "quarterly invoice for acme",
+            HashMap::new(),
+        );
+
+        // First call on the *original* (un-cloned) handle.
+        let first = crate::api::auto_org::auto_org_reorganize_one(
+            &repo,
+            target.clone(),
+            Default::default(),
+        )
+        .expect("first reorganize_one must succeed on the live handle");
+        assert!(
+            !first.tags.is_empty() || first.suggested_title.is_some(),
+            "first pass should produce a suggestion"
+        );
+
+        // The repository handle must still be fully functional after the first
+        // bridge-style call — reading through the same handle keeps working.
+        assert!(
+            repo.get(target.clone()).is_ok(),
+            "the shared handle must not be disposed after one reorganize_one"
+        );
+
+        // Second call through the *same* (un-cloned) handle. Before the fix
+        // this reused a disposed RustArc and threw `DroppableDisposedException`.
+        let second = crate::api::auto_org::auto_org_reorganize_one(
+            &repo,
+            target.clone(),
+            Default::default(),
+        )
+        .expect("second reorganize_one must also succeed on the still-live handle");
+
+        // The suggestion is deterministic and identical across both passes.
+        assert_eq!(
+            first.tags, second.tags,
+            "re-running the pass on the same repo must not change its suggestions"
+        );
+
+        // The handle is also still usable for reads after the second call.
+        // (An auto-applied title goes through `repo.update_title`, which marks
+        // `extra['title_manual']`; the title itself is content-derived.)
+        let doc = repo
+            .get(target.clone())
+            .expect("repository must remain fully usable after two reorganize_one calls");
+        assert_eq!(
+            doc.title, "acme-invoice-quarterly",
+            "reorganize_one applied the deterministic content-derived title"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// The suggestion-only `auto_org_organize` path gets the same
+    /// owned/disposal hazard when it is called after a reorganize (or when the
+    /// detail view's auto-suggest and reorganize buttons are both used on one
+    /// repository). Assert the handle survives a mixed sequence too.
+    #[test]
+    fn same_repository_handle_survives_organize_after_reorganize() {
+        let root = temp_root("reuse-mixed");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_sibling(&repo, "sib", "quarterly report for the finance team");
+        let target = seed_doc(
+            &repo,
+            "doc-a",
+            "Untagged draft",
+            "quarterly invoice for acme",
+            HashMap::new(),
+        );
+
+        crate::api::auto_org::auto_org_reorganize_one(&repo, target.clone(), Default::default())
+            .expect("reorganize_one must succeed on the live handle");
+
+        // A second, different bridge entry point on the *same* handle.
+        let plan =
+            crate::api::auto_org::auto_org_organize(&repo, target.clone(), Default::default())
+                .expect("auto_org_organize must succeed on the still-live handle");
+        assert!(
+            !plan.tags.is_empty() || plan.suggested_title.is_some(),
+            "organize should produce a suggestion after a prior reorganize"
+        );
+
+        // And the handle is still readable afterwards.
+        assert!(
+            repo.get(target).is_ok(),
+            "handle must survive the mixed sequence"
         );
 
         let _ = fs::remove_dir_all(&root);
