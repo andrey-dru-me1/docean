@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:docer/src/app.dart';
@@ -7,6 +8,7 @@ import 'package:docer/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
 import 'package:docer/src/rust/api/ai.dart' show ActiveProviderInfo;
 import 'package:docer/src/rust/api/health.dart';
+import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
 
 HealthStatus _fakeStatus() => const HealthStatus(
   ok: true,
@@ -121,4 +123,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Type a query'), findsOneWidget);
   });
+
+  testWidgets(
+    'wide screens show the document detail in a right-side panel instead of '
+    'pushing a route',
+    (tester) async {
+      final docs = FakeDocumentService(
+        documents: [const DocumentSummary(id: 'doc-1', title: 'Wide report')],
+        contentByDocumentId: const {'doc-1': 'Body of the wide report.'},
+      );
+
+      // A >= 900px wide viewport triggers the master-detail layout.
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        DocerApp(
+          healthCheck: _fakeStatus,
+          providerService: _FakeProviderService(),
+          documentService: docs,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The Documents list is present.
+      expect(find.text('Wide report'), findsOneWidget);
+
+      // Tapping opens the detail inline (no new route).
+      await tester.tap(find.text('Wide report'));
+      await tester.pumpAndSettle();
+
+      // The detail panel is rendered alongside the list.
+      expect(find.text('Suggest title & tags'), findsOneWidget);
+      expect(find.textContaining('Body of the wide report'), findsOneWidget);
+
+      // Closing the panel dismisses it.
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      expect(find.text('Suggest title & tags'), findsNothing);
+    },
+  );
 }

@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../features/document_service.dart' show DocumentService;
+import 'widgets.dart' show tagColorFor, tagTintFor;
 
 /// A compact summary of a document enough to open it in a detail view.
 ///
@@ -20,6 +21,7 @@ class DocumentSummary {
     this.paths = const [],
     this.mimeType,
     this.originalName,
+    this.extra = const {},
   });
 
   final String id;
@@ -36,16 +38,32 @@ class DocumentSummary {
   /// Original file name recorded at ingestion (`extra['original_name']`), when
   /// known. Its extension gives the best hint for the default system handler.
   final String? originalName;
+
+  /// The document's extensible key/value metadata (`extra` on the repository
+  /// `Document`). The detail view consults `extra['title_manual']` and
+  /// `extra['tags_manual']` (when present) before blindly applying the
+  /// auto-organization suggestions so a user's manual edits are never
+  /// overwritten.
+  final Map<String, String> extra;
+
+  /// Whether the title has been hand-edited by the user (companion storage
+  /// task sets `extra['title_manual'] = 'true'` on manual rename).
+  bool get titleManuallyEdited => extra['title_manual'] == 'true';
+
+  /// Whether the tags have been hand-edited by the user (companion storage
+  /// task sets `extra['tags_manual'] = 'true'` on manual tag edits).
+  bool get tagsManuallyEdited => extra['tags_manual'] == 'true';
 }
 
-/// A full-screen detail view for a document opened from a search result or a
-/// chat citation.
+/// A full-screen (or right-side panel) detail view for a document opened from
+/// a search result, the browse list, or a chat citation.
 ///
 /// Loads the full extracted content through [DocumentService] (falling back to
 /// a UTF-8 decode of the raw bytes for text documents), renders the metadata
-/// with editable tags, and can hand the raw bytes to the system default handler
-/// via an injectable [ExternalFileOpener] (defaults to a `url_launcher`-backed
-/// implementation).
+/// with an inline-editable title and editable tags, can suggest title + tags
+/// through the existing auto-org pipeline, and can hand the raw bytes to the
+/// system default handler via an injectable [ExternalFileOpener] (defaults to
+/// a `url_launcher`-backed implementation).
 class DocumentDetailView extends StatefulWidget {
   const DocumentDetailView({
     super.key,
@@ -86,25 +104,30 @@ Future<void> openExternallyWithUrlLauncher(String path) async {
   }
 }
 
-/// State that loads full content, edits tags, and hands bytes to the OS.
+/// State that loads full content, edits metadata, and hands bytes to the OS.
 class _DocumentDetailViewState extends State<DocumentDetailView> {
   late DocumentSummary _doc;
   String? _content;
   bool _loadingContent = true;
   Object? _contentError;
   bool _savingTags = false;
+  bool _savingTitle = false;
+  bool _suggesting = false;
   final _tagController = TextEditingController();
+  late final TextEditingController _titleController;
 
   @override
   void initState() {
     super.initState();
     _doc = widget.document;
+    _titleController = TextEditingController(text: widget.document.title);
     _load();
   }
 
   @override
   void dispose() {
     _tagController.dispose();
+    _titleController.dispose();
     super.dispose();
   }
 
@@ -127,6 +150,13 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       if (!mounted) return;
       setState(() {
         _doc = doc;
+        // Mirror a persisted rename into the inline field (e.g. a refresh after
+        // a tag edit re-loads the document).
+        if (_titleController.text.isNotEmpty &&
+            doc.title != widget.document.title &&
+            doc.title.isNotEmpty) {
+          _titleController.text = doc.title;
+        }
         _content = content;
         _loadingContent = false;
       });
@@ -169,11 +199,118 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     }
   }
 
+  Future<void> _saveTitle(String value) async {
+    final title = value.trim();
+    if (_savingTitle || title.isEmpty || title == _doc.title) return;
+    setState(() => _savingTitle = true);
+    try {
+      await widget.documentService.updateTitle(widget.document.id, title);
+      final fresh = await widget.documentService.getDocument(
+        widget.document.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _doc = fresh;
+        _titleController.text = fresh.title;
+        _savingTitle = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Title updated')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _savingTitle = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not update title: $e')));
+    }
+  }
+
+  /// Runs the auto-organization bridge and applies the suggestion, honoring the
+  /// manual-edit flags: a title is applied only when the user has *not*
+  /// manually renamed it, and tags only when the user has *not* manually tagged
+  /// the document. When the flags are absent the suggestion is applied.
+  Future<void> _suggestMetadata() async {
+    if (_suggesting) return;
+    setState(() => _suggesting = true);
+    try {
+      final plan = await widget.documentService.suggestMetadata(
+        widget.document.id,
+      );
+      if (!mounted) return;
+      // Re-read fresh metadata: the flags may have been set since the widget
+      // was built (e.g. the companion task persisted a manual edit).
+      final fresh = await widget.documentService.getDocument(
+        widget.document.id,
+      );
+      if (!mounted) return;
+
+      final applyTitle =
+          !fresh.titleManuallyEdited &&
+          plan.title != null &&
+          plan.title!.trim().isNotEmpty;
+      final applyTags = !fresh.tagsManuallyEdited && plan.tags.isNotEmpty;
+
+      if (applyTitle) {
+        await widget.documentService.updateTitle(
+          widget.document.id,
+          plan.title!.trim(),
+        );
+      }
+      if (applyTags) {
+        await widget.documentService.setTags(
+          widget.document.id,
+          List.of(plan.tags),
+        );
+      }
+
+      final refreshed = await widget.documentService.getDocument(
+        widget.document.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _doc = refreshed;
+        _titleController.text = refreshed.title;
+        _suggesting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            applyTitle || applyTags
+                ? 'Suggested title & tags applied'
+                : 'No new suggestions to apply',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _suggesting = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not suggest metadata: $e')));
+    }
+  }
+
   Future<void> _openExternally() async {
     try {
       final bytes = await widget.documentService.readBytes(widget.document.id);
+      if (bytes.isEmpty) {
+        throw StateError('Document has no raw bytes to open');
+      }
       final suffix = _fileSuffix();
-      final dir = await widget.tempDirectory();
+      var dir = await widget.tempDirectory();
+      if (!await dir.exists()) {
+        // The injected directory may be a path whose parent does not exist
+        // (e.g. a deleted /tmp subfolder), or was never created. Create it;
+        // fall back to `Directory.systemTemp` when that fails so "open
+        // externally" degrades gracefully instead of throwing a
+        // PathNotFoundException on the later `File.writeAsBytes`.
+        try {
+          await dir.create(recursive: true);
+        } catch (_) {
+          dir = Directory.systemTemp;
+        }
+      }
       final safeBase = _safeBaseName();
       final path = '${dir.path}/$safeBase$suffix';
       await File(path).writeAsBytes(bytes, flush: true);
@@ -192,8 +329,8 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     final base = raw.split('/').last.split('\\').last;
     final sanitized = base
         .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_')
-        .replaceAll(RegExp(r'^[_\.]+'), '')
-        .replaceAll(RegExp(r'[_\.]+$'), '');
+        .replaceAll(RegExp(r'^[_\\.]+'), '')
+        .replaceAll(RegExp(r'[_\\.]+$'), '');
     return sanitized.isEmpty ? 'document-${_doc.id}' : sanitized;
   }
 
@@ -242,6 +379,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 44,
         leading: widget.onBack == null
             ? null
             : IconButton(
@@ -272,27 +410,40 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(
                         Icons.description_outlined,
-                        size: 40,
+                        size: 36,
                         color: scheme.primary,
                       ),
                       const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _doc.title,
-                          style: Theme.of(context).textTheme.headlineSmall,
-                        ),
-                      ),
+                      Expanded(child: _buildTitleEditor()),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    'ID: ${_doc.id}',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.tonalIcon(
+                      onPressed: _suggesting || _loadingContent
+                          ? null
+                          : _suggestMetadata,
+                      icon: _suggesting
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.auto_fix_high, size: 16),
+                      label: Text(
+                        _suggesting ? 'Suggesting…' : 'Suggest title & tags',
+                      ),
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        textStyle: const TextStyle(fontSize: 12.5),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Text('Tags', style: Theme.of(context).textTheme.titleSmall),
@@ -307,15 +458,19 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                     children: [
                       Expanded(
                         child: SizedBox(
-                          height: 44,
+                          height: 40,
                           child: TextField(
                             controller: _tagController,
                             enabled: !_savingTags,
                             decoration: const InputDecoration(
                               hintText: 'Add a tag…',
-                              prefixIcon: Icon(Icons.tag),
+                              prefixIcon: Icon(Icons.tag, size: 18),
                               isDense: true,
                               border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
                             ),
                             onSubmitted: _addTag,
                           ),
@@ -324,6 +479,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                       const SizedBox(width: 8),
                       IconButton.filled(
                         tooltip: 'Add tag',
+                        visualDensity: VisualDensity.compact,
                         onPressed: _savingTags
                             ? null
                             : () => _addTag(_tagController.text),
@@ -345,6 +501,44 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     );
   }
 
+  Widget _buildTitleEditor() {
+    final busy = _savingTitle;
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _titleController,
+            enabled: !busy,
+            style: Theme.of(context).textTheme.headlineSmall,
+            decoration: InputDecoration(
+              hintText: 'Document title',
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 4),
+            ),
+            onSubmitted: _saveTitle,
+          ),
+        ),
+        if (busy)
+          const Padding(
+            padding: EdgeInsets.all(8),
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+        else
+          IconButton(
+            tooltip: 'Save title',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _saveTitle(_titleController.text),
+            icon: const Icon(Icons.check, size: 20),
+          ),
+      ],
+    );
+  }
+
   Widget _buildPaths() {
     return Wrap(
       spacing: 6,
@@ -354,11 +548,15 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
           Chip(
             avatar: const Icon(Icons.folder_outlined, size: 14),
             label: Text(path),
+            visualDensity: VisualDensity.compact,
+            labelStyle: const TextStyle(fontSize: 11.5),
           ),
       ],
     );
   }
 
+  /// Compact, deterministic-colored tag chips without the label icon. Editable
+  /// in the detail view (delete to remove).
   Widget _buildTags() {
     return Wrap(
       spacing: 6,
@@ -367,8 +565,13 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         for (final tag in _doc.tags)
           InputChip(
             key: ValueKey('tag-$tag'),
-            avatar: const Icon(Icons.label_outline, size: 14),
             label: Text(tag),
+            avatar: const SizedBox.shrink(),
+            visualDensity: VisualDensity.compact,
+            labelStyle: Theme.of(context).textTheme.labelSmall,
+            backgroundColor: tagTintFor(tag),
+            side: BorderSide(color: tagColorFor(tag).withValues(alpha: 0.45)),
+            deleteIconColor: tagColorFor(tag),
             onDeleted: _savingTags
                 ? null
                 : () => _saveTags(_doc.tags.where((e) => e != tag).toList()),

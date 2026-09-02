@@ -5,6 +5,79 @@ import 'package:flutter/material.dart';
 
 import '../features/search_service.dart' show HighlightSpan;
 
+/// A curated palette of tag colors. Each tag receives a deterministic color by
+/// hashing its name and picking from this list, so the same tag always renders
+/// the same hue across surfaces (detail view, browse cards, filters).
+const List<Color> kTagPalette = <Color>[
+  Color(0xFF1B5E20), // green 900
+  Color(0xFF4A148C), // deep purple 900
+  Color(0xFF0D47A1), // blue 900
+  Color(0xFFB71C1C), // red 900
+  Color(0xFFE65100), // orange 900
+  Color(0xFF006064), // cyan 900
+  Color(0xFF880E4F), // pink 900
+  Color(0xFF33691E), // light green 900
+  Color(0xFF01579B), // light blue 900
+  Color(0xFF4E342E), // brown 900
+  Color(0xFF1A237E), // indigo 900
+  Color(0xFF004D40), // teal 900
+];
+
+/// Derive a deterministic color for a tag name.
+///
+/// The name is hashed (FNV-1a over its code units) and mapped onto
+/// [kTagPalette]. Empty names always resolve to the first palette entry so the
+/// result is stable even for malformed input.
+Color tagColorFor(String name) {
+  var hash = 0x811c9dc5;
+  for (final unit in name.codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+  }
+  return kTagPalette[hash % kTagPalette.length];
+}
+
+/// The washed-out background tint used by tag chips for a given tag name.
+Color tagTintFor(String name) => tagColorFor(name).withValues(alpha: 0.16);
+
+/// A compact, colored tag chip with no avatar icon.
+///
+/// The color is derived deterministically from the tag name (see
+/// [tagColorFor]); the background is the tag's tinted hue so dark and light
+/// themes both stay readable. Use [BuildContext]-free construction so the same
+/// chip can be reused inside `Wrap`s on any surface.
+class TagChip extends StatelessWidget {
+  const TagChip({super.key, required this.label, this.selected = false});
+
+  final String label;
+
+  /// Selection state for filter chips: when selected the chip is filled with a
+  /// stronger tint so the active filter is obvious at a glance.
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = tagColorFor(label);
+    final background = selected
+        ? tagTintFor(label).withValues(alpha: 0.38)
+        : tagTintFor(label);
+    return Chip(
+      visualDensity: VisualDensity.compact,
+      backgroundColor: background,
+      side: BorderSide(color: color.withValues(alpha: 0.45)),
+      labelStyle: TextStyle(
+        fontSize: 11.5,
+        color: color,
+        fontWeight: FontWeight.w600,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+      label: Text(label),
+      avatar: const SizedBox.shrink(),
+    );
+  }
+}
+
 /// Read a [HighlightSpan]'s byte range as ints for slicing a snippet substring.
 (int, int) spanRange(HighlightSpan span) =>
     (span.start.toInt(), span.end.toInt());

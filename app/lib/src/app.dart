@@ -54,12 +54,38 @@ class DocerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseScheme = ColorScheme.fromSeed(seedColor: Colors.teal);
     return MaterialApp(
       title: 'Docer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        colorScheme: baseScheme,
         useMaterial3: true,
+        // Dense desktop-first layout: compact everything so more documents and
+        // metadata fit on screen at once while mobile stays usable.
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        appBarTheme: const AppBarTheme(
+          toolbarHeight: 44,
+          titleTextStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        chipTheme: ChipThemeData(
+          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          labelStyle: const TextStyle(fontSize: 11.5),
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        ),
+        cardTheme: CardThemeData(margin: EdgeInsets.zero, elevation: 1),
+        listTileTheme: const ListTileThemeData(
+          visualDensity: VisualDensity.compact,
+          minVerticalPadding: 2,
+        ),
+        navigationBarTheme: const NavigationBarThemeData(
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+        ),
       ),
       home: MainShell(
         healthCheck: healthCheck,
@@ -116,6 +142,10 @@ class _MainShellState extends State<MainShell> {
   HealthStatus? _status;
   bool _healthError = false;
 
+  /// The document shown in the wide-screen right-side detail panel (master-
+  /// detail). `null` renders an empty placeholder.
+  DocumentSummary? _selectedDocument;
+
   /// Bumped when ingestion finishes so the Documents browse tab reloads.
   final ValueNotifier<int> _documentsRefreshTick = ValueNotifier<int>(0);
 
@@ -167,6 +197,12 @@ class _MainShellState extends State<MainShell> {
       widget.openDocument!(doc);
       return;
     }
+    // Wide screens get a master-detail two-pane layout: the detail view is
+    // rendered in a right-side panel instead of pushing a new route.
+    if (_isWide()) {
+      setState(() => _selectedDocument = doc);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => DocumentDetailView(
@@ -176,6 +212,14 @@ class _MainShellState extends State<MainShell> {
         ),
       ),
     );
+  }
+
+  /// Whether we're in the wide (master-detail) mode. Mirrors the existing
+  /// `wide` check in [MainShell.build] (width >= 900).
+  bool _isWide() {
+    final contextSafe = context;
+    if (!contextSafe.mounted) return false;
+    return MediaQuery.sizeOf(context).width >= 900;
   }
 
   /// Opens the P2P & Sync screen (kept from the main UI shell integration).
@@ -272,6 +316,20 @@ class _MainShellState extends State<MainShell> {
             ),
             const VerticalDivider(width: 1),
             Expanded(child: pages[_index]),
+            if (_selectedDocument != null) ...[
+              const VerticalDivider(width: 1),
+              // Master-detail two-pane layout: the selected document's info/
+              // detail is shown alongside the list instead of a new route.
+              SizedBox(
+                width: 420,
+                child: DocumentDetailView(
+                  key: ValueKey(_selectedDocument!.id),
+                  document: _selectedDocument!,
+                  documentService: widget.documentService,
+                  onBack: () => setState(() => _selectedDocument = null),
+                ),
+              ),
+            ],
           ],
         ),
       );

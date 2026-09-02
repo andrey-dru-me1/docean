@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../features/document_service.dart' show DocumentService;
 import 'document_view.dart' show DocumentSummary;
 import 'search_screen.dart' show DocumentOpener;
-import 'widgets.dart' show EmptyState;
+import 'widgets.dart' show EmptyState, tagColorFor, tagTintFor;
 
 /// The Documents browse/list surface.
 ///
@@ -124,8 +124,20 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   children: [
                     for (final tag in _tags)
                       FilterChip(
+                        key: ValueKey('filter-$tag'),
                         label: Text(tag),
                         selected: _tagFilter == tag,
+                        visualDensity: VisualDensity.compact,
+                        labelStyle: TextStyle(
+                          fontSize: 11.5,
+                          color: tagColorFor(tag),
+                          fontWeight: FontWeight.w600,
+                        ),
+                        backgroundColor: tagTintFor(tag),
+                        side: BorderSide(
+                          color: tagColorFor(tag).withValues(alpha: 0.45),
+                        ),
+                        avatar: const SizedBox.shrink(),
                         onSelected: (v) =>
                             setState(() => _tagFilter = v ? tag : null),
                       ),
@@ -142,6 +154,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       FilterChip(
                         label: Text(path),
                         selected: _pathFilter == path,
+                        visualDensity: VisualDensity.compact,
+                        labelStyle: const TextStyle(fontSize: 11.5),
                         onSelected: (v) =>
                             setState(() => _pathFilter = v ? path : null),
                       ),
@@ -235,32 +249,34 @@ class _DocumentCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                'ID: ${document.id}',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: scheme.outline),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              const SizedBox(height: 6),
               if (document.tags.isNotEmpty || document.paths.isNotEmpty) ...[
-                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: [
                     for (final tag in document.tags)
                       Chip(
-                        avatar: const Icon(Icons.label_outline, size: 14),
+                        key: ValueKey('card-tag-$tag'),
                         label: Text(tag),
                         visualDensity: VisualDensity.compact,
+                        labelStyle: TextStyle(
+                          fontSize: 11.5,
+                          color: tagColorFor(tag),
+                          fontWeight: FontWeight.w600,
+                        ),
+                        backgroundColor: tagTintFor(tag),
+                        side: BorderSide(
+                          color: tagColorFor(tag).withValues(alpha: 0.45),
+                        ),
+                        avatar: const SizedBox.shrink(),
                       ),
                     for (final path in document.paths)
                       Chip(
                         avatar: const Icon(Icons.folder_outlined, size: 14),
                         label: Text(path),
                         visualDensity: VisualDensity.compact,
+                        labelStyle: const TextStyle(fontSize: 11.5),
                       ),
                   ],
                 ),

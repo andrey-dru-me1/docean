@@ -6,7 +6,8 @@ import '../features/search_service.dart'
 import 'document_view.dart' show DocumentSummary;
 import 'ingest_panel.dart'
     show IngestPanel, PathPicker, pickPathsWithFilePicker;
-import 'widgets.dart';
+import 'widgets.dart'
+    show EmptyState, HighlightedSnippet, tagColorFor, tagTintFor;
 
 /// What a search result should do when tapped.
 typedef DocumentOpener = void Function(DocumentSummary summary);
@@ -116,9 +117,14 @@ class _SearchScreenState extends State<SearchScreen> {
     paths: hit.paths,
   );
 
-  String _titleFrom(SearchHitDto hit) =>
-      // Prefer a path segment as a human-readable title hint.
-      hit.paths.isNotEmpty ? hit.paths.first : hit.documentId;
+  String _titleFrom(SearchHitDto hit) {
+    // Prefer a path segment as a human-readable title hint.
+    if (hit.paths.isNotEmpty) return hit.paths.first;
+    // Never surface the raw internal document id: fall back to a friendly
+    // placeholder when the search index has no path/title metadata.
+    return 'Untitled document';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -179,8 +185,20 @@ class _SearchScreenState extends State<SearchScreen> {
                   children: [
                     for (final tag in widget.tags)
                       FilterChip(
+                        key: ValueKey('search-filter-$tag'),
                         label: Text(tag),
                         selected: _selectedTags.contains(tag),
+                        visualDensity: VisualDensity.compact,
+                        labelStyle: TextStyle(
+                          fontSize: 11.5,
+                          color: tagColorFor(tag),
+                          fontWeight: FontWeight.w600,
+                        ),
+                        backgroundColor: tagTintFor(tag),
+                        side: BorderSide(
+                          color: tagColorFor(tag).withValues(alpha: 0.45),
+                        ),
+                        avatar: const SizedBox.shrink(),
                         onSelected: (v) => _toggleTag(tag, v),
                       ),
                   ],
@@ -298,15 +316,26 @@ class _SearchScreenState extends State<SearchScreen> {
                       children: [
                         for (final tag in hit.tags)
                           Chip(
-                            avatar: const Icon(Icons.label_outline, size: 14),
+                            key: ValueKey('hit-tag-$tag'),
                             label: Text(tag),
                             visualDensity: VisualDensity.compact,
+                            labelStyle: TextStyle(
+                              fontSize: 11.5,
+                              color: tagColorFor(tag),
+                              fontWeight: FontWeight.w600,
+                            ),
+                            backgroundColor: tagTintFor(tag),
+                            side: BorderSide(
+                              color: tagColorFor(tag).withValues(alpha: 0.45),
+                            ),
+                            avatar: const SizedBox.shrink(),
                           ),
                         for (final path in hit.paths)
                           Chip(
                             avatar: const Icon(Icons.folder_outlined, size: 14),
                             label: Text(path),
                             visualDensity: VisualDensity.compact,
+                            labelStyle: const TextStyle(fontSize: 11.5),
                           ),
                       ],
                     ),
