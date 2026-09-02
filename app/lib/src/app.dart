@@ -236,6 +236,7 @@ class _MainShellState extends State<MainShell> {
           document: doc,
           documentService: widget.documentService,
           onBack: () => Navigator.of(context).pop(),
+          onMetaChanged: () => _documentsRefreshTick.value++,
         ),
       ),
     );
@@ -393,6 +394,7 @@ class _MainShellState extends State<MainShell> {
                           documentService: widget.documentService,
                           onBack: () =>
                               setState(() => _selectedDocument = null),
+                          onMetaChanged: () => _documentsRefreshTick.value++,
                         ),
                       ),
               ),

@@ -80,6 +80,7 @@ class DocumentDetailView extends StatefulWidget {
     this.openExternally = openExternallyWithUrlLauncher,
     this.tempDirectory = getTemporaryDirectory,
     this.previewLoader,
+    this.onMetaChanged,
   });
 
   final DocumentSummary document;
@@ -98,6 +99,10 @@ class DocumentDetailView extends StatefulWidget {
   /// loader bound to [documentService]; injectable so widget tests can swap in
   /// a synchronous (isolate-free) thumbnailer.
   final DocumentPreviewLoader? previewLoader;
+
+  /// Called whenever the document's meta-info (title, tags) changes so the
+  /// parent can refresh stale preview tiles (e.g. the Documents browse grid).
+  final VoidCallback? onMetaChanged;
 
   @override
   State<DocumentDetailView> createState() => _DocumentDetailViewState();
@@ -226,6 +231,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     setState(() {
       _doc = _copyDoc(_doc, tags: List.of(nextTags));
     });
+    widget.onMetaChanged?.call();
     unawaited(_persistTags(previous, nextTags, generation));
   }
 
@@ -261,6 +267,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         _doc = fresh;
         _titleController.text = fresh.title;
       });
+      widget.onMetaChanged?.call();
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Title updated')));
@@ -300,6 +307,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         _titleController.text = fresh.title;
         _suggestingTitle = false;
       });
+      widget.onMetaChanged?.call();
       final clean = plan.cleanTitle;
       if (clean != null && applied) {
         // Small confirmation: title was actually suggested & applied.
@@ -349,6 +357,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         _suggestingTags = false;
         _lastSuggestedTags = List.of(plan.tags);
       });
+      widget.onMetaChanged?.call();
       if (plan.tags.isNotEmpty && !alreadyManual) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Tags suggested: ${plan.tags.join(', ')}')),

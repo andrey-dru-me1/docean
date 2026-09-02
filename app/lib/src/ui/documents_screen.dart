@@ -101,8 +101,12 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   void _onRefresh() => _load();
 
   Future<void> _load() async {
+    // Only show the loading spinner on the very first load (empty list).
+    // Subsequent refreshes (ingestion, meta-info changes) silently replace
+    // the grid contents so the visible tiles never flash to a spinner.
+    final isFirstLoad = _all.isEmpty;
     setState(() {
-      _loading = true;
+      if (isFirstLoad) _loading = true;
       _error = null;
     });
     try {
