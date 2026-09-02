@@ -655,11 +655,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Suggest tags'));
+      await tester.tap(find.byTooltip('Suggest tags'));
       await tester.pumpAndSettle();
-
-      // The suggestion ran, but the tags were NOT overwritten; the title is
-      // never touched by the tags action either.
       expect(service.suggestTagsCount, 1);
       expect(service.updateTitleCount, 0);
       expect(service.setTagsCount, 0);
