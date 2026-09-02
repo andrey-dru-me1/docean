@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:docer/src/app.dart';
 import 'package:docer/src/features/document_service.dart'
     show FakeDocumentService;
-import 'package:docer/src/ui/settings_screen.dart' show SettingsScreen;
 import 'package:docer/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
 import 'package:docer/src/rust/api/ai.dart' show ActiveProviderInfo;
@@ -254,10 +253,14 @@ void main() {
     },
   );
 
-  testWidgets('Settings is reachable from the shell', (
+  testWidgets('the Documents tab exposes the bulk-select toolbar', (
     WidgetTester tester,
   ) async {
-    final docs = FakeDocumentService();
+    final docs = FakeDocumentService(
+      documents: [
+        const DocumentSummary(id: 'doc-1', title: 'Selectable report'),
+      ],
+    );
     await tester.pumpWidget(
       DocerApp(
         healthCheck: _fakeStatus,
@@ -267,12 +270,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The app bar has a settings affordance.
-    await tester.tap(find.byTooltip('Settings'));
+    // The Documents surface is shown by default with the selection affordance.
+    expect(find.text('Selectable report'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('select-documents')));
     await tester.pumpAndSettle();
 
-    // The Settings screen is shown with the bulk re-organization action.
-    expect(find.byType(SettingsScreen), findsOneWidget);
-    expect(find.text('Re-organize all documents'), findsOneWidget);
+    // Selection mode shows the bulk toolbar with the selected count and the
+    // bulk actions (the former Settings "Re-organize" lives here now).
+    expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+    expect(find.text('0 selected'), findsOneWidget);
+    expect(find.byKey(const ValueKey('select-all')), findsOneWidget);
+    expect(find.byKey(const ValueKey('bulk-reorganize')), findsOneWidget);
   });
 }

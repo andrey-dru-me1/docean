@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../features/document_preview.dart' show DocumentPreviewLoader;
-import '../features/document_service.dart' show DocumentService;
+import '../features/document_service.dart'
+    show BulkOrganizer, DocumentService, NoopBulkOrganizer;
 import 'document_preview_view.dart' show DocumentTilePreview;
 import 'document_view.dart' show DocumentSummary;
 import 'search_screen.dart' show DocumentOpener;
@@ -22,6 +25,7 @@ class DocumentsScreen extends StatefulWidget {
     required this.onOpenDocument,
     this.refreshTick,
     this.previewLoader,
+    this.bulkOrganizer = const NoopBulkOrganizer(),
   });
 
   final DocumentService documentService;
@@ -36,6 +40,12 @@ class DocumentsScreen extends StatefulWidget {
   /// (isolate-free) thumbnailer.
   final DocumentPreviewLoader? previewLoader;
 
+  /// The bulk "Re-organize all documents" pipeline. Historically hosted on the
+  /// Settings screen; this surface now owns the bulk actions, so the same
+  /// corpus-wide pass lives in the selection toolbar. Defaults to a no-op so
+  /// tests (and embedding shells) work without the native library.
+  final BulkOrganizer bulkOrganizer;
+
   @override
   State<DocumentsScreen> createState() => _DocumentsScreenState();
 }
@@ -49,6 +59,21 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   String? _pathFilter;
   bool _loading = true;
   Object? _error;
+
+  /// Whether the grid is in selection mode. While active, tapping a tile
+  /// toggles selection instead of opening the document, and a bulk-action bar
+  /// replaces the browsing chrome.
+  bool _selectionMode = false;
+
+  /// The ids selected by the user (in selection mode).
+  final Set<String> _selected = <String>{};
+
+  /// Whether a bulk operation (tag edit / delete / re-organize) is running.
+  bool _busy = false;
+
+  /// Progress notifier for the async "Suggest title"/"Suggest tags" passes so
+  /// the corner progress chip can show completed/total counts.
+  final CountNotifier _suggestProgress = CountNotifier();
 
   /// Shared preview loader backed by the document service. Both the browse
   /// list and the detail panel (via the same service) reuse its LRU cache, so
@@ -121,76 +146,103 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                onChanged: (v) => setState(() => _query = v),
-                decoration: const InputDecoration(
-                  labelText: 'Filter documents',
-                  prefixIcon: Icon(Icons.filter_list),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              if (_tags.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final tag in _tags)
-                      FilterChip(
-                        key: ValueKey('filter-$tag'),
-                        label: Text(tag),
-                        selected: _tagFilter == tag,
-                        visualDensity: VisualDensity.compact,
-                        labelStyle: TextStyle(
-                          fontSize: 11.5,
-                          color: tagColorFor(tag),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        backgroundColor: tagTintFor(context, tag),
-                        side: BorderSide(
-                          color: tagColorFor(tag).withValues(alpha: 0.45),
-                        ),
-                        onSelected: (v) =>
-                            setState(() => _tagFilter = v ? tag : null),
-                      ),
-                  ],
-                ),
-              ],
-              if (_paths.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final path in _paths)
-                      FilterChip(
-                        label: Text(path),
-                        selected: _pathFilter == path,
-                        visualDensity: VisualDensity.compact,
-                        labelStyle: TextStyle(
-                          fontSize: 11.5,
-                          // Chip themes can default labels to a light color;
-                          // pin the readable onSurfaceVariant explicitly so
-                          // path chips stay dark-on-light (and light-on-dark).
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                        onSelected: (v) =>
-                            setState(() => _pathFilter = v ? path : null),
-                      ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
+        if (_selectionMode) _buildSelectionBar() else _buildFilterBar(context),
         const Divider(height: 1),
         Expanded(child: _buildBody()),
+        if (_suggestProgress.active) _buildSuggestProgressChip(context),
       ],
+    );
+  }
+
+  /// The browsing chrome: filter field, tag/path filter chips, and a "Select"
+  /// button that enters selection mode.
+  Widget _buildFilterBar(BuildContext context) {
+    final filtered = _filtered;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  onChanged: (v) => setState(() => _query = v),
+                  decoration: const InputDecoration(
+                    labelText: 'Filter documents',
+                    prefixIcon: Icon(Icons.filter_list),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                key: const ValueKey('select-documents'),
+                onPressed: filtered.isEmpty ? null : _enterSelectionMode,
+                icon: const Icon(Icons.checklist, size: 18),
+                label: const Text('Select'),
+                // Dense desktop-first chrome: stays compact next to the filter
+                // field but keeps a tap target on touch devices.
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+              ),
+            ],
+          ),
+          if (_tags.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final tag in _tags)
+                  FilterChip(
+                    key: ValueKey('filter-$tag'),
+                    label: Text(tag),
+                    selected: _tagFilter == tag,
+                    visualDensity: VisualDensity.compact,
+                    labelStyle: TextStyle(
+                      fontSize: 11.5,
+                      color: tagColorFor(tag),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    backgroundColor: tagTintFor(context, tag),
+                    side: BorderSide(
+                      color: tagColorFor(tag).withValues(alpha: 0.45),
+                    ),
+                    onSelected: (v) =>
+                        setState(() => _tagFilter = v ? tag : null),
+                  ),
+              ],
+            ),
+          ],
+          if (_paths.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final path in _paths)
+                  FilterChip(
+                    label: Text(path),
+                    selected: _pathFilter == path,
+                    visualDensity: VisualDensity.compact,
+                    labelStyle: TextStyle(
+                      fontSize: 11.5,
+                      // Chip themes can default labels to a light color;
+                      // pin the readable onSurfaceVariant explicitly so
+                      // path chips stay dark-on-light (and light-on-dark).
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    onSelected: (v) =>
+                        setState(() => _pathFilter = v ? path : null),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -236,18 +288,511 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           childAspectRatio: 3 / 4,
         ),
         itemCount: filtered.length,
-        itemBuilder: (context, i) => _DocumentPreviewTile(
-          document: filtered[i],
-          loader: _previewLoader,
-          onOpen: () => widget.onOpenDocument(filtered[i]),
+        itemBuilder: (context, i) {
+          final document = filtered[i];
+          return _DocumentPreviewTile(
+            document: document,
+            loader: _previewLoader,
+            selectionMode: _selectionMode,
+            selected: _selected.contains(document.id),
+            onTapTile: _selectionMode
+                ? () => _toggleSelected(document.id)
+                : () => widget.onOpenDocument(document),
+            onLongPress: () => _enterSelectionMode(document.id),
+          );
+        },
+      ),
+    );
+  }
+
+  // --- Selection mode ------------------------------------------------------
+
+  /// Enter selection mode, optionally pre-selecting [initialId] (used by
+  /// long-press: the long-pressed tile becomes the first selection).
+  void _enterSelectionMode([String? initialId]) {
+    setState(() {
+      _selectionMode = true;
+      if (initialId != null) _selected.add(initialId);
+    });
+  }
+
+  /// Leave selection mode (done/close affordance, or a completed bulk op).
+  void _exitSelectionMode() {
+    setState(() {
+      _selectionMode = false;
+      _selected.clear();
+    });
+  }
+
+  void _toggleSelected(String id) {
+    setState(() {
+      if (!_selected.add(id)) _selected.remove(id);
+    });
+  }
+
+  /// Select every document matching the *current* filters (tag/path/title
+  /// query). Documents hidden by the active filters are never touched.
+  void _selectAllFiltered() {
+    setState(() {
+      _selected
+        ..clear()
+        ..addAll(_filtered.map((d) => d.id));
+    });
+  }
+
+  /// Whether _every_ currently-filtered document is selected.
+  bool get _allFilteredSelected {
+    final filtered = _filtered;
+    return filtered.isNotEmpty &&
+        filtered.every((d) => _selected.contains(d.id));
+  }
+
+  /// The toolbar shown during selection mode: selected count, select-all,
+  /// bulk tag/suggest/delete actions, and the "Re-organize selected" bulk pass
+  /// that formerly lived on the Settings screen.
+  Widget _buildSelectionBar() {
+    final count = _selected.length;
+    return Material(
+      key: const ValueKey('selection-bar'),
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Row(
+            children: [
+              IconButton(
+                key: const ValueKey('exit-selection'),
+                tooltip: 'Close selection',
+                onPressed: _busy ? null : _exitSelectionMode,
+                icon: const Icon(Icons.close),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$count selected',
+                key: const ValueKey('selection-count'),
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const Spacer(),
+              TextButton.icon(
+                key: const ValueKey('select-all'),
+                onPressed: _busy ? null : _selectAllFiltered,
+                icon: Icon(
+                  _allFilteredSelected ? Icons.deselect : Icons.select_all,
+                  size: 18,
+                ),
+                label: Text(_allFilteredSelected ? 'Clear' : 'Select all'),
+              ),
+              const SizedBox(width: 8),
+              if (_busy)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else ...[
+                _BulkToolbarAction(
+                  key: const ValueKey('bulk-add-tag'),
+                  tooltip: 'Add tag…',
+                  icon: Icons.add,
+                  onPressed: count == 0 ? null : _bulkAddTag,
+                ),
+                _BulkToolbarAction(
+                  key: const ValueKey('bulk-remove-tag'),
+                  tooltip: 'Remove tag…',
+                  icon: Icons.remove,
+                  onPressed: count == 0 ? null : _bulkRemoveTag,
+                ),
+                _BulkToolbarAction(
+                  key: const ValueKey('bulk-suggest-title'),
+                  tooltip: 'Suggest title',
+                  icon: Icons.auto_fix_high,
+                  onPressed: count == 0
+                      ? null
+                      : () => _runBulkSuggest(titles: true),
+                ),
+                _BulkToolbarAction(
+                  key: const ValueKey('bulk-suggest-tags'),
+                  tooltip: 'Suggest tags',
+                  icon: Icons.sell_outlined,
+                  onPressed: count == 0
+                      ? null
+                      : () => _runBulkSuggest(titles: false),
+                ),
+                _BulkToolbarAction(
+                  key: const ValueKey('bulk-reorganize'),
+                  tooltip: 'Re-organize selected',
+                  icon: Icons.auto_awesome,
+                  onPressed: count == 0 ? null : _reorganizeSelected,
+                ),
+                _BulkToolbarAction(
+                  key: const ValueKey('bulk-delete'),
+                  tooltip: 'Delete',
+                  icon: Icons.delete_outline,
+                  destructive: true,
+                  onPressed: count == 0 ? null : _confirmBulkDelete,
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
   }
+
+  /// The "Re-organize all documents" bulk pass, now scoped to the selection:
+  /// runs the deterministic organizer (the former Settings-screen action) over
+  /// the whole library through the injected organizer. The pass is corpus-wide
+  /// by design (it re-examines every document), so the toolbar exposes it only
+  /// when the user has a selection.
+  Future<void> _reorganizeSelected() async {
+    final ids = List.of(_selected);
+    if (ids.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final result = await widget.bulkOrganizer.reorganizeAll();
+      if (!mounted) return;
+      _showSnack(
+        context,
+        'Re-organized: ${result.updated} updated, ${result.skipped} skipped.',
+      );
+      _exitSelectionMode();
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(context, 'Could not re-organize: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Prompts for a single tag name and appends it to every selected document
+  /// (batch [`DocumentService.bulkTags`] with only `add` — existing tags are
+  /// honored, so this appends rather than replaces).
+  Future<void> _bulkAddTag() async {
+    final tag = await _promptForTag(context, title: 'Add tag');
+    if (tag == null || !mounted) return;
+    final ids = List.of(_selected);
+    if (ids.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      await widget.documentService.bulkTags(ids, add: [tag]);
+      if (!mounted) return;
+      _showSnack(
+        context,
+        'Added "$tag" to ${ids.length} document${ids.length == 1 ? '' : 's'}.',
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(context, 'Could not add tag: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Prompts for a tag name and strips it from every selected document (batch
+  /// [`DocumentService.bulkTags`] with only `remove`).
+  Future<void> _bulkRemoveTag() async {
+    final tag = await _promptForTag(context, title: 'Remove tag');
+    if (tag == null || !mounted) return;
+    final ids = List.of(_selected);
+    if (ids.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      await widget.documentService.bulkTags(ids, remove: [tag]);
+      if (!mounted) return;
+      _showSnack(
+        context,
+        'Removed "$tag" from ${ids.length} document${ids.length == 1 ? '' : 's'}.',
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(context, 'Could not remove tag: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Delete confirmation dialog for the current selection.
+  Future<void> _confirmBulkDelete() async {
+    final count = _selected.length;
+    if (count == 0 || _busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete $count document${count == 1 ? '' : 's'}?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-bulk-delete'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final ids = List.of(_selected);
+    setState(() => _busy = true);
+    try {
+      await widget.documentService.bulkDelete(ids);
+      if (!mounted) return;
+      _showSnack(context, 'Deleted $count document${count == 1 ? '' : 's'}.');
+      _exitSelectionMode();
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(context, 'Could not delete documents: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Run the split auto-suggest action across every selected document in the
+  /// background ([suggestTitle] or [suggestTags] — the service honors the
+  /// `title_manual`/`tags_manual` flags internally). Progress is surfaced via
+  /// [_suggestProgress] and the corner progress chip.
+  Future<void> _runBulkSuggest({required bool titles}) async {
+    final ids = List.of(_selected);
+    if (ids.isEmpty || _suggestProgress.active) return;
+    var done = 0;
+    // Publishing the pass metadata inside setState makes the corner notifier
+    // visible immediately (a plain ValueNotifier write wouldn't rebuild the
+    // surrounding Column's `build`, which gates the chip on `active`).
+    setState(() {
+      _suggestProgress
+        ..total = ids.length
+        ..completed = 0
+        ..label = titles ? 'Suggesting titles…' : 'Suggesting tags…';
+    });
+    for (final id in ids) {
+      try {
+        if (titles) {
+          await widget.documentService.suggestTitle(id);
+        } else {
+          await widget.documentService.suggestTags(id);
+        }
+      } catch (_) {
+        // A single failure doesn't abort the remainder of the batch.
+      }
+      if (!mounted) return;
+      done++;
+      setState(() => _suggestProgress.completed = done);
+    }
+    if (!mounted) return;
+    _showSnack(
+      context,
+      titles
+          ? 'Titles suggested for $done document${done == 1 ? '' : 's'}.'
+          : 'Tags suggested for $done document${done == 1 ? '' : 's'}.',
+    );
+    await _load();
+  }
+
+  Widget _buildSuggestProgressChip(BuildContext context) {
+    return ValueListenableBuilder<CountProgress>(
+      valueListenable: _suggestProgress,
+      builder: (context, progress, _) {
+        if (progress.total == 0 || progress.completed >= progress.total) {
+          return const SizedBox.shrink();
+        }
+        final scheme = Theme.of(context).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Card(
+                color: scheme.secondaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.auto_fix_high,
+                        size: 16,
+                        color: scheme.onSecondaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          '${progress.label} ${progress.completed}/${progress.total}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: scheme.onSecondaryContainer,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSnack(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 }
 
-/// A large, tappable preview tile for the Documents grid.
-///
+/// Prompts for a single tag name and returns the trimmed name (or `null` when
+/// the user cancels).
+Future<String?> _promptForTag(BuildContext context, {required String title}) =>
+    showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _TagNameDialog(title: title),
+    );
+
+/// A small stateful dialog that owns its [TextEditingController] for the
+/// lifetime of the dialog (created in [initState], disposed in [dispose]) to
+/// avoid "used after disposed" crashes during the exit animation.
+class _TagNameDialog extends StatefulWidget {
+  const _TagNameDialog({required this.title});
+
+  final String title;
+
+  @override
+  State<_TagNameDialog> createState() => _TagNameDialogState();
+}
+
+class _TagNameDialogState extends State<_TagNameDialog> {
+  late final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit(String raw) {
+    final tag = raw.trim();
+    if (tag.isEmpty) return;
+    Navigator.of(context).pop(tag);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Tag name',
+          prefixIcon: Icon(Icons.tag, size: 18),
+          border: OutlineInputBorder(),
+        ),
+        onSubmitted: _submit,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey('confirm-tag-name'),
+          onPressed: () => _submit(_controller.text),
+          child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
+}
+
+/// A broadcast-ready progress snapshot for the bulk suggest pass.
+class CountProgress {
+  const CountProgress({this.label = '', this.completed = 0, this.total = 0});
+
+  /// Human-readable label, e.g. "Suggesting titles…".
+  final String label;
+
+  /// Documents finished so far.
+  final int completed;
+
+  /// Total documents in the pass.
+  final int total;
+
+  bool get active => total > 0 && completed < total;
+}
+
+/// A `ValueNotifier`-backed progress reporter so the corner progress chip can
+/// rebuild independently of the grid.
+class CountNotifier extends ValueNotifier<CountProgress> {
+  CountNotifier() : super(const CountProgress());
+
+  /// Whether a bulk suggest pass is in flight (non-zero total, not yet done).
+  bool get active => value.active;
+
+  String get label => value.label;
+  set label(String v) => value = CountProgress(
+    label: v,
+    completed: value.completed,
+    total: value.total,
+  );
+
+  int get completed => value.completed;
+  set completed(int v) => value = CountProgress(
+    label: value.label,
+    completed: v,
+    total: value.total,
+  );
+
+  int get total => value.total;
+  set total(int v) => value = CountProgress(
+    label: value.label,
+    completed: value.completed,
+    total: v,
+  );
+}
+
+/// A compact icon-only toolbar button for the selection bar.
+class _BulkToolbarAction extends StatelessWidget {
+  const _BulkToolbarAction({
+    super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.destructive = false,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = destructive ? scheme.error : null;
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      color: color,
+      icon: Icon(icon),
+    );
+  }
+}
+
 /// The document preview (image / PDF first page / type-colored placeholder)
 /// fills the whole tile. A bottom gradient scrim keeps the title readable
 /// regardless of the image; the document's tags are overlaid near the top as
@@ -256,19 +801,44 @@ class _DocumentPreviewTile extends StatelessWidget {
   const _DocumentPreviewTile({
     required this.document,
     required this.loader,
-    required this.onOpen,
+    required this.onTapTile,
+    required this.onLongPress,
+    this.selectionMode = false,
+    this.selected = false,
   });
 
   final DocumentSummary document;
   final DocumentPreviewLoader loader;
-  final VoidCallback onOpen;
+
+  /// Invoked when the tile is tapped: opens the document in browse mode, or
+  /// toggles selection in selection mode.
+  final VoidCallback onTapTile;
+
+  /// Invoked on long-press (always enters selection mode with this tile
+  /// pre-selected).
+  final VoidCallback onLongPress;
+
+  /// Whether the grid is in selection mode (shows the checkbox overlay and
+  /// routes taps to selection toggling).
+  final bool selectionMode;
+
+  /// Whether this tile's document is currently selected.
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       clipBehavior: Clip.antiAlias,
+      shape: selected
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: scheme.primary, width: 2),
+            )
+          : null,
       child: InkWell(
-        onTap: onOpen,
+        onTap: onTapTile,
+        onLongPress: onLongPress,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -281,10 +851,40 @@ class _DocumentPreviewTile extends StatelessWidget {
             // progressively darker toward the bottom so the title stays
             // readable over any preview content.
             const IgnorePointer(child: _TileScrim()),
-            if (document.tags.isNotEmpty)
+            if (selectionMode)
+              // Selection overlay: a primary-tinted wash plus a checkbox in
+              // the top-left corner (the tag chips still peek through at the
+              // same top edge, so the overlay is gentle).
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.18),
+                  ),
+                ),
+              ),
+            if (selectionMode)
               Positioned(
                 top: 8,
                 left: 8,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: scheme.surface.withValues(alpha: 0.9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Checkbox(
+                    key: ValueKey('select-check-${document.id}'),
+                    value: selected,
+                    onChanged: (_) => onTapTile(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+            if (document.tags.isNotEmpty)
+              Positioned(
+                top: 8,
+                // In selection mode the checkbox occupies the top-left corner;
+                // push the tag chips to the right so they don't overlap it.
+                left: selectionMode ? 48 : 8,
                 right: 8,
                 child: Wrap(
                   spacing: 4,

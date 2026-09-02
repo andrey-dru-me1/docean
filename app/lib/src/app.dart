@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'features/assistant_service.dart'
     show AssistantService, BridgeAssistantService;
 import 'features/document_service.dart'
-    show BridgeDocumentService, DocumentService;
+    show BridgeDocumentService, DocerBulkOrganizer, DocumentService;
 import 'features/ingest_service.dart' show BridgeIngestService, IngestService;
 import 'features/provider_service.dart'
     show BridgeProviderService, ProviderService;
@@ -17,7 +17,6 @@ import 'ui/documents_screen.dart' show DocumentsScreen;
 import 'ui/ingest_panel.dart' show PathPicker;
 import 'ui/provider_screen.dart' show ProviderScreen;
 import 'ui/search_screen.dart' show DocumentOpener, SearchScreen;
-import 'ui/settings_screen.dart' show SettingsScreen;
 
 /// Root widget. All services are injectable so widget tests can run headlessly
 /// without the native library; the app uses the bridge-backed defaults.
@@ -257,15 +256,6 @@ class _MainShellState extends State<MainShell> {
     ).push(MaterialPageRoute<void>(builder: (_) => const P2pSyncScreen()));
   }
 
-  /// Opens the Settings screen (bulk auto-organization + manual-edit actions).
-  void _openSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SettingsScreen(documentService: widget.documentService),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
@@ -296,6 +286,10 @@ class _MainShellState extends State<MainShell> {
       documentService: widget.documentService,
       onOpenDocument: _openDocument,
       refreshTick: _documentsRefreshTick,
+      // The selection toolbar owns the bulk "Re-organize all documents" action
+      // (formerly on the Settings screen). Wire the production bridge-backed
+      // organizer so the toolbar action actually runs the deterministic pass.
+      bulkOrganizer: const DocerBulkOrganizer(),
     );
     final search = SearchScreen(
       searchService: widget.searchService,
@@ -327,11 +321,6 @@ class _MainShellState extends State<MainShell> {
               tooltip: 'P2P & Sync',
               onPressed: _openP2p,
               icon: const Icon(Icons.swap_horiz),
-            ),
-            IconButton(
-              tooltip: 'Settings',
-              onPressed: _openSettings,
-              icon: const Icon(Icons.settings_outlined),
             ),
             ?healthChip,
           ],
@@ -381,20 +370,21 @@ class _MainShellState extends State<MainShell> {
                 duration: const Duration(milliseconds: 200),
                 switchInCurve: Curves.easeOut,
                 switchOutCurve: Curves.easeIn,
-                transitionBuilder:
-                    (child, animation) => SlideTransition(
-                      position: Tween<Offset>(
+                transitionBuilder: (child, animation) => SlideTransition(
+                  position:
+                      Tween<Offset>(
                         begin: const Offset(1, 0),
                         end: Offset.zero,
                       ).animate(
-                        CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                        CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOut,
+                        ),
                       ),
-                      child: FadeTransition(opacity: animation, child: child),
-                    ),
+                  child: FadeTransition(opacity: animation, child: child),
+                ),
                 child: _selectedDocument == null
-                    ? const SizedBox.shrink(
-                        key: ValueKey('no-selection'),
-                      )
+                    ? const SizedBox.shrink(key: ValueKey('no-selection'))
                     : SizedBox(
                         key: ValueKey(_selectedDocument!.id),
                         width: 420,
@@ -420,11 +410,6 @@ class _MainShellState extends State<MainShell> {
             tooltip: 'P2P & Sync',
             onPressed: _openP2p,
             icon: const Icon(Icons.swap_horiz),
-          ),
-          IconButton(
-            tooltip: 'Settings',
-            onPressed: _openSettings,
-            icon: const Icon(Icons.settings_outlined),
           ),
           ?healthChip,
         ],
