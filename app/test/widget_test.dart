@@ -241,15 +241,15 @@ void main() {
       await tester.pumpAndSettle();
 
       // The detail panel is rendered alongside the list.
-      expect(find.text('Suggest tags'), findsOneWidget);
+      expect(find.byTooltip('Suggest tags'), findsOneWidget);
       expect(find.textContaining('Body of the wide report'), findsOneWidget);
 
       // Closing the panel dismisses it (after the exit transition completes).
       await tester.tap(find.byIcon(Icons.close));
       await tester.pump();
-      expect(find.text('Suggest tags'), findsOneWidget);
+      expect(find.byTooltip('Suggest tags'), findsOneWidget);
       await tester.pumpAndSettle();
-      expect(find.text('Suggest tags'), findsNothing);
+      expect(find.byTooltip('Suggest tags'), findsNothing);
     },
   );
 

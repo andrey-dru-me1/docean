@@ -559,56 +559,42 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      // Distinct "Suggest tags" action (split from the title
-                      // magic wand). Runs async in the background.
-                      FilledButton.tonalIcon(
-                        onPressed: _suggestingTags || _loadingContent
-                            ? null
-                            : _suggestTags,
-                        icon: _suggestingTags
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.sell_outlined, size: 16),
-                        label: Text(
-                          _suggestingTags ? 'Suggesting…' : 'Suggest tags',
-                        ),
-                        style: FilledButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          textStyle: const TextStyle(fontSize: 12.5),
-                        ),
+                      Text(
+                        'Tags',
+                        style: Theme.of(context).textTheme.titleSmall,
                       ),
+                      const Spacer(),
+                      // Magic-wand "Suggest tags" — consistent with the
+                      // title-row magic wand.
+                      if (_suggestingTags)
+                        const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child:
+                                CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      else
+                        IconButton(
+                          tooltip: 'Suggest tags',
+                          visualDensity: VisualDensity.compact,
+                          onPressed:
+                              _loadingContent ? null : _suggestTags,
+                          icon: const Icon(
+                            Icons.auto_fix_high,
+                            size: 20,
+                          ),
+                        ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Text('Tags', style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: 6),
                   _buildTags(),
                   if (_doc.paths.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     _buildPaths(),
                   ],
-                  const SizedBox(height: 12),
-                  // Replaces the old add-tag text field with a same-sized PLUS
-                  // button that opens the compact composer (new tag name +
-                  // one-tap existing/suggested tag chips).
-                  SizedBox(
-                    height: 40,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: IconButton.filled(
-                        tooltip: 'Add tag',
-                        visualDensity: VisualDensity.compact,
-                        onPressed: _openAddTagComposer,
-                        icon: const Icon(Icons.add),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -724,6 +710,18 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
             deleteIconColor: tagColorFor(tag),
             onDeleted: () => _removeTag(tag),
           ),
+        // "Add tag" chip sits inline with the tags so it stays in the flow
+        // when new tags are added/removed.
+        Tooltip(
+          message: 'Add tag',
+          child: ActionChip(
+            avatar: const Icon(Icons.add, size: 16),
+            label: const Text('Add tag'),
+            visualDensity: VisualDensity.compact,
+            labelStyle: Theme.of(context).textTheme.labelSmall,
+            onPressed: _openAddTagComposer,
+          ),
+        ),
       ],
     );
   }

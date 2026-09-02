@@ -459,10 +459,11 @@ void main() {
 
         // The magic-wand "Suggest title" replaced the old 'Save title' check.
         expect(find.byTooltip('Suggest title'), findsOneWidget);
-        expect(find.byIcon(Icons.auto_fix_high), findsOneWidget);
+        // Both title and tags now share the same magic-wand icon.
+        expect(find.byIcon(Icons.auto_fix_high), findsNWidgets(2));
         expect(find.byTooltip('Save title'), findsNothing);
         // A distinct "Suggest tags" action exists (not a combined button).
-        expect(find.text('Suggest tags'), findsOneWidget);
+        expect(find.byTooltip('Suggest tags'), findsOneWidget);
         expect(find.text('Suggest title & tags'), findsNothing);
       },
     );
@@ -606,7 +607,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Suggest tags'));
+        await tester.tap(find.byTooltip('Suggest tags'));
         await tester.pumpAndSettle();
 
         // Only the tags suggestion ran — the title stays untouched.
@@ -640,10 +641,16 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Suggest tags'));
+        await tester.tap(find.byTooltip('Suggest tags'));
         await tester.pump();
         // The button shows an in-flight spinner; the UI is still responsive.
-        expect(find.text('Suggesting…'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(DocumentDetailView),
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsWidgets,
+        );
         await tester.enterText(_titleField(), 'Still typing');
         expect(
           tester.widget<TextField>(_titleField()).controller!.text,
@@ -681,7 +688,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Suggest tags'));
+        await tester.tap(find.byTooltip('Suggest tags'));
         await tester.pumpAndSettle();
 
         // The suggestion ran, but the tags were NOT overwritten; the title is
@@ -721,7 +728,8 @@ void main() {
         await tester.pumpAndSettle();
 
         // The dialog lists known tags that are not yet on the document.
-        expect(find.text('Add tag'), findsOneWidget);
+        // "Add tag" appears both as the ActionChip label and the dialog title.
+        expect(find.text('Add tag'), findsNWidgets(2));
         expect(find.text('existing-tag'), findsOneWidget);
         expect(find.text('other-known'), findsOneWidget);
         // Tags already applied are filtered out of the suggestion list.
