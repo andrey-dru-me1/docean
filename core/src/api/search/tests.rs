@@ -3,7 +3,8 @@
 //! calls, so the behavior verified here is exactly what the UI sees.
 
 use super::{
-    search_index_document, search_query, search_remove_document, search_set_metadata,
+    index_document_from_repository, search_index_document, search_query,
+    search_reindex_from_repository, search_remove_document, search_set_metadata,
     shared_near_dup_index, HighlightSpan, SearchHitDto, SearchMode, SearchRequestDto,
 };
 
@@ -224,4 +225,101 @@ fn highlight_spans_are_case_insensitive_and_byte_aligned() {
     for w in a.highlights.windows(2) {
         assert!(w[0].end <= w[1].start);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Search-index wiring: repository <-> in-memory engine
+// ---------------------------------------------------------------------------
+
+use crate::api::storage::open_repository;
+use crate::domain::{Document, NodeKind};
+
+/// A temp root for a fresh on-disk repository.
+fn temp_root(tag: &str) -> std::path::PathBuf {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let mut p = std::env::temp_dir();
+    p.push(format!(
+        "docer-search-wire-{tag}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&p).unwrap();
+    p
+}
+
+/// Shared point so both wiring tests can build a document directly in a repo.
+/// Returns the document id (the content address = SHA-256 of the bytes).
+fn put_document(repo: &crate::api::storage::DocumentRepository, title: &str, text: &str) -> String {
+    let bytes = text.as_bytes().to_vec();
+    let checksum = crate::storage::hash_bytes(&bytes);
+    let doc = Document {
+        id: checksum.clone(),
+        parent_id: None,
+        kind: NodeKind::Document,
+        title: title.to_owned(),
+        mime_type: "text/plain".to_owned(),
+        size_bytes: bytes.len() as u64,
+        checksum_sha256: checksum.clone(),
+        tags: vec!["wired".to_owned()],
+        created_at_ms: 1,
+        updated_at_ms: 1,
+        extra: Default::default(),
+    };
+    repo.put(doc, bytes).unwrap();
+    repo.put_content(checksum.clone(), text.to_owned(), "plain".to_owned())
+        .unwrap();
+    checksum
+}
+
+#[test]
+fn index_document_from_repository_wires_a_persisted_doc_into_search() {
+    // The ingestion pipeline calls this helper after storing a file; it must
+    // make the persisted document immediately searchable (and filterable by the
+    // metadata registered alongside it).
+    let root = temp_root("single");
+    let repo = open_repository(root.display().to_string()).unwrap();
+    let id = put_document(
+        &repo,
+        "Wired Report",
+        "unique phrase: quasar inventory plateau",
+    );
+
+    index_document_from_repository(&repo, &id).unwrap();
+
+    let hits = search("quasar", SearchMode::Exact);
+    let hit = find(&hits, &id).expect("persisted doc should be searchable after wiring");
+    assert_eq!(hit.tags, vec!["wired"]);
+
+    let _ = search_remove_document(id);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn search_reindex_from_repository_rebuilds_index_from_sqlite() {
+    // Simulates app startup: repos are loaded from disk but the in-memory search
+    // index is empty. Search must be consistent with the persisted store after a
+    // re-index pass seeded from `repo.query` / content / paths.
+    let root = temp_root("reindex");
+    let repo = open_repository(root.display().to_string()).unwrap();
+    let id = put_document(
+        &repo,
+        "Startup Doc",
+        "persisted before launch: eclipse beacon",
+    );
+
+    // The search index is empty until re-indexed.
+    assert!(search("eclipse", SearchMode::Exact).is_empty());
+
+    search_reindex_from_repository(&repo).unwrap();
+
+    let hits = search("eclipse", SearchMode::Exact);
+    let hit = find(&hits, &id).expect("reindex should wire persisted docs into search");
+    assert!(!hit.snippet.is_empty());
+    assert_eq!(hit.tags, vec!["wired"]);
+
+    let _ = search_remove_document(id);
+    let _ = std::fs::remove_dir_all(&root);
 }

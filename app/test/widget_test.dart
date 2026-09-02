@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:docer/src/app.dart';
+import 'package:docer/src/features/document_service.dart'
+    show FakeDocumentService;
 import 'package:docer/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
 import 'package:docer/src/rust/api/ai.dart' show ActiveProviderInfo;
@@ -59,9 +61,10 @@ void main() {
       DocerApp(
         healthCheck: _fakeStatus,
         providerService: _FakeProviderService(),
+        documentService: FakeDocumentService(),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('Engine OK'), findsOneWidget);
   });
@@ -71,10 +74,51 @@ void main() {
       DocerApp(
         healthCheck: () => throw StateError('engine unavailable'),
         providerService: _FakeProviderService(),
+        documentService: FakeDocumentService(),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('Engine degraded'), findsOneWidget);
+  });
+
+  testWidgets('reindexes the search index from persisted docs on startup', (
+    WidgetTester tester,
+  ) async {
+    final docs = FakeDocumentService();
+    await tester.pumpWidget(
+      DocerApp(
+        healthCheck: _fakeStatus,
+        providerService: _FakeProviderService(),
+        documentService: docs,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The shell requests the index rebuild once during init so documents from
+    // previous sessions are searchable after a restart.
+    expect(docs.reindexCount, greaterThanOrEqualTo(1));
+  });
+
+  testWidgets('Documents is the first navigation destination', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      DocerApp(
+        healthCheck: _fakeStatus,
+        providerService: _FakeProviderService(),
+        documentService: FakeDocumentService(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Browse surface is wired into the shell.
+    expect(find.text('Documents'), findsWidgets);
+    expect(find.text('No documents yet'), findsOneWidget);
+
+    // Navigating to Search is still possible.
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Type a query'), findsOneWidget);
   });
 }

@@ -1,18 +1,15 @@
 /// A thin, typed facade over the generated ingestion bindings, mirroring how
 /// [`SearchService`](search_service.dart) wraps the search bridge surface.
 ///
-/// The facade owns the on-disk [`DocumentRepository`] (opened lazily on first
-/// use) and streams [`IngestEvent`]s back to the UI. It is deliberately an
+/// The facade streams [`IngestEvent`]s back to the UI. It is deliberately an
 /// interface so widget tests can inject a fake implementation without loading
 /// the native library.
 library;
 
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-
 import '../rust/api/ingest.dart' as bridge;
 import '../rust/api/ingest.dart' show IngestEvent;
-import '../rust/api/storage.dart' show DocumentRepository, openRepository;
+import '../rust/api/storage.dart' show DocumentRepository;
+import 'repository.dart' show defaultRepositoryRoot, openSharedRepository;
 
 export '../rust/api/ingest.dart' show IngestEvent;
 
@@ -32,37 +29,19 @@ abstract interface class IngestService {
 /// platform's application-documents directory under a `docer` subfolder.
 class BridgeIngestService implements IngestService {
   const BridgeIngestService({Future<String> Function()? repositoryRoot})
-    : _repositoryRoot = repositoryRoot ?? _defaultRepositoryRoot;
+    : _repositoryRoot = repositoryRoot ?? defaultRepositoryRoot;
 
   final Future<String> Function() _repositoryRoot;
 
-  // The repository is a process-wide singleton (mirrors the Rust core's
-  // `OnceLock`-held store), cached here so repeated batches share one handle.
-  static DocumentRepository? _cachedRepo;
-  static String? _cachedRoot;
-
-  /// Resolve the repository root on disk (lazily, once).
-  Future<DocumentRepository> _repository() async {
-    final root = await _repositoryRoot();
-    final cached = _cachedRepo;
-    if (cached != null && _cachedRoot == root) return cached;
-    final repo = await openRepository(root: root);
-    _cachedRepo = repo;
-    _cachedRoot = root;
-    return repo;
-  }
+  /// Resolve the (shared, cached) repository handle for the configured root.
+  Future<DocumentRepository> _repository() =>
+      openSharedRepository(root: _repositoryRoot);
 
   @override
   Stream<IngestEvent> ingestFiles(List<String> paths) async* {
     final repo = await _repository();
     yield* bridge.ingestFiles(repo: repo, paths: paths, skipExisting: false);
   }
-}
-
-/// Default repository root: `<app-documents>/docer`.
-Future<String> _defaultRepositoryRoot() async {
-  final base = await getApplicationDocumentsDirectory();
-  return p.join(base.path, 'docer');
 }
 
 /// A test double that streams a fixed sequence of events without the bridge.

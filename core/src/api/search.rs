@@ -15,7 +15,10 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
+use crate::api::storage::DocumentRepository;
+use crate::domain::NodeKind;
 use crate::search::{embed, SearchEngine, SearchHit, EMBED_DIM};
+use crate::storage::DocumentQuery;
 
 /// Document id -> (tags, paths) lookup table for result filtering.
 type DocMeta = HashMap<String, (Vec<String>, Vec<String>)>;
@@ -281,6 +284,49 @@ pub fn search_set_metadata(document_id: String, tags: Vec<String>, paths: Vec<St
         .lock()
         .unwrap()
         .insert(document_id, (tags, paths));
+}
+
+/// Index one already-persisted document into the in-memory search engine.
+///
+/// This is the **wiring point** between the durable SQLite repository and the
+/// process-global search engine: after a file is stored by the ingestion
+/// pipeline (or when the index is rebuilt from the store at startup), re-read
+/// the extracted text and tag/path metadata from [`DocumentRepository`] and
+/// feed them to the in-memory search backends. Reuses the existing
+/// [`search_index_document`] / [`search_set_metadata`] bridge functions.
+pub(crate) fn index_document_from_repository(
+    repo: &DocumentRepository,
+    document_id: &str,
+) -> Result<(), String> {
+    let doc = repo.get(document_id.to_owned())?;
+    let content = repo
+        .get_content(document_id.to_owned())?
+        .ok_or_else(|| format!("document {document_id} has no extracted content to index"))?;
+    let paths = repo
+        .paths_of(document_id.to_owned())
+        .map(|ps| ps.into_iter().map(|p| p.path).collect::<Vec<_>>())
+        .unwrap_or_default();
+    search_index_document(document_id.to_owned(), content.text)?;
+    search_set_metadata(document_id.to_owned(), doc.tags, paths);
+    Ok(())
+}
+
+/// Rebuild the in-memory search index from the persisted repository.
+///
+/// Call once at app startup so documents that were stored in previous sessions
+/// (but not yet indexed into the ephemeral in-memory engine) become searchable.
+/// Iterates every stored document and forwards it to the in-memory backends via
+/// the same [`index_document_from_repository`] path the ingestion pipeline uses.
+#[flutter_rust_bridge::frb(sync)]
+pub fn search_reindex_from_repository(repo: &DocumentRepository) -> Result<(), String> {
+    let docs = repo.query(DocumentQuery {
+        kind: Some(NodeKind::Document),
+        ..Default::default()
+    })?;
+    for doc in &docs {
+        let _ = index_document_from_repository(repo, &doc.id);
+    }
+    Ok(())
 }
 
 /// Run a search across the document library.

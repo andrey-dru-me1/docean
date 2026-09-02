@@ -12,6 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::api::search::index_document_from_repository;
 use crate::api::storage::DocumentRepository;
 use crate::ingest::{
     FileInfo, IngestError, IngestOption, IngestPipeline, ProgressEvent, ProgressSink,
@@ -146,7 +147,17 @@ pub fn ingest_files(
             &opts,
             Some(&mut ffi_sink),
         ) {
-            Ok(_) => {}
+            Ok(ids) => {
+                // The file is durably persisted (metadata + blob + content).
+                // Feed the in-memory search index from the persisted store so the
+                // just-uploaded document is immediately searchable. This is the
+                // wiring point between the SQLite repository and the search UI.
+                for id in ids {
+                    if let Err(e) = index_document_from_repository(repo, &id) {
+                        eprintln!("ingest: failed to index {id} into search: {e}");
+                    }
+                }
+            }
             Err(IngestError::Unsupported(ext)) => {
                 let name = info
                     .path

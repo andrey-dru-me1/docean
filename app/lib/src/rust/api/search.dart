@@ -5,8 +5,9 @@
 
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+import 'storage.dart';
 
-// These functions are ignored because they are not marked as `pub`: `compute_highlights`, `dispatch_to_dto`, `engine`, `find_offsets`, `merge_hits`, `metadata`, `shared_near_dup_index`, `to_dto`
+// These functions are ignored because they are not marked as `pub`: `compute_highlights`, `dispatch_to_dto`, `engine`, `find_offsets`, `index_document_from_repository`, `merge_hits`, `metadata`, `shared_near_dup_index`, `to_dto`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Index (or re-index) a document's extracted text across exact, semantic, and
@@ -71,6 +72,15 @@ void searchSetMetadata({
   tags: tags,
   paths: paths,
 );
+
+/// Rebuild the in-memory search index from the persisted repository.
+///
+/// Call once at app startup so documents that were stored in previous sessions
+/// (but not yet indexed into the ephemeral in-memory engine) become searchable.
+/// Iterates every stored document and forwards it to the in-memory backends via
+/// the same [`index_document_from_repository`] path the ingestion pipeline uses.
+void searchReindexFromRepository({required DocumentRepository repo}) =>
+    RustLib.instance.api.crateApiSearchSearchReindexFromRepository(repo: repo);
 
 /// Run a search across the document library.
 ///

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'features/assistant_service.dart'
     show AssistantService, BridgeAssistantService;
+import 'features/document_service.dart'
+    show BridgeDocumentService, DocumentService;
 import 'features/ingest_service.dart' show BridgeIngestService, IngestService;
 import 'features/provider_service.dart'
     show BridgeProviderService, ProviderService;
@@ -11,6 +13,8 @@ import 'rust/api/health.dart';
 import 'rust_health.dart';
 import 'ui/chat_screen.dart' show ChatScreen;
 import 'ui/document_view.dart' show DocumentDetailView, DocumentSummary;
+import 'ui/documents_screen.dart' show DocumentsScreen;
+import 'ui/ingest_panel.dart' show PathPicker;
 import 'ui/provider_screen.dart' show ProviderScreen;
 import 'ui/search_screen.dart' show DocumentOpener, SearchScreen;
 
@@ -24,8 +28,10 @@ class DocerApp extends StatelessWidget {
     this.assistantService = const BridgeAssistantService(),
     this.providerService = const BridgeProviderService(),
     this.ingestService = const BridgeIngestService(),
+    this.documentService = const BridgeDocumentService(),
     this.tags = const [],
     this.paths = const [],
+    this.pickPaths,
     this.openDocument,
   });
 
@@ -34,8 +40,13 @@ class DocerApp extends StatelessWidget {
   final AssistantService assistantService;
   final ProviderService providerService;
   final IngestService ingestService;
+  final DocumentService documentService;
   final List<String> tags;
   final List<String> paths;
+
+  /// Injected file picker for the ingestion panel (defaults to the native
+  /// `file_picker`); tests inject a fake.
+  final PathPicker? pickPaths;
 
   /// Opens a document from a search result or citation. Defaults to a local
   /// detail view.
@@ -56,8 +67,10 @@ class DocerApp extends StatelessWidget {
         assistantService: assistantService,
         providerService: providerService,
         ingestService: ingestService,
+        documentService: documentService,
         tags: tags,
         paths: paths,
+        pickPaths: pickPaths,
         openDocument: openDocument,
       ),
     );
@@ -65,7 +78,8 @@ class DocerApp extends StatelessWidget {
 }
 
 /// The navigable shell: a navigation rail on wide screens and a bottom
-/// navigation bar on narrow screens, hosting Search, Chat, and Providers.
+/// navigation bar on narrow screens, hosting Documents, Search, Chat, and
+/// Providers.
 class MainShell extends StatefulWidget {
   const MainShell({
     super.key,
@@ -74,8 +88,10 @@ class MainShell extends StatefulWidget {
     required this.assistantService,
     required this.providerService,
     required this.ingestService,
+    required this.documentService,
     required this.tags,
     required this.paths,
+    this.pickPaths,
     this.openDocument,
   });
 
@@ -84,8 +100,10 @@ class MainShell extends StatefulWidget {
   final AssistantService assistantService;
   final ProviderService providerService;
   final IngestService ingestService;
+  final DocumentService documentService;
   final List<String> tags;
   final List<String> paths;
+  final PathPicker? pickPaths;
   final DocumentOpener? openDocument;
 
   @override
@@ -98,11 +116,29 @@ class _MainShellState extends State<MainShell> {
   HealthStatus? _status;
   bool _healthError = false;
 
+  /// Bumped when ingestion finishes so the Documents browse tab reloads.
+  final ValueNotifier<int> _documentsRefreshTick = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
     _probeAi();
     _probeHealth();
+    // Rebuild the in-memory search index from the persisted repository so
+    // documents from previous sessions are searchable immediately.
+    _reindexSearch();
+  }
+
+  @override
+  void dispose() {
+    _documentsRefreshTick.dispose();
+    super.dispose();
+  }
+
+  /// Best-effort startup re-index of the in-memory engine from SQLite. Fails
+  /// quietly (e.g. the repository is not open yet in tests / headless shell).
+  void _reindexSearch() {
+    widget.documentService.reindex().catchError((Object _) {});
   }
 
   void _probeHealth() {
@@ -168,23 +204,30 @@ class _MainShellState extends State<MainShell> {
       );
     }
 
+    final documents = DocumentsScreen(
+      documentService: widget.documentService,
+      onOpenDocument: _openDocument,
+      refreshTick: _documentsRefreshTick,
+    );
     final search = SearchScreen(
       searchService: widget.searchService,
       ingestService: widget.ingestService,
       onOpenDocument: _openDocument,
       tags: widget.tags,
       paths: widget.paths,
-      onConfigureAi: () => setState(() => _index = 2),
+      pickPaths: widget.pickPaths,
+      onConfigureAi: () => setState(() => _index = 3),
+      onFilesIngested: () => _documentsRefreshTick.value++,
     );
     final chat = ChatScreen(
       assistantService: widget.assistantService,
       onOpenDocument: _openDocument,
       aiAvailable: _aiAvailable,
-      onConfigureAi: () => setState(() => _index = 2),
+      onConfigureAi: () => setState(() => _index = 3),
     );
     final providers = ProviderScreen(providerService: widget.providerService);
 
-    final pages = <Widget>[search, chat, providers];
+    final pages = <Widget>[documents, search, chat, providers];
 
     if (wide) {
       return Scaffold(
@@ -206,6 +249,11 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: (i) => setState(() => _index = i),
               labelType: NavigationRailLabelType.all,
               destinations: const [
+                NavigationRailDestination(
+                  icon: Icon(Icons.folder_open),
+                  selectedIcon: Icon(Icons.folder),
+                  label: Text('Documents'),
+                ),
                 NavigationRailDestination(
                   icon: Icon(Icons.search),
                   label: Text('Search'),
@@ -230,7 +278,7 @@ class _MainShellState extends State<MainShell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(['Search', 'Chat', 'Providers'][_index]),
+        title: Text(['Documents', 'Search', 'Chat', 'Providers'][_index]),
         actions: [
           IconButton(
             tooltip: 'P2P & Sync',
@@ -245,6 +293,11 @@ class _MainShellState extends State<MainShell> {
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.folder_open),
+            selectedIcon: Icon(Icons.folder),
+            label: 'Documents',
+          ),
           NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
           NavigationDestination(
             icon: Icon(Icons.chat_bubble_outline),
