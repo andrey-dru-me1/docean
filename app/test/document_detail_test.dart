@@ -363,15 +363,15 @@ void main() {
           of: find.text('tax'),
           matching: find.byType(TagChip),
         );
-        // Mouse hover over the chip; the X is inside a TagDeleteIcon whose
-        // AnimatedOpacity fades in.
+        // Mouse hover over the chip; the × (inside a TagDeleteIcon whose
+        // AnimatedOpacity fades in) appears.
         final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer(location: tester.getCenter(taxChip));
         await tester.pumpAndSettle();
         expect(_deleteIconFor('tax'), findsOneWidget);
 
-        // Move the pointer away; the X fades back out but the icon (with
-        // opacity 0) still exists inside the chip's delete slot.
+        // Move the pointer away; the × fades back out but the icon (with
+        // opacity 0) still exists in the overlay.
         await mouse.moveTo(
           tester.getTopLeft(find.byType(DocumentDetailView)) +
               const Offset(10, 700),

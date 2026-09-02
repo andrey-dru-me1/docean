@@ -58,9 +58,7 @@ void main() {
     testWidgets(
       'dark theme tint is a light, surface-blended color — not a dark wash',
       (tester) async {
-        await tester.pumpWidget(
-          _wrapDark(const TagChip(label: 'finance')),
-        );
+        await tester.pumpWidget(_wrapDark(const TagChip(label: 'finance')));
 
         final context = tester.element(find.byType(TagChip));
         final chipWidget = tester.widget<Chip>(find.byType(Chip));
@@ -114,34 +112,59 @@ void main() {
   });
 
   group('TagDeleteIcon', () {
-    testWidgets('delete X is hidden until the mouse hovers and then appears', (
+    testWidgets('delete × is hidden until the mouse hovers and then appears', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(400, 200);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
+      var taps = 0;
       await tester.pumpWidget(
-        _wrap(const TagDeleteIcon(color: Colors.teal)),
+        _wrap(
+          SizedBox(
+            width: 100,
+            height: 32,
+            child: TagDeleteIcon(color: Colors.teal, onDeleted: () => taps++),
+          ),
+        ),
       );
 
-      // On a mouse device the X starts hidden (opacity 0).
+      // On a mouse device the × starts hidden (opacity 0).
       final iconFinder = find.byIcon(Icons.clear);
       final opacity = tester.widget<AnimatedOpacity>(
         find.byType(AnimatedOpacity),
       );
       expect(opacity.opacity, 0);
 
-      // Hover over the icon with a mouse; after the fade the X is visible.
-      final mouse = await tester.createGesture(
-        kind: PointerDeviceKind.mouse,
-      );
+      // Hover over the icon with a mouse; after the fade the × is visible and
+      // rendered as a light-gray circle.
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: tester.getCenter(iconFinder));
       await tester.pumpAndSettle();
       final opacityAfter = tester.widget<AnimatedOpacity>(
         find.byType(AnimatedOpacity),
       );
       expect(opacityAfter.opacity, 1);
+
+      // The × lives inside a light-gray circular disc.
+      final circleContainer = find.ancestor(
+        of: iconFinder,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration! as BoxDecoration).shape == BoxShape.circle,
+        ),
+      );
+      expect(circleContainer, findsOneWidget);
+      final circle = tester.widget<Container>(circleContainer);
+      final decoration = circle.decoration! as BoxDecoration;
+      expect(decoration.color, const Color(0xFFE0E0E0));
+
+      // Tapping the visible × fires the delete callback.
+      await tester.tap(iconFinder, warnIfMissed: false);
+      expect(taps, 1);
     });
   });
 }

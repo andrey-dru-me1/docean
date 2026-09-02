@@ -72,7 +72,8 @@ Color tagTintFor(BuildContext context, String name) {
 ///   checkmark when [selected]).
 /// * When [onPressed] is provided the chip is tappable (action-style).
 /// * When [onDeleted] is provided a hover/touch delete affordance (×) is
-///   shown on a plain chip.
+///   overlaid on the chip — it reserves no extra space and only appears when
+///   the chip is hovered (mouse) or touched (touch/stylus).
 ///
 /// The visual palette is always the same — the same tag always looks the
 /// same regardless of which surface it appears on.
@@ -111,8 +112,9 @@ class TagChip extends StatelessWidget {
   /// When non-null the chip is tappable (action-style, no selection state).
   final VoidCallback? onPressed;
 
-  /// When non-null a hover/touch delete affordance (×) is shown and tapping
-  /// it calls this callback.
+  /// When non-null a hover/touch delete affordance (×) is overlaid on top of
+  /// the chip — no extra space is reserved. The cross appears centered on the
+  /// chip only while hovering (mouse) or after a touch interaction.
   final VoidCallback? onDeleted;
 
   @override
@@ -163,6 +165,31 @@ class TagChip extends StatelessWidget {
       );
     }
 
+    if (onDeleted != null) {
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Chip(
+            key: key,
+            visualDensity: VisualDensity.compact,
+            backgroundColor: background,
+            side: BorderSide(
+              color: overlay
+                  ? color.withValues(alpha: 0.85)
+                  : color.withValues(alpha: 0.45),
+            ),
+            labelStyle: labelStyle,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+            label: Text(label),
+          ),
+          Positioned.fill(
+            child: TagDeleteIcon(color: color, onDeleted: onDeleted!),
+          ),
+        ],
+      );
+    }
+
     return Chip(
       key: key,
       visualDensity: VisualDensity.compact,
@@ -176,9 +203,6 @@ class TagChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       labelPadding: const EdgeInsets.symmetric(horizontal: 2),
       label: Text(label),
-      deleteIcon: onDeleted != null ? TagDeleteIcon(color: color) : null,
-      deleteIconColor: color,
-      onDeleted: onDeleted,
     );
   }
 }
@@ -187,16 +211,29 @@ class TagChip extends StatelessWidget {
 (int, int) spanRange(HighlightSpan span) =>
     (span.start.toInt(), span.end.toInt());
 
-/// The delete (X) affordance for a tag chip that supports removal.
+/// The delete (×) affordance for a tag chip that supports removal.
 ///
-/// Desktop (mouse pointer) users get a clean chip that reveals the X **only on
+/// This widget is designed to sit as a [Positioned.fill] child inside a
+/// [Stack] wrapping a chip — it occupies the chip's full area but reserves
+/// **no extra layout space**. The × appears as a small light-gray circle
+/// centered on the chip.
+///
+/// Desktop (mouse pointer) users get a clean chip that reveals the × **only on
 /// hover** (`MouseRegion`), keeping the tag row compact and uncluttered; touch
-/// platforms always show the X so the delete action stays reachable (and long
-/// press remains available on the chip itself as an alternative).
+/// platforms always show the × after the first touch so the delete action stays
+/// reachable.
 class TagDeleteIcon extends StatefulWidget {
-  const TagDeleteIcon({super.key, required this.color});
+  const TagDeleteIcon({
+    super.key,
+    required this.color,
+    required this.onDeleted,
+  });
 
+  /// The tag's deterministic color, used for the cross icon tint.
   final Color color;
+
+  /// Called when the user taps the × to remove the tag.
+  final VoidCallback onDeleted;
 
   @override
   State<TagDeleteIcon> createState() => _TagDeleteIconState();
@@ -209,9 +246,9 @@ class _TagDeleteIconState extends State<TagDeleteIcon> {
   ///
   /// There is no declarative "is this device touch-only?" in `MediaQuery` on
   /// desktop, so we watch incoming pointer events instead: a touch/stylus
-  /// `PointerDown` marks the device as touch and keeps the X always visible
-  /// (the delete action stays reachable and long-press remains an
-  /// alternative); a pure mouse device stays clean until hover.
+  /// `PointerDown` marks the device as touch and keeps the × always visible
+  /// (the delete action stays reachable); a pure mouse device stays clean
+  /// until hover.
   bool _touchInteraction = false;
 
   @override
@@ -226,13 +263,38 @@ class _TagDeleteIconState extends State<TagDeleteIcon> {
       child: MouseRegion(
         onEnter: (_) => setState(() => _hovering = true),
         onExit: (_) => setState(() => _hovering = false),
-        child: IgnorePointer(
-          ignoring: !visible,
-          child: AnimatedOpacity(
-            opacity: visible ? 1 : 0,
-            duration: const Duration(milliseconds: 120),
-            curve: Curves.easeOut,
-            child: Icon(Icons.clear, size: 16, color: widget.color),
+        cursor: visible ? SystemMouseCursors.click : MouseCursor.defer,
+        // The tap handler stays *above* the visibility gate so a touch that
+        // reveals the × also registers as the deletion (matching the chip's
+        // original single-tap-to-delete behavior); only the visual circle is
+        // hidden/ignored until hover or touch.
+        child: GestureDetector(
+          onTap: widget.onDeleted,
+          // Always hit-testable even while the inner visual is hidden/ignored,
+          // so a touch that reveals the × still registers as the deletion.
+          behavior: HitTestBehavior.opaque,
+          child: IgnorePointer(
+            ignoring: !visible,
+            child: AnimatedOpacity(
+              opacity: visible ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOut,
+              child: Center(
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE0E0E0), // light-gray circle
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.clear,
+                    size: 12,
+                    color: widget.color.withValues(alpha: 0.8),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
