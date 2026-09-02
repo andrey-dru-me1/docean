@@ -61,6 +61,11 @@ dependencies:
   # Opens a temp copy of a document with the OS default application.
   url_launcher: ^6.3.1
 
+  # In-app visual previews: decode/downscale image bytes safely (`image`) and
+  # render PDF pages (`pdfx`) for the Documents browse list and detail view.
+  image: ^4.9.2
+  pdfx: ^2.11.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

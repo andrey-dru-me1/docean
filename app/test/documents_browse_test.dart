@@ -1,12 +1,35 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 
+import 'package:docer/src/features/document_preview.dart'
+    show DocumentPreviewLoader;
 import 'package:docer/src/features/document_service.dart'
     show DocumentService, FakeDocumentService, ReorganizeResult, SuggestionPlan;
+import 'package:docer/src/ui/document_preview_view.dart'
+    show DocumentPlaceholder, DocumentThumbnail;
 import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
 import 'package:docer/src/ui/documents_screen.dart' show DocumentsScreen;
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
+
+/// A tiny valid PNG for thumbnail tests.
+Uint8List _pngBytes() =>
+    Uint8List.fromList(img.encodePng(img.Image(width: 8, height: 8)));
+
+/// A synchronous (isolate-free) thumbnailer so widget tests resolve under
+/// FakeAsync.
+Future<Uint8List?> _thumbnailer(Uint8List bytes, int maxDim) async {
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) return null;
+  final resized = img.copyResize(
+    decoded,
+    width: maxDim < decoded.width ? maxDim : decoded.width,
+  );
+  return Uint8List.fromList(img.encodePng(resized));
+}
 
 /// A helper document with fixed fields.
 DocumentSummary _doc(
@@ -108,6 +131,92 @@ void main() {
 
       expect(find.text('Alpha report'), findsOneWidget);
       expect(find.text('Beta notes'), findsNothing);
+    });
+
+    testWidgets(
+      'shows an image thumbnail for image documents and a placeholder for '
+      'text documents',
+      (tester) async {
+        final service = FakeDocumentService(
+          documents: [
+            const DocumentSummary(
+              id: 'doc-img',
+              title: 'Photo',
+              tags: ['media'],
+              mimeType: 'image/png',
+            ),
+            const DocumentSummary(
+              id: 'doc-txt',
+              title: 'Readme',
+              mimeType: 'text/plain',
+            ),
+          ],
+          bytesByDocumentId: {'doc-img': _pngBytes()},
+        );
+        final loader = DocumentPreviewLoader(
+          bytesSource: (id) => service.readBytes(id),
+          imageThumbnailer: ({required bytes, required maxDim}) async =>
+              _thumbnailer(bytes, maxDim),
+          pdfSupport: () async => false,
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            DocumentsScreen(
+              documentService: service,
+              onOpenDocument: (_) {},
+              previewLoader: loader,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The image doc renders a real Image thumbnail; the text doc keeps the
+        // deterministic color/glyph placeholder tile.
+        expect(find.byType(DocumentThumbnail), findsNWidgets(2));
+        expect(find.byType(Image), findsOneWidget);
+        expect(find.byType(DocumentPlaceholder), findsOneWidget);
+      },
+    );
+
+    testWidgets('a broken image thumbnail never bricks the list', (
+      tester,
+    ) async {
+      final service = FakeDocumentService(
+        documents: [
+          const DocumentSummary(
+            id: 'doc-bad',
+            title: 'Broken',
+            mimeType: 'image/png',
+          ),
+        ],
+        bytesByDocumentId: {
+          'doc-bad': Uint8List.fromList([9, 9, 9]),
+        },
+      );
+      final loader = DocumentPreviewLoader(
+        bytesSource: (id) => service.readBytes(id),
+        imageThumbnailer: ({required bytes, required maxDim}) async =>
+            _thumbnailer(bytes, maxDim),
+        pdfSupport: () async => false,
+      );
+
+      await tester.pumpWidget(
+        _wrap(
+          DocumentsScreen(
+            documentService: service,
+            onOpenDocument: (_) {},
+            previewLoader: loader,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The list still shows the document, and the preview degraded to the
+      // placeholder instead of throwing.
+      expect(find.text('Broken'), findsOneWidget);
+      expect(find.byType(DocumentPlaceholder), findsWidgets);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('reloads the list when the refresh tick is bumped', (

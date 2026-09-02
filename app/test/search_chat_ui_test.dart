@@ -1,8 +1,15 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 
 import 'package:docer/src/features/assistant_service.dart'
     show AssistantChunk, AssistantDone, AssistantService, AssistantTokens;
+import 'package:docer/src/features/document_preview.dart'
+    show DocumentPreviewLoader;
+import 'package:docer/src/features/document_service.dart'
+    show FakeDocumentService;
 import 'package:docer/src/features/ingest_service.dart' show FakeIngestService;
 import 'package:docer/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
@@ -11,6 +18,8 @@ import 'package:docer/src/features/search_service.dart'
 import 'package:docer/src/rust/api/ai.dart' show ActiveProviderInfo;
 import 'package:docer/src/rust/api/assistant.dart' show DocumentRefDto;
 import 'package:docer/src/ui/chat_screen.dart' show ChatScreen;
+import 'package:docer/src/ui/document_preview_view.dart'
+    show DocumentPlaceholder, DocumentThumbnail;
 import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
 import 'package:docer/src/ui/provider_screen.dart' show ProviderScreen;
 import 'package:docer/src/ui/search_screen.dart' show SearchScreen;
@@ -191,6 +200,62 @@ void main() {
       expect(call, isNotNull);
       expect(call!.tags, contains('finance'));
     });
+
+    testWidgets(
+      'renders an image thumbnail in search results when metadata resolves',
+      (tester) async {
+        final docs = FakeDocumentService(
+          documents: [
+            const DocumentSummary(
+              id: 'doc-1',
+              title: '/work/reports',
+              mimeType: 'image/png',
+            ),
+          ],
+          bytesByDocumentId: {
+            'doc-1': Uint8List.fromList(
+              img.encodePng(img.Image(width: 8, height: 8)),
+            ),
+          },
+        );
+        final loader = DocumentPreviewLoader(
+          bytesSource: (id) => docs.readBytes(id),
+          imageThumbnailer: ({required bytes, required maxDim}) async {
+            final decoded = img.decodeImage(bytes);
+            if (decoded == null) return null;
+            final resized = img.copyResize(
+              decoded,
+              width: maxDim < decoded.width ? maxDim : decoded.width,
+            );
+            return Uint8List.fromList(img.encodePng(resized));
+          },
+          pdfSupport: () async => false,
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            SearchScreen(
+              searchService: _FakeSearchService(),
+              ingestService: FakeIngestService(const []),
+              onOpenDocument: (_) {},
+              tags: const ['finance'],
+              documentService: docs,
+              previewLoader: loader,
+            ),
+          ),
+        );
+
+        await tester.enterText(find.byType(TextField), 'quick fox');
+        await tester.tap(find.byIcon(Icons.arrow_forward));
+        await tester.pumpAndSettle();
+
+        // The search hit resolved the MIME via getDocument and now shows a
+        // real image thumbnail rather than a placeholder tile.
+        expect(find.byType(DocumentThumbnail), findsOneWidget);
+        expect(find.byType(Image), findsOneWidget);
+        expect(find.byType(DocumentPlaceholder), findsNothing);
+      },
+    );
   });
 
   group('ChatScreen', () {

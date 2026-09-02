@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart' show DocumentService;
+import 'document_preview_view.dart' show DocumentPreviewPanel;
 import 'widgets.dart' show tagColorFor, tagTintFor;
 
 /// A compact summary of a document enough to open it in a detail view.
@@ -72,6 +74,7 @@ class DocumentDetailView extends StatefulWidget {
     this.onBack,
     this.openExternally = openExternallyWithUrlLauncher,
     this.tempDirectory = getTemporaryDirectory,
+    this.previewLoader,
   });
 
   final DocumentSummary document;
@@ -85,6 +88,11 @@ class DocumentDetailView extends StatefulWidget {
   /// Where the temp copy for the external opener is written. Injectable so
   /// widget tests never touch the `path_provider` platform channel.
   final Future<Directory> Function() tempDirectory;
+
+  /// The preview loader for the in-detail image/PDF panel. Defaults to a
+  /// loader bound to [documentService]; injectable so widget tests can swap in
+  /// a synchronous (isolate-free) thumbnailer.
+  final DocumentPreviewLoader? previewLoader;
 
   @override
   State<DocumentDetailView> createState() => _DocumentDetailViewState();
@@ -115,6 +123,16 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   bool _suggesting = false;
   final _tagController = TextEditingController();
   late final TextEditingController _titleController;
+
+  /// Shared preview loader backed by the document service; reuses the same LRU
+  /// cache as the browse/search thumbnails so the detail panel doesn't re-read
+  /// bytes the list already loaded. Injectable via [DocumentDetailView.previewLoader]
+  /// (tests swap in a synchronous thumbnailer).
+  late final DocumentPreviewLoader _previewLoader =
+      widget.previewLoader ??
+      DocumentPreviewLoader(
+        bytesSource: (id) => widget.documentService.readBytes(id),
+      );
 
   @override
   void initState() {
@@ -468,6 +486,16 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
               ),
             ),
           ),
+          if (_isVisual(_doc)) ...[
+            const SizedBox(height: 16),
+            Text('Preview', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            DocumentPreviewPanel(
+              key: ValueKey('preview-${_doc.id}'),
+              document: _doc,
+              loader: _previewLoader,
+            ),
+          ],
           const SizedBox(height: 16),
           Text('Content', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -476,6 +504,15 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         ],
       ),
     );
+  }
+
+  /// Whether [doc] should show the visual preview panel (image or PDF).
+  bool _isVisual(DocumentSummary doc) {
+    final mime = (doc.mimeType ?? '').toLowerCase();
+    if (mime.startsWith('image/')) return true;
+    return mime == 'application/pdf' ||
+        mime == 'application/x-pdf' ||
+        mime == 'application/acrobat';
   }
 
   Widget _buildTitleEditor() {

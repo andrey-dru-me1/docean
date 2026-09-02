@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../features/document_preview.dart' show DocumentPreviewLoader;
+import '../features/document_service.dart' show DocumentService;
 import '../features/ingest_service.dart' show IngestService;
 import '../features/search_service.dart'
     show SearchHitDto, SearchMode, SearchService;
+import 'document_preview_view.dart' show DocumentPlaceholder, DocumentThumbnail;
 import 'document_view.dart' show DocumentSummary;
 import 'ingest_panel.dart'
     show IngestPanel, PathPicker, pickPathsWithFilePicker;
@@ -21,6 +24,8 @@ class SearchScreen extends StatefulWidget {
     required this.onOpenDocument,
     required this.tags,
     this.paths = const [],
+    this.documentService,
+    this.previewLoader,
     this.onConfigureAi,
     this.pickPaths,
     this.onFilesIngested,
@@ -29,6 +34,17 @@ class SearchScreen extends StatefulWidget {
   final SearchService searchService;
   final IngestService ingestService;
   final DocumentOpener onOpenDocument;
+
+  /// Resolves document metadata for search-result thumbnails. Search hits only
+  /// carry `documentId`/tags/paths, so a thumbnail that wants to show an image
+  /// or PDF preview needs this to fetch the MIME type. Optional so tests can
+  /// omit it (the thumbnail then degrades to the type-colored tile).
+  final DocumentService? documentService;
+
+  /// The preview loader for search-result thumbnails. Defaults to a loader
+  /// bound to [documentService]; injectable so widget tests can swap in a
+  /// synchronous (isolate-free) thumbnailer.
+  final DocumentPreviewLoader? previewLoader;
 
   /// Injected file picker for the ingestion panel (defaults to the native
   /// `file_picker`); tests inject a fake.
@@ -59,6 +75,27 @@ class _SearchScreenState extends State<SearchScreen> {
   List<SearchHitDto> _results = [];
   bool _loading = false;
   Object? _error;
+
+  /// Shared preview loader backed by the optional document service. Injectable
+  /// via [SearchScreen.previewLoader] (tests swap in a synchronous thumbnailer);
+  /// when no service is provided search-result thumbnails degrade to the
+  /// type-colored placeholder tile.
+  DocumentPreviewLoader? _previewLoader;
+
+  @override
+  void initState() {
+    super.initState();
+    final service = widget.documentService;
+    final injected = widget.previewLoader;
+    if (injected != null) {
+      _previewLoader = injected;
+    } else if (service != null) {
+      _previewLoader = DocumentPreviewLoader(
+        bytesSource: (id) => service.readBytes(id),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -283,69 +320,172 @@ class _SearchScreenState extends State<SearchScreen> {
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _titleFrom(hit),
-                          style: Theme.of(context).textTheme.titleMedium,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Text(
-                        '${((hit.score * 100).round()).clamp(0, 100)}%',
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
-                    ],
+                  _SearchResultThumb(
+                    hit: hit,
+                    documentService: widget.documentService,
+                    loader: _previewLoader,
                   ),
-                  const SizedBox(height: 4),
-                  HighlightedSnippet(
-                    text: hit.snippet,
-                    highlights: hit.highlights,
-                    maxLines: 3,
-                  ),
-                  if (hit.tags.isNotEmpty || hit.paths.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (final tag in hit.tags)
-                          Chip(
-                            key: ValueKey('hit-tag-$tag'),
-                            label: Text(tag),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: TextStyle(
-                              fontSize: 11.5,
-                              color: tagColorFor(tag),
-                              fontWeight: FontWeight.w600,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _titleFrom(hit),
+                                style: Theme.of(context).textTheme.titleMedium,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            backgroundColor: tagTintFor(tag),
-                            side: BorderSide(
-                              color: tagColorFor(tag).withValues(alpha: 0.45),
+                            Text(
+                              '${((hit.score * 100).round()).clamp(0, 100)}%',
+                              style: Theme.of(context).textTheme.labelSmall,
                             ),
-                            avatar: const SizedBox.shrink(),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        HighlightedSnippet(
+                          text: hit.snippet,
+                          highlights: hit.highlights,
+                          maxLines: 3,
+                        ),
+                        if (hit.tags.isNotEmpty || hit.paths.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (final tag in hit.tags)
+                                Chip(
+                                  key: ValueKey('hit-tag-$tag'),
+                                  label: Text(tag),
+                                  visualDensity: VisualDensity.compact,
+                                  labelStyle: TextStyle(
+                                    fontSize: 11.5,
+                                    color: tagColorFor(tag),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  backgroundColor: tagTintFor(tag),
+                                  side: BorderSide(
+                                    color: tagColorFor(
+                                      tag,
+                                    ).withValues(alpha: 0.45),
+                                  ),
+                                  avatar: const SizedBox.shrink(),
+                                ),
+                              for (final path in hit.paths)
+                                Chip(
+                                  avatar: const Icon(
+                                    Icons.folder_outlined,
+                                    size: 14,
+                                  ),
+                                  label: Text(path),
+                                  visualDensity: VisualDensity.compact,
+                                  labelStyle: const TextStyle(fontSize: 11.5),
+                                ),
+                            ],
                           ),
-                        for (final path in hit.paths)
-                          Chip(
-                            avatar: const Icon(Icons.folder_outlined, size: 14),
-                            label: Text(path),
-                            visualDensity: VisualDensity.compact,
-                            labelStyle: const TextStyle(fontSize: 11.5),
-                          ),
+                        ],
                       ],
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+/// A thumbnail for a search result.
+///
+/// Search hits don't carry the MIME type, so when a [DocumentService] is
+/// available the widget resolves it once (cheap metadata read, cached in the
+/// loader's LRU) and renders a real image/PDF preview; otherwise it degrades
+/// to the deterministic type-colored placeholder tile.
+class _SearchResultThumb extends StatefulWidget {
+  const _SearchResultThumb({
+    required this.hit,
+    required this.documentService,
+    required this.loader,
+  });
+
+  final SearchHitDto hit;
+  final DocumentService? documentService;
+  final DocumentPreviewLoader? loader;
+
+  @override
+  State<_SearchResultThumb> createState() => _SearchResultThumbState();
+}
+
+class _SearchResultThumbState extends State<_SearchResultThumb> {
+  DocumentSummary? _summary;
+
+  /// Best-effort title for a search hit (mirrors `_titleFrom` on the parent
+  /// state); never surfaces a raw internal document id.
+  static String _titleFor(SearchHitDto hit) =>
+      hit.paths.isNotEmpty ? hit.paths.first : 'Untitled document';
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(_SearchResultThumb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hit.documentId != widget.hit.documentId) {
+      _summary = null;
+      _resolve();
+    }
+  }
+
+  Future<void> _resolve() async {
+    final service = widget.documentService;
+    if (service == null) return;
+    try {
+      final doc = await service.getDocument(widget.hit.documentId);
+      if (!mounted) return;
+      setState(() => _summary = doc);
+    } catch (_) {
+      // Metadata fetch failed → keep the placeholder tile.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loader = widget.loader;
+    final summary = _summary;
+    if (loader != null && summary != null) {
+      return DocumentThumbnail(
+        key: ValueKey('search-thumb-${widget.hit.documentId}'),
+        document: summary,
+        loader: loader,
+        size: 48,
+      );
+    }
+    // No service, still resolving, or metadata failed → colored placeholder.
+    final fallback =
+        summary ??
+        DocumentSummary(
+          id: widget.hit.documentId,
+          title: _titleFor(widget.hit),
+          tags: widget.hit.tags,
+          paths: widget.hit.paths,
+        );
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: DocumentPlaceholder(document: fallback),
     );
   }
 }

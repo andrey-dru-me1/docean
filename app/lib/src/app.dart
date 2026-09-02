@@ -268,6 +268,7 @@ class _MainShellState extends State<MainShell> {
       searchService: widget.searchService,
       ingestService: widget.ingestService,
       onOpenDocument: _openDocument,
+      documentService: widget.documentService,
       tags: widget.tags,
       paths: widget.paths,
       pickPaths: widget.pickPaths,

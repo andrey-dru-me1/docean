@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart' show DocumentService;
+import 'document_preview_view.dart' show DocumentThumbnail;
 import 'document_view.dart' show DocumentSummary;
 import 'search_screen.dart' show DocumentOpener;
 import 'widgets.dart' show EmptyState, tagColorFor, tagTintFor;
@@ -19,6 +21,7 @@ class DocumentsScreen extends StatefulWidget {
     required this.documentService,
     required this.onOpenDocument,
     this.refreshTick,
+    this.previewLoader,
   });
 
   final DocumentService documentService;
@@ -27,6 +30,11 @@ class DocumentsScreen extends StatefulWidget {
   /// An optional `ValueNotifier` bumped to signal "something may have changed"
   /// (e.g. ingestion completed), causing the list to reload.
   final ValueListenable<int>? refreshTick;
+
+  /// The preview loader for list thumbnails. Defaults to a loader bound to
+  /// [documentService]; injectable so widget tests can swap in a synchronous
+  /// (isolate-free) thumbnailer.
+  final DocumentPreviewLoader? previewLoader;
 
   @override
   State<DocumentsScreen> createState() => _DocumentsScreenState();
@@ -41,6 +49,16 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   String? _pathFilter;
   bool _loading = true;
   Object? _error;
+
+  /// Shared preview loader backed by the document service. Both the browse
+  /// list and the detail panel (via the same service) reuse its LRU cache, so
+  /// a document's bytes are read at most once across surfaces. Injectable via
+  /// [DocumentsScreen.previewLoader] (tests swap in a synchronous thumbnailer).
+  late final DocumentPreviewLoader _previewLoader =
+      widget.previewLoader ??
+      DocumentPreviewLoader(
+        bytesSource: (id) => widget.documentService.readBytes(id),
+      );
 
   @override
   void initState() {
@@ -206,6 +224,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         separatorBuilder: (_, _) => const SizedBox(height: 8),
         itemBuilder: (context, i) => _DocumentCard(
           document: filtered[i],
+          loader: _previewLoader,
           onTap: () => widget.onOpenDocument(filtered[i]),
         ),
       ),
@@ -214,73 +233,81 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 }
 
 class _DocumentCard extends StatelessWidget {
-  const _DocumentCard({required this.document, required this.onTap});
+  const _DocumentCard({
+    required this.document,
+    required this.loader,
+    required this.onTap,
+  });
 
   final DocumentSummary document;
+  final DocumentPreviewLoader loader;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Card(
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.description_outlined,
-                    size: 20,
-                    color: scheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
+              DocumentThumbnail(
+                key: ValueKey('thumb-${document.id}'),
+                document: document,
+                loader: loader,
+                size: 56,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       document.title,
                       style: Theme.of(context).textTheme.titleMedium,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              if (document.tags.isNotEmpty || document.paths.isNotEmpty) ...[
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final tag in document.tags)
-                      Chip(
-                        key: ValueKey('card-tag-$tag'),
-                        label: Text(tag),
-                        visualDensity: VisualDensity.compact,
-                        labelStyle: TextStyle(
-                          fontSize: 11.5,
-                          color: tagColorFor(tag),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        backgroundColor: tagTintFor(tag),
-                        side: BorderSide(
-                          color: tagColorFor(tag).withValues(alpha: 0.45),
-                        ),
-                        avatar: const SizedBox.shrink(),
-                      ),
-                    for (final path in document.paths)
-                      Chip(
-                        avatar: const Icon(Icons.folder_outlined, size: 14),
-                        label: Text(path),
-                        visualDensity: VisualDensity.compact,
-                        labelStyle: const TextStyle(fontSize: 11.5),
+                    const SizedBox(height: 6),
+                    if (document.tags.isNotEmpty || document.paths.isNotEmpty)
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final tag in document.tags)
+                            Chip(
+                              key: ValueKey('card-tag-$tag'),
+                              label: Text(tag),
+                              visualDensity: VisualDensity.compact,
+                              labelStyle: TextStyle(
+                                fontSize: 11.5,
+                                color: tagColorFor(tag),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              backgroundColor: tagTintFor(tag),
+                              side: BorderSide(
+                                color: tagColorFor(tag).withValues(alpha: 0.45),
+                              ),
+                              avatar: const SizedBox.shrink(),
+                            ),
+                          for (final path in document.paths)
+                            Chip(
+                              avatar: const Icon(
+                                Icons.folder_outlined,
+                                size: 14,
+                              ),
+                              label: Text(path),
+                              visualDensity: VisualDensity.compact,
+                              labelStyle: const TextStyle(fontSize: 11.5),
+                            ),
+                        ],
                       ),
                   ],
                 ),
-              ],
+              ),
             ],
           ),
         ),
