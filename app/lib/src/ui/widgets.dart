@@ -46,8 +46,17 @@ Color tagTintFor(String name) => tagColorFor(name).withValues(alpha: 0.16);
 /// [tagColorFor]); the background is the tag's tinted hue so dark and light
 /// themes both stay readable. Use [BuildContext]-free construction so the same
 /// chip can be reused inside `Wrap`s on any surface.
+///
+/// Note: the chip deliberately passes **no `avatar`** — a zero-size avatar
+/// placeholder would still reserve the avatar slot and push the label away
+/// from the chip's left edge.
 class TagChip extends StatelessWidget {
-  const TagChip({super.key, required this.label, this.selected = false});
+  const TagChip({
+    super.key,
+    required this.label,
+    this.selected = false,
+    this.overlay = false,
+  });
 
   final String label;
 
@@ -55,25 +64,40 @@ class TagChip extends StatelessWidget {
   /// stronger tint so the active filter is obvious at a glance.
   final bool selected;
 
+  /// Renders the chip on top of a visual preview (e.g. the Documents grid
+  /// tiles): the washed-out tint is replaced with a dark translucent scrim and
+  /// the label turns white so tag text stays readable over arbitrary image
+  /// content, while a faint ring keeps the tag color identity.
+  final bool overlay;
+
   @override
   Widget build(BuildContext context) {
     final color = tagColorFor(label);
-    final background = selected
+    final background = overlay
+        ? Colors.black.withValues(alpha: 0.45)
+        : selected
         ? tagTintFor(label).withValues(alpha: 0.38)
         : tagTintFor(label);
+    final labelColor = overlay ? Colors.white : color;
     return Chip(
       visualDensity: VisualDensity.compact,
       backgroundColor: background,
-      side: BorderSide(color: color.withValues(alpha: 0.45)),
+      side: BorderSide(
+        color: overlay
+            ? Colors.white.withValues(alpha: 0.28)
+            : color.withValues(alpha: 0.45),
+      ),
       labelStyle: TextStyle(
         fontSize: 11.5,
-        color: color,
+        color: labelColor,
         fontWeight: FontWeight.w600,
+        shadows: overlay
+            ? const [Shadow(color: Colors.black45, blurRadius: 3)]
+            : null,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 6),
       labelPadding: const EdgeInsets.symmetric(horizontal: 4),
       label: Text(label),
-      avatar: const SizedBox.shrink(),
     );
   }
 }

@@ -56,38 +56,15 @@ class DocerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseScheme = ColorScheme.fromSeed(seedColor: Colors.teal);
+    final darkScheme = ColorScheme.fromSeed(
+      seedColor: Colors.teal,
+      brightness: Brightness.dark,
+    );
     return MaterialApp(
       title: 'Docer',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: baseScheme,
-        useMaterial3: true,
-        // Dense desktop-first layout: compact everything so more documents and
-        // metadata fit on screen at once while mobile stays usable.
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        appBarTheme: const AppBarTheme(
-          toolbarHeight: 44,
-          titleTextStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        ),
-        chipTheme: ChipThemeData(
-          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          labelStyle: const TextStyle(fontSize: 11.5),
-        ),
-        inputDecorationTheme: const InputDecorationTheme(
-          isDense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        ),
-        cardTheme: CardThemeData(margin: EdgeInsets.zero, elevation: 1),
-        listTileTheme: const ListTileThemeData(
-          visualDensity: VisualDensity.compact,
-          minVerticalPadding: 2,
-        ),
-        navigationBarTheme: const NavigationBarThemeData(
-          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-        ),
-      ),
+      theme: _themeFor(baseScheme),
+      darkTheme: _themeFor(darkScheme),
       home: MainShell(
         healthCheck: healthCheck,
         searchService: searchService,
@@ -102,6 +79,56 @@ class DocerApp extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Builds the app [ThemeData] for a given color scheme (light or dark).
+///
+/// Kept as one helper so light and dark modes stay visually identical: dense
+/// desktop-first metrics, and — critically — *explicit* text colors derived
+/// from the scheme. The framework's chip/AppBar defaults can resolve label and
+/// title text to `onPrimary`-style light colors even on light surfaces, which
+/// renders as white-on-light; pinning `onSurface`/`onSurfaceVariant` here
+/// keeps every title/chip label dark-on-light in light mode and light-on-dark
+/// in dark mode.
+ThemeData _themeFor(ColorScheme scheme) {
+  return ThemeData(
+    colorScheme: scheme,
+    useMaterial3: true,
+    // Dense desktop-first layout: compact everything so more documents and
+    // metadata fit on screen at once while mobile stays usable.
+    visualDensity: VisualDensity.compact,
+    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    appBarTheme: AppBarTheme(
+      toolbarHeight: 44,
+      foregroundColor: scheme.onSurface,
+      titleTextStyle: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        color: scheme.onSurface,
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      labelStyle: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+      secondaryLabelStyle: TextStyle(
+        fontSize: 11.5,
+        color: scheme.onSurfaceVariant,
+      ),
+    ),
+    inputDecorationTheme: const InputDecorationTheme(
+      isDense: true,
+      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    ),
+    cardTheme: CardThemeData(margin: EdgeInsets.zero, elevation: 1),
+    listTileTheme: const ListTileThemeData(
+      visualDensity: VisualDensity.compact,
+      minVerticalPadding: 2,
+    ),
+    navigationBarTheme: const NavigationBarThemeData(
+      labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+    ),
+  );
 }
 
 /// The navigable shell: a navigation rail on wide screens and a bottom
@@ -255,6 +282,12 @@ class _MainShellState extends State<MainShell> {
             color: ok ? Colors.green : Colors.orange,
           ),
           label: Text(ok ? 'Engine OK' : 'Engine degraded'),
+          // Explicit scheme-derived color (dark-on-light in light mode,
+          // light-on-dark in dark mode) instead of the theme's light default.
+          labelStyle: TextStyle(
+            fontSize: 11.5,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       );
     }

@@ -9,9 +9,10 @@ import 'package:docer/src/features/document_preview.dart'
 import 'package:docer/src/features/document_service.dart'
     show DocumentService, FakeDocumentService, ReorganizeResult, SuggestionPlan;
 import 'package:docer/src/ui/document_preview_view.dart'
-    show DocumentPlaceholder, DocumentThumbnail;
+    show DocumentPlaceholder, DocumentTilePreview;
 import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
 import 'package:docer/src/ui/documents_screen.dart' show DocumentsScreen;
+import 'package:docer/src/ui/widgets.dart' show TagChip;
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
@@ -134,6 +135,51 @@ void main() {
     });
 
     testWidgets(
+      'renders documents in a preview grid with title and tag overlay',
+      (tester) async {
+        final opened = <DocumentSummary>[];
+        final service = FakeDocumentService(
+          documents: [
+            _doc('g-1', 'Grid report', tags: const ['finance', 'tax']),
+            _doc('g-2', 'Grid photo'),
+          ],
+          tags: const ['finance', 'tax'],
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            DocumentsScreen(
+              documentService: service,
+              onOpenDocument: opened.add,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The browse surface is a responsive grid of large preview tiles.
+        expect(find.byType(GridView), findsOneWidget);
+        final grid = tester.widget<GridView>(find.byType(GridView));
+        final delegate =
+            grid.gridDelegate as SliverGridDelegateWithMaxCrossAxisExtent;
+        expect(delegate.maxCrossAxisExtent, inInclusiveRange(220, 260));
+        expect(delegate.childAspectRatio, closeTo(3 / 4, 0.01));
+        expect(find.byType(DocumentTilePreview), findsNWidgets(2));
+
+        // Each tile carries its title and the tag chips overlay the preview.
+        expect(find.text('Grid report'), findsOneWidget);
+        expect(find.text('Grid photo'), findsOneWidget);
+        expect(find.widgetWithText(TagChip, 'finance'), findsOneWidget);
+        expect(find.widgetWithText(TagChip, 'tax'), findsOneWidget);
+
+        // Tapping a tile still opens the document.
+        await tester.tap(find.text('Grid report'));
+        await tester.pumpAndSettle();
+        expect(opened, hasLength(1));
+        expect(opened.single.id, 'g-1');
+      },
+    );
+
+    testWidgets(
       'shows an image thumbnail for image documents and a placeholder for '
       'text documents',
       (tester) async {
@@ -172,8 +218,8 @@ void main() {
         await tester.pumpAndSettle();
 
         // The image doc renders a real Image thumbnail; the text doc keeps the
-        // deterministic color/glyph placeholder tile.
-        expect(find.byType(DocumentThumbnail), findsNWidgets(2));
+        // deterministic color/glyph placeholder tile. Both are grid tiles now.
+        expect(find.byType(DocumentTilePreview), findsNWidgets(2));
         expect(find.byType(Image), findsOneWidget);
         expect(find.byType(DocumentPlaceholder), findsOneWidget);
       },

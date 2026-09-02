@@ -563,7 +563,12 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
             avatar: const Icon(Icons.folder_outlined, size: 14),
             label: Text(path),
             visualDensity: VisualDensity.compact,
-            labelStyle: const TextStyle(fontSize: 11.5),
+            // Explicit onSurfaceVariant (not the theme's chip default) so path
+            // chips stay dark-on-light / light-on-dark instead of white-on-light.
+            labelStyle: TextStyle(
+              fontSize: 11.5,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
       ],
     );
@@ -580,7 +585,6 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
           InputChip(
             key: ValueKey('tag-$tag'),
             label: Text(tag),
-            avatar: const SizedBox.shrink(),
             visualDensity: VisualDensity.compact,
             labelStyle: Theme.of(context).textTheme.labelSmall,
             backgroundColor: tagTintFor(tag),

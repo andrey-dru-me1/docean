@@ -3,9 +3,12 @@
 /// This file owns the widgets that *show* a preview produced by
 /// [`DocumentPreviewLoader`](document_preview.dart):
 ///
-/// * [DocumentThumbnail] — a small square preview for the Documents browse
-///   list and search results (image bytes, PDF first page, or a MIME/extension
-///   glyph on a deterministic colored tile).
+/// * [DocumentTilePreview] — a rectangular preview that fills its parent, used
+///   by the Documents grid tiles (image bytes, PDF first page, or a MIME/
+///   extension glyph on a deterministic colored tile).
+/// * [DocumentThumbnail] — a small square preview for search results (image
+///   bytes, PDF first page, or the same placeholder tile), built on top of
+///   [DocumentTilePreview].
 /// * [DocumentPreviewPanel] — a larger preview for the document detail view
 ///   (image or PDF first page; text/other documents keep the content viewer).
 ///
@@ -15,6 +18,8 @@
 /// path degrades to [DocumentPlaceholder] — a preview can never brick the
 /// surrounding UI.
 library;
+
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -113,34 +118,33 @@ class DocumentPlaceholder extends StatelessWidget {
   }
 }
 
-/// A small square thumbnail for a document in a list.
+/// A rectangular document preview that fills its parent.
 ///
-/// Loads through [DocumentPreviewLoader]'s shared cache: while loading it shows
-/// the type-colored placeholder tile (so the list doesn't jump when the
-/// preview resolves), then swaps in the image (or PDF first page / fallback
-/// glyph) when ready. Failed loads degrade to [DocumentPlaceholder] so the
-/// list card is never broken.
-class DocumentThumbnail extends StatefulWidget {
-  const DocumentThumbnail({
+/// Used by the Documents grid tiles: image bytes and PDF first pages are
+/// cropped with `BoxFit.cover` to cover the whole tile; text/other documents
+/// (and failed loads) degrade to the type-colored [DocumentPlaceholder].
+/// Loads go through [DocumentPreviewLoader]'s shared cache so the grid never
+/// re-reads bytes the detail panel already loaded.
+class DocumentTilePreview extends StatefulWidget {
+  const DocumentTilePreview({
     super.key,
     required this.document,
     required this.loader,
-    this.size = 48,
-    this.borderRadius = 8,
+    this.borderRadius = 0,
   });
 
   final DocumentSummary document;
   final DocumentPreviewLoader loader;
 
-  /// The square edge length (defaults to 48 px list thumbnail).
-  final double size;
+  /// Corner radius for the cropped preview surface (0 when the parent already
+  /// clips via `Card`/`ClipRRect`).
   final double borderRadius;
 
   @override
-  State<DocumentThumbnail> createState() => _DocumentThumbnailState();
+  State<DocumentTilePreview> createState() => _DocumentTilePreviewState();
 }
 
-class _DocumentThumbnailState extends State<DocumentThumbnail> {
+class _DocumentTilePreviewState extends State<DocumentTilePreview> {
   DocumentPreview? _preview;
   bool _loading = false;
 
@@ -151,7 +155,7 @@ class _DocumentThumbnailState extends State<DocumentThumbnail> {
   }
 
   @override
-  void didUpdateWidget(DocumentThumbnail oldWidget) {
+  void didUpdateWidget(DocumentTilePreview oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.document.id != widget.document.id ||
         oldWidget.loader != widget.loader) {
@@ -189,58 +193,69 @@ class _DocumentThumbnailState extends State<DocumentThumbnail> {
 
   @override
   Widget build(BuildContext context) {
-    final size = widget.size;
     final preview = _preview;
     if (_loading || preview == null) {
-      // A loading tile mirrors the placeholder layout so the list doesn't
+      // A loading tile mirrors the placeholder layout so the grid doesn't
       // jump when the preview resolves.
-      return SizedBox(
-        width: size,
-        height: size,
-        child: DocumentPlaceholder(
-          document: widget.document,
-          iconSize: size * 0.4,
-          borderRadius: widget.borderRadius,
-        ),
+      return DocumentPlaceholder(
+        document: widget.document,
+        iconSize: 36,
+        borderRadius: widget.borderRadius,
       );
     }
-    if (preview is DocumentPreviewImage) {
+    final bytes = switch (preview) {
+      DocumentPreviewImage(:final bytes) => bytes,
+      DocumentPreviewPdf(:final pdfThumbnail) => pdfThumbnail.bytes,
+      _ => null,
+    };
+    if (bytes != null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(widget.borderRadius),
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Image.memory(
-            preview.bytes,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            errorBuilder: (_, _, _) => _FallbackTile(document: widget.document),
-          ),
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _FallbackTile(document: widget.document),
         ),
       );
     }
-    if (preview is DocumentPreviewPdf) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(widget.borderRadius),
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Image.memory(
-            preview.pdfThumbnail.bytes,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            errorBuilder: (_, _, _) => _FallbackTile(document: widget.document),
-          ),
-        ),
-      );
-    }
+    return DocumentPlaceholder(
+      document: widget.document,
+      iconSize: 36,
+      borderRadius: widget.borderRadius,
+    );
+  }
+}
+
+/// A small square thumbnail for a document in a list.
+///
+/// A thin wrapper over [DocumentTilePreview] constrained to [size]×[size]; see
+/// that widget for the loading/caching/degradation behavior.
+class DocumentThumbnail extends StatelessWidget {
+  const DocumentThumbnail({
+    super.key,
+    required this.document,
+    required this.loader,
+    this.size = 48,
+    this.borderRadius = 8,
+  });
+
+  final DocumentSummary document;
+  final DocumentPreviewLoader loader;
+
+  /// The square edge length (defaults to 48 px list thumbnail).
+  final double size;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
     return SizedBox(
       width: size,
       height: size,
-      child: DocumentPlaceholder(
-        document: widget.document,
-        iconSize: size * 0.4,
-        borderRadius: widget.borderRadius,
+      child: DocumentTilePreview(
+        document: document,
+        loader: loader,
+        borderRadius: borderRadius,
       ),
     );
   }
@@ -267,10 +282,21 @@ class DocumentPreviewPanel extends StatefulWidget {
     super.key,
     required this.document,
     required this.loader,
+    this.maxHeight = 320,
   });
 
   final DocumentSummary document;
   final DocumentPreviewLoader loader;
+
+  /// Bounded height for the preview stage.
+  ///
+  /// The detail view is a `ListView` (and, on wide screens, a 420 px side
+  /// panel). Without a height bound an image rendered with `BoxFit.contain`
+  /// gets unconstrained vertical space: portrait scans grow huge and push the
+  /// content below off-screen, while the side-panel preview stretches out of
+  /// proportion. Bounding the stage keeps the image's *original* aspect ratio,
+  /// letterboxed and centered on a neutral background.
+  final double maxHeight;
 
   @override
   State<DocumentPreviewPanel> createState() => _DocumentPreviewPanelState();
@@ -309,48 +335,49 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
   Widget build(BuildContext context) {
     final preview = _preview;
     if (preview is DocumentPreviewImage) {
-      return Card(
-        clipBehavior: Clip.antiAlias,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Image.memory(
-              preview.bytes,
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-              // If the (already-downscaled) PNG somehow fails to decode, fall
-              // back to the type placeholder rather than a broken image frame.
-              errorBuilder: (_, _, _) => DocumentPlaceholder(
-                document: widget.document,
-                iconSize: 48,
-                borderRadius: 8,
-              ),
-            ),
-          ),
-        ),
-      );
+      return _buildStage(context, preview.bytes);
     }
     if (preview is DocumentPreviewPdf) {
-      return Card(
-        clipBehavior: Clip.antiAlias,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Image.memory(
-              preview.pdfThumbnail.bytes,
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-              errorBuilder: (_, _, _) => DocumentPlaceholder(
-                document: widget.document,
-                iconSize: 48,
-                borderRadius: 8,
-              ),
-            ),
-          ),
-        ),
-      );
+      return _buildStage(context, preview.pdfThumbnail.bytes);
     }
     // Text/other docs (and failed previews) keep the content viewer.
     return const SizedBox.shrink();
+  }
+
+  /// A bounded-height, centered preview stage.
+  ///
+  /// The stage is exactly [DocumentPreviewPanel.maxHeight] tall and the image
+  /// uses `BoxFit.contain`, so the *original* aspect ratio is always preserved
+  /// (letterboxed on the neutral surface-tint background) instead of stretching
+  /// to fill an unconstrained height inside the list / side panel.
+  Widget _buildStage(BuildContext context, Uint8List bytes) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: widget.maxHeight,
+        width: double.infinity,
+        child: ColoredBox(
+          color: scheme.surfaceContainerHighest,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+                // If the (already-downscaled) PNG somehow fails to decode, fall
+                // back to the type placeholder rather than a broken image frame.
+                errorBuilder: (_, _, _) => DocumentPlaceholder(
+                  document: widget.document,
+                  iconSize: 48,
+                  borderRadius: 8,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

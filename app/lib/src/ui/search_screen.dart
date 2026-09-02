@@ -235,7 +235,6 @@ class _SearchScreenState extends State<SearchScreen> {
                         side: BorderSide(
                           color: tagColorFor(tag).withValues(alpha: 0.45),
                         ),
-                        avatar: const SizedBox.shrink(),
                         onSelected: (v) => _toggleTag(tag, v),
                       ),
                   ],
@@ -377,7 +376,6 @@ class _SearchScreenState extends State<SearchScreen> {
                                       tag,
                                     ).withValues(alpha: 0.45),
                                   ),
-                                  avatar: const SizedBox.shrink(),
                                 ),
                               for (final path in hit.paths)
                                 Chip(

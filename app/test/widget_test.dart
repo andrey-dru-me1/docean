@@ -57,6 +57,76 @@ class _FakeProviderService implements ProviderService {
 }
 
 void main() {
+  testWidgets('app shell text is dark-on-light in light mode', (tester) async {
+    await tester.pumpWidget(
+      DocerApp(
+        healthCheck: _fakeStatus,
+        providerService: _FakeProviderService(),
+        documentService: FakeDocumentService(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final context = tester.element(find.text('Engine OK'));
+    final theme = Theme.of(context);
+    expect(theme.brightness, Brightness.light);
+    // Chip labels (Engine OK, path chips) resolve to the readable dark
+    // onSurfaceVariant instead of a light-on-light default.
+    expect(
+      theme.chipTheme.labelStyle?.color,
+      theme.colorScheme.onSurfaceVariant,
+    );
+    expect(
+      theme.chipTheme.labelStyle!.color!.computeLuminance(),
+      lessThan(0.5),
+    );
+    // The AppBar title uses onSurface (dark in light mode).
+    expect(
+      theme.appBarTheme.titleTextStyle?.color,
+      theme.colorScheme.onSurface,
+    );
+    expect(
+      theme.appBarTheme.titleTextStyle!.color!.computeLuminance(),
+      lessThan(0.5),
+    );
+  });
+
+  testWidgets('app shell text is light-on-dark in dark mode', (tester) async {
+    final platformDispatcher = tester.binding.platformDispatcher;
+    platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(platformDispatcher.clearPlatformBrightnessTestValue);
+
+    await tester.pumpWidget(
+      DocerApp(
+        healthCheck: _fakeStatus,
+        providerService: _FakeProviderService(),
+        documentService: FakeDocumentService(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final context = tester.element(find.text('Engine OK'));
+    final theme = Theme.of(context);
+    expect(theme.brightness, Brightness.dark);
+    // Both chip labels and the AppBar title flip to light-on-dark.
+    expect(
+      theme.chipTheme.labelStyle?.color,
+      theme.colorScheme.onSurfaceVariant,
+    );
+    expect(
+      theme.chipTheme.labelStyle!.color!.computeLuminance(),
+      greaterThan(0.5),
+    );
+    expect(
+      theme.appBarTheme.titleTextStyle?.color,
+      theme.colorScheme.onSurface,
+    );
+    expect(
+      theme.appBarTheme.titleTextStyle!.color!.computeLuminance(),
+      greaterThan(0.5),
+    );
+  });
+
   testWidgets('shows the engine health check chip in the shell', (
     WidgetTester tester,
   ) async {
