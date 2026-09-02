@@ -257,14 +257,13 @@ void main() {
       expect(find.byType(Image), findsOneWidget);
       expect(find.byType(DocumentPlaceholder), findsNothing);
 
-      // The preview ships in an A4-aspect (210×297) paper container.
-      final a4Frame = tester.widget<AspectRatio>(
-        find.byWidgetPredicate(
-          (w) => w is AspectRatio && (w.aspectRatio - 210 / 297).abs() < 1e-9,
-        ),
+      // The preview stage fills the preview area (width/height-bound) with the
+      // original white card — no A4-aspect frame nested around the image.
+      expect(find.byType(AspectRatio), findsNothing);
+      expect(
+        find.ancestor(of: find.byType(Image), matching: find.byType(Card)),
+        findsOneWidget,
       );
-      expect(a4Frame.aspectRatio, closeTo(210 / 297, 0.001));
-      expect(a4Frame.aspectRatio, closeTo(1 / 1.414, 0.01));
     });
 
     testWidgets('PDF preview degrades to nothing (keeps content viewer)', (

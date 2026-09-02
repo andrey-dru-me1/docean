@@ -344,18 +344,13 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
     return const SizedBox.shrink();
   }
 
-  /// An A4-aspect (210×297 → ~1/1.414), centered preview stage.
+  /// A bounded-height, centered preview stage.
   ///
-  /// The image/PDF page is rendered inside a paper-shaped
-  /// [AspectRatio](aspectRatio: 210/297) container on a neutral surface tint,
-  /// so every preview has a consistent portrait document shape regardless of
-  /// the source image's own dimensions. The inner image uses `BoxFit.contain`,
-  /// preserving its *original* aspect ratio letterboxed inside the A4 frame;
-  /// the frame itself is centered and height-bounded by
-  /// [DocumentPreviewPanel.maxHeight] so portrait scans never push the content
-  /// below off-screen (e.g. in the 420 px side panel).
+  /// The stage is exactly [DocumentPreviewPanel.maxHeight] tall and the image
+  /// uses `BoxFit.contain`, so the *original* aspect ratio is always preserved
+  /// (letterboxed on the white card background) instead of stretching to fill
+  /// an unconstrained height inside the list / side panel.
   Widget _buildStage(BuildContext context, Uint8List bytes) {
-    final scheme = Theme.of(context).colorScheme;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
@@ -364,28 +359,16 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: AspectRatio(
-              aspectRatio: 210 / 297,
-              child: ColoredBox(
-                color: scheme.surfaceContainerHighest,
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Image.memory(
-                      bytes,
-                      fit: BoxFit.contain,
-                      gaplessPlayback: true,
-                      // If the (already-downscaled) PNG somehow fails to
-                      // decode, fall back to the type placeholder rather than a
-                      // broken image frame.
-                      errorBuilder: (_, _, _) => DocumentPlaceholder(
-                        document: widget.document,
-                        iconSize: 40,
-                        borderRadius: 6,
-                      ),
-                    ),
-                  ),
-                ),
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+              // If the (already-downscaled) PNG somehow fails to decode, fall
+              // back to the type placeholder rather than a broken image frame.
+              errorBuilder: (_, _, _) => DocumentPlaceholder(
+                document: widget.document,
+                iconSize: 48,
+                borderRadius: 8,
               ),
             ),
           ),
