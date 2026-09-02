@@ -9,7 +9,7 @@ import '../features/document_service.dart'
 import 'document_preview_view.dart' show DocumentTilePreview;
 import 'document_view.dart' show DocumentSummary;
 import 'search_screen.dart' show DocumentOpener;
-import 'widgets.dart' show EmptyState, TagChip, tagColorFor, tagTintFor;
+import 'widgets.dart' show EmptyState, TagChip;
 
 /// The Documents browse/list surface.
 ///
@@ -200,20 +200,10 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               runSpacing: 6,
               children: [
                 for (final tag in _tags)
-                  FilterChip(
+                  TagChip(
                     key: ValueKey('filter-$tag'),
-                    label: Text(tag),
+                    label: tag,
                     selected: _tagFilter == tag,
-                    visualDensity: VisualDensity.compact,
-                    labelStyle: TextStyle(
-                      fontSize: 11.5,
-                      color: tagColorFor(tag),
-                      fontWeight: FontWeight.w600,
-                    ),
-                    backgroundColor: tagTintFor(context, tag),
-                    side: BorderSide(
-                      color: tagColorFor(tag).withValues(alpha: 0.45),
-                    ),
                     onSelected: (v) =>
                         setState(() => _tagFilter = v ? tag : null),
                   ),

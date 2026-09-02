@@ -10,6 +10,7 @@ import 'package:docer/src/features/document_service.dart'
     show FakeDocumentService, SuggestionPlan;
 import 'package:docer/src/ui/document_view.dart'
     show DocumentDetailView, DocumentSummary;
+import 'package:docer/src/ui/widgets.dart' show TagChip;
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
 
@@ -32,7 +33,7 @@ DocumentSummary _doc({
 /// The inline title field is the first TextField.
 Finder _titleField() => find.byType(TextField).first;
 
-/// The delete (X) affordance on an [InputChip] whose label text is [tagLabel].
+/// The delete (X) affordance on an [TagChip] whose label text is [tagLabel].
 ///
 /// The X lives inside a manageable-size [TagDeleteIcon]; with a touch pointer
 /// (widget-test default) it is always visible, so this finder is stable
@@ -40,7 +41,7 @@ Finder _titleField() => find.byType(TextField).first;
 Finder _deleteIconFor(String tagLabel) {
   final chip = find.ancestor(
     of: find.text(tagLabel),
-    matching: find.byType(InputChip),
+    matching: find.byType(TagChip),
   );
   return find.descendant(of: chip, matching: find.byIcon(Icons.clear));
 }
@@ -49,10 +50,7 @@ Finder _deleteIconFor(String tagLabel) {
 /// injected [Completer] resolves — used to assert that tag add/remove updates
 /// the UI *before* the persist round-trip finishes.
 class _GatedTagService extends FakeDocumentService {
-  _GatedTagService({
-    required this.gate,
-    super.documents = const [],
-  });
+  _GatedTagService({required this.gate, super.documents = const []});
 
   final Completer<void> gate;
 
@@ -193,20 +191,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The initial tag is editable (InputChip with a delete action).
-      expect(find.byType(InputChip), findsOneWidget);
+      // The initial tag is editable (TagChip with a delete action).
+      expect(find.byType(TagChip), findsOneWidget);
       expect(find.text('finance'), findsOneWidget);
 
       // Open the compact composer via the PLUS button and name a new tag.
-      await tester.tap(
-        find.byTooltip('Add tag'),
-        warnIfMissed: false,
-      );
+      await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
       await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byType(TextField).last,
-        'tax',
-      );
+      await tester.enterText(find.byType(TextField).last, 'tax');
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
@@ -219,7 +211,7 @@ void main() {
       expect(service.setTagsCount, 1);
       expect(service.lastSetTags, containsAll(['finance', 'tax']));
       // And the view reflects the updated document metadata.
-      expect(find.byType(InputChip), findsNWidgets(2));
+      expect(find.byType(TagChip), findsNWidgets(2));
       expect(find.text('tax'), findsOneWidget);
     });
 
@@ -229,20 +221,14 @@ void main() {
       (tester) async {
         final doc = _doc(tags: const ['finance']);
         final gate = Completer<void>();
-        final service = _GatedTagService(
-          gate: gate,
-          documents: [doc],
-        );
+        final service = _GatedTagService(gate: gate, documents: [doc]);
 
         await tester.pumpWidget(
           _wrap(DocumentDetailView(document: doc, documentService: service)),
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(
-          find.byTooltip('Add tag'),
-          warnIfMissed: false,
-        );
+        await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField).last, 'tax');
         await tester.tap(
@@ -257,17 +243,14 @@ void main() {
         await tester.pump();
 
         expect(
-          find.byType(InputChip),
+          find.byType(TagChip),
           findsNWidgets(2),
           reason: 'The new chip must be visible before persistence completes.',
         );
         // The chip label (not the composing TextField, which may still be
         // animating out) carries the new tag.
         expect(
-          find.descendant(
-            of: find.byType(InputChip),
-            matching: find.text('tax'),
-          ),
+          find.descendant(of: find.byType(TagChip), matching: find.text('tax')),
           findsOneWidget,
         );
         expect(service.setTagsCount, 1);
@@ -276,67 +259,58 @@ void main() {
         gate.complete();
         await tester.pumpAndSettle();
         expect(
-          find.descendant(
-            of: find.byType(InputChip),
-            matching: find.text('tax'),
-          ),
+          find.descendant(of: find.byType(TagChip), matching: find.text('tax')),
           findsOneWidget,
         );
         expect(service.lastSetTags, containsAll(['finance', 'tax']));
       },
     );
 
-    testWidgets(
-      'reverts an optimistically-added tag when the persist fails',
-      (tester) async {
-        final doc = _doc(tags: const ['finance']);
-        final service = _FailingTagService(
-          documents: [doc],
-        );
+    testWidgets('reverts an optimistically-added tag when the persist fails', (
+      tester,
+    ) async {
+      final doc = _doc(tags: const ['finance']);
+      final service = _FailingTagService(documents: [doc]);
 
-        await tester.pumpWidget(
-          _wrap(DocumentDetailView(document: doc, documentService: service)),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _wrap(DocumentDetailView(document: doc, documentService: service)),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(
-          find.byTooltip('Add tag'),
-          warnIfMissed: false,
-        );
-        await tester.pumpAndSettle();
-        await tester.enterText(find.byType(TextField).last, 'doomed');
-        await tester.tap(
-          find.descendant(
-            of: find.byType(AlertDialog),
-            matching: find.byTooltip('Add tag'),
-          ),
-        );
-        await tester.pump();
+      await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, 'doomed');
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byTooltip('Add tag'),
+        ),
+      );
+      await tester.pump();
 
-        // Optimistic chip appeared (the dialog's TextField may still be animating
-        // out, so scope to the chip).
-        expect(
-          find.descendant(
-            of: find.byType(InputChip),
-            matching: find.text('doomed'),
-          ),
-          findsOneWidget,
-        );
-        expect(find.byType(InputChip), findsNWidgets(2));
+      // Optimistic chip appeared (the dialog's TextField may still be animating
+      // out, so scope to the chip).
+      expect(
+        find.descendant(
+          of: find.byType(TagChip),
+          matching: find.text('doomed'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(TagChip), findsNWidgets(2));
 
-        // The persist fails → the chip reverts and an error snackbar shows.
-        await tester.pumpAndSettle();
-        expect(
-          find.descendant(
-            of: find.byType(InputChip),
-            matching: find.text('doomed'),
-          ),
-          findsNothing,
-        );
-        expect(find.byType(InputChip), findsOneWidget);
-        expect(find.textContaining('Could not update tags'), findsOneWidget);
-      },
-    );
+      // The persist fails → the chip reverts and an error snackbar shows.
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(TagChip),
+          matching: find.text('doomed'),
+        ),
+        findsNothing,
+      );
+      expect(find.byType(TagChip), findsOneWidget);
+      expect(find.textContaining('Could not update tags'), findsOneWidget);
+    });
 
     testWidgets('removes a tag through the service', (tester) async {
       final doc = _doc(tags: const ['finance', 'tax']);
@@ -350,7 +324,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(InputChip), findsNWidgets(2));
+      expect(find.byType(TagChip), findsNWidgets(2));
 
       // Tap the delete affordance on the 'tax' chip. With the default touch
       // pointer the X is always visible, so this finder is stable even while
@@ -362,7 +336,7 @@ void main() {
 
       expect(service.setTagsCount, 1);
       expect(service.lastSetTags, ['finance']);
-      expect(find.byType(InputChip), findsOneWidget);
+      expect(find.byType(TagChip), findsOneWidget);
       expect(find.text('tax'), findsNothing);
     });
 
@@ -387,13 +361,11 @@ void main() {
 
         final taxChip = find.ancestor(
           of: find.text('tax'),
-          matching: find.byType(InputChip),
+          matching: find.byType(TagChip),
         );
         // Mouse hover over the chip; the X is inside a TagDeleteIcon whose
         // AnimatedOpacity fades in.
-        final mouse = await tester.createGesture(
-          kind: PointerDeviceKind.mouse,
-        );
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer(location: tester.getCenter(taxChip));
         await tester.pumpAndSettle();
         expect(_deleteIconFor('tax'), findsOneWidget);
@@ -401,14 +373,12 @@ void main() {
         // Move the pointer away; the X fades back out but the icon (with
         // opacity 0) still exists inside the chip's delete slot.
         await mouse.moveTo(
-          tester.getTopLeft(find.byType(DocumentDetailView)) + const Offset(10, 700),
+          tester.getTopLeft(find.byType(DocumentDetailView)) +
+              const Offset(10, 700),
         );
         await tester.pumpAndSettle();
         final opacity = tester.widget<AnimatedOpacity>(
-          find.descendant(
-            of: taxChip,
-            matching: find.byType(AnimatedOpacity),
-          ),
+          find.descendant(of: taxChip, matching: find.byType(AnimatedOpacity)),
         );
         expect(opacity.opacity, 0);
       },
@@ -660,50 +630,46 @@ void main() {
         gate.complete();
         await tester.pumpAndSettle();
         expect(find.text('deferred'), findsWidgets);
-        expect(
-          find.textContaining('Tags suggested: deferred'),
-          findsOneWidget,
-        );
+        expect(find.textContaining('Tags suggested: deferred'), findsOneWidget);
       },
     );
 
-    testWidgets(
-      'suggest tags respects the manual tags flag and keeps tags',
-      (tester) async {
-        final doc = _doc(
-          tags: const ['keep-me'],
-          extra: const {'tags_manual': 'true'},
-        );
-        final service = FakeDocumentService(
-          documents: [doc],
-          contentByDocumentId: {'doc-1': 'Report body'},
-          suggestion: const SuggestionPlan(
-            title: 'Suggested title',
-            tags: ['auto'],
-          ),
-        );
+    testWidgets('suggest tags respects the manual tags flag and keeps tags', (
+      tester,
+    ) async {
+      final doc = _doc(
+        tags: const ['keep-me'],
+        extra: const {'tags_manual': 'true'},
+      );
+      final service = FakeDocumentService(
+        documents: [doc],
+        contentByDocumentId: {'doc-1': 'Report body'},
+        suggestion: const SuggestionPlan(
+          title: 'Suggested title',
+          tags: ['auto'],
+        ),
+      );
 
-        await tester.pumpWidget(
-          _wrap(DocumentDetailView(document: doc, documentService: service)),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _wrap(DocumentDetailView(document: doc, documentService: service)),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.byTooltip('Suggest tags'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('Suggest tags'));
+      await tester.pumpAndSettle();
 
-        // The suggestion ran, but the tags were NOT overwritten; the title is
-        // never touched by the tags action either.
-        expect(service.suggestTagsCount, 1);
-        expect(service.updateTitleCount, 0);
-        expect(service.setTagsCount, 0);
-        expect(find.text('keep-me'), findsOneWidget);
-        expect(find.text('auto'), findsNothing);
-        expect(
-          find.textContaining('Tags unchanged (manually edited)'),
-          findsOneWidget,
-        );
-      },
-    );
+      // The suggestion ran, but the tags were NOT overwritten; the title is
+      // never touched by the tags action either.
+      expect(service.suggestTagsCount, 1);
+      expect(service.updateTitleCount, 0);
+      expect(service.setTagsCount, 0);
+      expect(find.text('keep-me'), findsOneWidget);
+      expect(find.text('auto'), findsNothing);
+      expect(
+        find.textContaining('Tags unchanged (manually edited)'),
+        findsOneWidget,
+      );
+    });
 
     testWidgets(
       'plus composer shows existing-but-not-applied tags and applies a tap',
@@ -721,10 +687,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Open the composer via the PLUS button.
-        await tester.tap(
-          find.byTooltip('Add tag'),
-          warnIfMissed: false,
-        );
+        await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
         await tester.pumpAndSettle();
 
         // The dialog lists known tags that are not yet on the document.
@@ -741,8 +704,11 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(service.setTagsCount, 1);
-        expect(service.lastSetTags, containsAll(['already-there', 'existing-tag']));
-        expect(find.byType(InputChip), findsNWidgets(2));
+        expect(
+          service.lastSetTags,
+          containsAll(['already-there', 'existing-tag']),
+        );
+        expect(find.byType(TagChip), findsNWidgets(2));
         expect(find.text('existing-tag'), findsOneWidget);
       },
     );

@@ -9,8 +9,7 @@ import 'document_preview_view.dart' show DocumentPlaceholder, DocumentThumbnail;
 import 'document_view.dart' show DocumentSummary;
 import 'ingest_panel.dart'
     show IngestPanel, PathPicker, pickPathsWithFilePicker;
-import 'widgets.dart'
-    show EmptyState, HighlightedSnippet, tagColorFor, tagTintFor;
+import 'widgets.dart' show EmptyState, HighlightedSnippet, TagChip;
 
 /// What a search result should do when tapped.
 typedef DocumentOpener = void Function(DocumentSummary summary);
@@ -221,20 +220,10 @@ class _SearchScreenState extends State<SearchScreen> {
                   runSpacing: 6,
                   children: [
                     for (final tag in widget.tags)
-                      FilterChip(
+                      TagChip(
                         key: ValueKey('search-filter-$tag'),
-                        label: Text(tag),
+                        label: tag,
                         selected: _selectedTags.contains(tag),
-                        visualDensity: VisualDensity.compact,
-                        labelStyle: TextStyle(
-                          fontSize: 11.5,
-                          color: tagColorFor(tag),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        backgroundColor: tagTintFor(context, tag),
-                        side: BorderSide(
-                          color: tagColorFor(tag).withValues(alpha: 0.45),
-                        ),
                         onSelected: (v) => _toggleTag(tag, v),
                       ),
                   ],
@@ -361,21 +350,9 @@ class _SearchScreenState extends State<SearchScreen> {
                             runSpacing: 6,
                             children: [
                               for (final tag in hit.tags)
-                                Chip(
+                                TagChip(
                                   key: ValueKey('hit-tag-$tag'),
-                                  label: Text(tag),
-                                  visualDensity: VisualDensity.compact,
-                                  labelStyle: TextStyle(
-                                    fontSize: 11.5,
-                                    color: tagColorFor(tag),
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  backgroundColor: tagTintFor(context, tag),
-                                  side: BorderSide(
-                                    color: tagColorFor(
-                                      tag,
-                                    ).withValues(alpha: 0.45),
-                                  ),
+                                  label: tag,
                                 ),
                               for (final path in hit.paths)
                                 Chip(

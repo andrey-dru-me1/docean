@@ -9,7 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart' show DocumentService;
 import 'document_preview_view.dart' show DocumentPreviewPanel;
-import 'widgets.dart' show TagDeleteIcon, tagColorFor, tagTintFor;
+import 'widgets.dart' show TagChip;
 
 /// How many one-tap "existing tag" suggestions the add-tag composer shows at
 /// most (kept small for the dense detail-view layout).
@@ -248,9 +248,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       setState(() {
         _doc = _copyDoc(_doc, tags: previous);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update tags: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not update tags: $e')));
     }
   }
 
@@ -311,17 +311,17 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       final clean = plan.cleanTitle;
       if (clean != null && applied) {
         // Small confirmation: title was actually suggested & applied.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Title suggested: $clean')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Title suggested: $clean')));
       } else if (alreadyManual) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Title unchanged (manually edited)')),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No title suggestion')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No title suggestion')));
       }
     } catch (e) {
       if (!mounted) return;
@@ -345,9 +345,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     final alreadyManual = _doc.tagsManuallyEdited;
     setState(() => _suggestingTags = true);
     try {
-      final plan = await widget.documentService.suggestTags(
-        widget.document.id,
-      );
+      final plan = await widget.documentService.suggestTags(widget.document.id);
       final fresh = await widget.documentService.getDocument(
         widget.document.id,
       );
@@ -367,9 +365,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
           const SnackBar(content: Text('Tags unchanged (manually edited)')),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No tags suggested')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No tags suggested')));
       }
     } catch (e) {
       if (!mounted) return;
@@ -699,15 +697,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       runSpacing: 6,
       children: [
         for (final tag in _doc.tags)
-          InputChip(
+          TagChip(
             key: ValueKey('tag-$tag'),
-            label: Text(tag),
-            visualDensity: VisualDensity.compact,
-            labelStyle: Theme.of(context).textTheme.labelSmall,
-            backgroundColor: tagTintFor(context, tag),
-            side: BorderSide(color: tagColorFor(tag).withValues(alpha: 0.45)),
-            deleteIcon: TagDeleteIcon(color: tagColorFor(tag)),
-            deleteIconColor: tagColorFor(tag),
+            label: tag,
             onDeleted: () => _removeTag(tag),
           ),
         // "Add tag" chip sits inline with the tags so it stays in the flow
@@ -865,19 +857,9 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
               runSpacing: 6,
               children: [
                 for (final tag in widget.suggestions)
-                  ActionChip(
+                  TagChip(
                     key: ValueKey('suggest-$tag'),
-                    label: Text(tag),
-                    visualDensity: VisualDensity.compact,
-                    labelStyle: TextStyle(
-                      fontSize: 11.5,
-                      color: tagColorFor(tag),
-                      fontWeight: FontWeight.w600,
-                    ),
-                    backgroundColor: tagTintFor(context, tag),
-                    side: BorderSide(
-                      color: tagColorFor(tag).withValues(alpha: 0.45),
-                    ),
+                    label: tag,
                     onPressed: () => _submit(tag),
                   ),
               ],

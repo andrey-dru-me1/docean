@@ -169,8 +169,22 @@ void main() {
         // Each tile carries its title and the tag chips overlay the preview.
         expect(find.text('Grid report'), findsOneWidget);
         expect(find.text('Grid photo'), findsOneWidget);
-        expect(find.widgetWithText(TagChip, 'finance'), findsOneWidget);
-        expect(find.widgetWithText(TagChip, 'tax'), findsOneWidget);
+        // Tags appear on the preview tile overlay AND in the filter bar, so
+        // scope to GridView descendants to check only the tile overlay chips.
+        expect(
+          find.descendant(
+            of: find.byType(GridView),
+            matching: find.widgetWithText(TagChip, 'finance'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(GridView),
+            matching: find.widgetWithText(TagChip, 'tax'),
+          ),
+          findsOneWidget,
+        );
 
         // Tapping a tile still opens the document.
         await tester.tap(find.text('Grid report'));

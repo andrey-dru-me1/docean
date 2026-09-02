@@ -44,11 +44,12 @@ Color tagColorFor(String name) {
 /// The palette is a set of *dark* material 900 shades ([kTagPalette]), so a
 /// plain `color.withValues(alpha: 0.16)` wash renders as a near-black smudge
 /// on the dark theme's already-dark surface — low contrast and hard to read.
-/// In dark mode the tint is instead the *light* hue of the same tag blended
-/// into the surface, producing a clearly-visible pastel colored pill with dark
-/// labels staying readable; light themes keep the original washed-out
-/// translucent wash. The caller supplies the surface color (typically
-/// `ColorScheme.surface`) so the blend always matches the chip's backdrop.
+/// In dark mode the tint is instead a *light* hue of the same tag blended
+/// into the surface at high opacity, producing a clearly-visible pastel
+/// colored pill with dark labels staying readable. Light themes keep the
+/// original washed-out translucent wash. The caller supplies the surface
+/// color (typically `ColorScheme.surface`) so the blend always matches the
+/// chip's backdrop.
 Color tagTintFor(BuildContext context, String name) {
   final scheme = Theme.of(context).colorScheme;
   if (scheme.brightness == Brightness.light) {
@@ -56,16 +57,25 @@ Color tagTintFor(BuildContext context, String name) {
   }
   final light = HSLColor.fromColor(
     tagColorFor(name),
-  ).withLightness(0.82).toColor();
-  return Color.alphaBlend(light.withValues(alpha: 0.55), scheme.surface);
+  ).withLightness(0.85).toColor();
+  return Color.alphaBlend(light.withValues(alpha: 0.70), scheme.surface);
 }
 
-/// A compact, colored tag chip with no avatar icon.
+/// A compact, colored tag chip used consistently across every surface:
+/// preview tiles, filter bars, search results, and the info sidebar.
 ///
 /// The color is derived deterministically from the tag name (see
 /// [tagColorFor]); the background is the tag's tinted hue so dark and light
-/// themes both stay readable. Use [BuildContext]-free construction so the same
-/// chip can be reused inside `Wrap`s on any surface.
+/// themes both stay readable.
+///
+/// * When [onSelected] is provided the chip acts as a filter (with a
+///   checkmark when [selected]).
+/// * When [onPressed] is provided the chip is tappable (action-style).
+/// * When [onDeleted] is provided a hover/touch delete affordance (×) is
+///   shown on a plain chip.
+///
+/// The visual palette is always the same — the same tag always looks the
+/// same regardless of which surface it appears on.
 ///
 /// Note: the chip deliberately passes **no `avatar`** — a zero-size avatar
 /// placeholder would still reserve the avatar slot and push the label away
@@ -76,6 +86,9 @@ class TagChip extends StatelessWidget {
     required this.label,
     this.selected = false,
     this.overlay = false,
+    this.onSelected,
+    this.onPressed,
+    this.onDeleted,
   });
 
   final String label;
@@ -91,6 +104,17 @@ class TagChip extends StatelessWidget {
   /// arbitrary image content.
   final bool overlay;
 
+  /// When non-null the chip is interactive: tapping toggles [selected].
+  /// This turns the chip into a filter chip (with a checkmark).
+  final ValueChanged<bool>? onSelected;
+
+  /// When non-null the chip is tappable (action-style, no selection state).
+  final VoidCallback? onPressed;
+
+  /// When non-null a hover/touch delete affordance (×) is shown and tapping
+  /// it calls this callback.
+  final VoidCallback? onDeleted;
+
   @override
   Widget build(BuildContext context) {
     final color = tagColorFor(label);
@@ -103,7 +127,44 @@ class TagChip extends StatelessWidget {
         ? tagTintFor(context, label).withValues(alpha: 0.38)
         : tagTintFor(context, label);
     final labelColor = overlay ? Colors.white : color;
+    final labelStyle = TextStyle(
+      fontSize: 11.5,
+      color: labelColor,
+      fontWeight: FontWeight.w600,
+      shadows: overlay
+          ? const [Shadow(color: Colors.black45, blurRadius: 3)]
+          : null,
+    );
+
+    if (onSelected != null) {
+      return FilterChip(
+        key: key,
+        label: Text(label),
+        selected: selected,
+        visualDensity: VisualDensity.compact,
+        backgroundColor: background,
+        selectedColor: tagTintFor(context, label).withValues(alpha: 0.38),
+        side: BorderSide(color: color.withValues(alpha: 0.45)),
+        labelStyle: labelStyle,
+        showCheckmark: false,
+        onSelected: onSelected,
+      );
+    }
+
+    if (onPressed != null) {
+      return ActionChip(
+        key: key,
+        label: Text(label),
+        visualDensity: VisualDensity.compact,
+        backgroundColor: background,
+        side: BorderSide(color: color.withValues(alpha: 0.45)),
+        labelStyle: labelStyle,
+        onPressed: onPressed,
+      );
+    }
+
     return Chip(
+      key: key,
       visualDensity: VisualDensity.compact,
       backgroundColor: background,
       side: BorderSide(
@@ -111,17 +172,13 @@ class TagChip extends StatelessWidget {
             ? color.withValues(alpha: 0.85)
             : color.withValues(alpha: 0.45),
       ),
-      labelStyle: TextStyle(
-        fontSize: 11.5,
-        color: labelColor,
-        fontWeight: FontWeight.w600,
-        shadows: overlay
-            ? const [Shadow(color: Colors.black45, blurRadius: 3)]
-            : null,
-      ),
+      labelStyle: labelStyle,
       padding: const EdgeInsets.symmetric(horizontal: 4),
       labelPadding: const EdgeInsets.symmetric(horizontal: 2),
       label: Text(label),
+      deleteIcon: onDeleted != null ? TagDeleteIcon(color: color) : null,
+      deleteIconColor: color,
+      onDeleted: onDeleted,
     );
   }
 }
