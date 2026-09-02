@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -9,6 +10,10 @@ import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart' show DocumentService;
 import 'document_preview_view.dart' show DocumentPreviewPanel;
 import 'widgets.dart' show TagDeleteIcon, tagColorFor, tagTintFor;
+
+/// How many one-tap "existing tag" suggestions the add-tag composer shows at
+/// most (kept small for the dense detail-view layout).
+const int kAddTagSuggestionLimit = 8;
 
 /// A compact summary of a document enough to open it in a detail view.
 ///
@@ -118,10 +123,22 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   String? _content;
   bool _loadingContent = true;
   Object? _contentError;
-  bool _savingTags = false;
-  bool _savingTitle = false;
-  bool _suggesting = false;
-  final _tagController = TextEditingController();
+
+  /// Whether the title suggestion (magic wand) is running in the background.
+  bool _suggestingTitle = false;
+
+  /// Whether the tags suggestion is running in the background.
+  bool _suggestingTags = false;
+
+  /// Monotonic generation for tag persistence. Each optimistic tag change
+  /// bumps it; a background persist only applies when it is still the latest,
+  /// so out-of-order completions never clobber a newer local state.
+  int _tagsGeneration = 0;
+
+  /// The tag names suggested by the last [DocumentService.suggestTags] run, so
+  /// the add-tag composer can offer them as one-tap chips.
+  List<String> _lastSuggestedTags = const [];
+
   late final TextEditingController _titleController;
 
   /// Shared preview loader backed by the document service; reuses the same LRU
@@ -144,7 +161,6 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
 
   @override
   void dispose() {
-    _tagController.dispose();
     _titleController.dispose();
     super.dispose();
   }
@@ -195,32 +211,46 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         mime.contains('csv');
   }
 
-  Future<void> _saveTags(List<String> tags) async {
-    if (_savingTags || tags.toSet().length != tags.length) return;
-    setState(() => _savingTags = true);
+  /// Optimistically apply a new tag set to [nextTags], persist it in the
+  /// background, and revert the local change (with an error snackbar) if the
+  /// persist fails.
+  ///
+  /// The UI never awaits the bridge round-trip: [nextTags] appears instantly.
+  /// A monotonic [_tagsGeneration] guards against out-of-order completions, so
+  /// a stale (older) persist completing later never overwrites a newer local
+  /// state — only the failure of the *latest* persist reverts the UI.
+  void _applyTagsOptimistically(List<String> nextTags) {
+    if (nextTags.toSet().length != nextTags.length) return;
+    final previous = List.of(_doc.tags);
+    final generation = ++_tagsGeneration;
+    setState(() {
+      _doc = _copyDoc(_doc, tags: List.of(nextTags));
+    });
+    unawaited(_persistTags(previous, nextTags, generation));
+  }
+
+  Future<void> _persistTags(
+    List<String> previous,
+    List<String> nextTags,
+    int generation,
+  ) async {
     try {
-      await widget.documentService.setTags(widget.document.id, tags);
-      final fresh = await widget.documentService.getDocument(
-        widget.document.id,
-      );
-      if (!mounted) return;
-      setState(() {
-        _doc = fresh;
-        _savingTags = false;
-      });
+      await widget.documentService.setTags(widget.document.id, nextTags);
+      if (!mounted || generation != _tagsGeneration) return;
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _savingTags = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not update tags: $e')));
+      if (!mounted || generation != _tagsGeneration) return;
+      setState(() {
+        _doc = _copyDoc(_doc, tags: previous);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update tags: $e')),
+      );
     }
   }
 
   Future<void> _saveTitle(String value) async {
     final title = value.trim();
-    if (_savingTitle || title.isEmpty || title == _doc.title) return;
-    setState(() => _savingTitle = true);
+    if (title.isEmpty || title == _doc.title) return;
     try {
       await widget.documentService.updateTitle(widget.document.id, title);
       final fresh = await widget.documentService.getDocument(
@@ -230,61 +260,130 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       setState(() {
         _doc = fresh;
         _titleController.text = fresh.title;
-        _savingTitle = false;
       });
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Title updated')));
     } catch (e) {
       if (!mounted) return;
-      setState(() => _savingTitle = false);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Could not update title: $e')));
     }
   }
 
-  /// Runs the auto-organization bridge through the per-file re-organization
-  /// variant ([DocumentService.reorganizeOne]), which honors the
-  /// `title_manual`/`tags_manual` flags *inside the core*: a title is applied
-  /// only when the user has *not* manually renamed it, and tags only when the
-  /// user has *not* manually tagged the document. The core applies the changes
-  /// and refreshes the search metadata; this view then re-reads the document
-  /// so the UI reflects whatever was applied.
-  Future<void> _suggestMetadata() async {
-    if (_suggesting) return;
-    setState(() => _suggesting = true);
+  /// Trigger the split "Suggest title" action (magic wand) asynchronously.
+  ///
+  /// Kicks off [DocumentService.suggestTitle] in the background (the service
+  /// offloads the deterministic organizer to a compute/isolate work item, so
+  /// the UI isolate is never blocked), applies the suggestion when the user has
+  /// not manually renamed the document, and reports the outcome in a snackbar.
+  Future<void> _suggestTitle() async {
+    if (_suggestingTitle) return;
+    // Capture the pre-run flags: the store marks `title_manual` when it applies
+    // the suggestion, so we must remember whether the user had *already* edited
+    // before reporting "unchanged (manually edited)".
+    final alreadyManual = _doc.titleManuallyEdited;
+    final previousTitle = _doc.title;
+    setState(() => _suggestingTitle = true);
     try {
-      await widget.documentService.reorganizeOne(widget.document.id);
-      final refreshed = await widget.documentService.getDocument(
+      final plan = await widget.documentService.suggestTitle(
+        widget.document.id,
+      );
+      final fresh = await widget.documentService.getDocument(
         widget.document.id,
       );
       if (!mounted) return;
-      final changed =
-          refreshed.title != _doc.title ||
-          refreshed.tags.join('\u0000') != _doc.tags.join('\u0000');
+      final applied = fresh.title != previousTitle;
       setState(() {
-        _doc = refreshed;
-        _titleController.text = refreshed.title;
-        _suggesting = false;
+        _doc = fresh;
+        _titleController.text = fresh.title;
+        _suggestingTitle = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            changed
-                ? 'Suggested title & tags applied'
-                : 'No new suggestions to apply',
-          ),
-        ),
-      );
+      final clean = plan.cleanTitle;
+      if (clean != null && applied) {
+        // Small confirmation: title was actually suggested & applied.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Title suggested: $clean')),
+        );
+      } else if (alreadyManual) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Title unchanged (manually edited)')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No title suggestion')),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _suggesting = false);
+      setState(() => _suggestingTitle = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Could not suggest metadata: $e')));
+      ).showSnackBar(SnackBar(content: Text('Could not suggest title: $e')));
     }
   }
+
+  /// Trigger the split "Suggest tags" action asynchronously.
+  ///
+  /// Kicks off [DocumentService.suggestTags] in the background (non-blocking),
+  /// applies the suggested tags when the user has not manually tagged the
+  /// document, and reports the outcome in a snackbar. The fresh tags are also
+  /// cached so the add-tag composer can offer them as one-tap suggestions.
+  Future<void> _suggestTags() async {
+    if (_suggestingTags) return;
+    // Capture the pre-run flags (see [_suggestTitle]: the store marks
+    // `tags_manual` when it applies a suggestion).
+    final alreadyManual = _doc.tagsManuallyEdited;
+    setState(() => _suggestingTags = true);
+    try {
+      final plan = await widget.documentService.suggestTags(
+        widget.document.id,
+      );
+      final fresh = await widget.documentService.getDocument(
+        widget.document.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _doc = fresh;
+        _suggestingTags = false;
+        _lastSuggestedTags = List.of(plan.tags);
+      });
+      if (plan.tags.isNotEmpty && !alreadyManual) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tags suggested: ${plan.tags.join(', ')}')),
+        );
+      } else if (alreadyManual) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tags unchanged (manually edited)')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No tags suggested')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _suggestingTags = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not suggest tags: $e')));
+    }
+  }
+
+  /// A document copy with a replaced tag set. Keeps the rest of the summary
+  /// (including the `extra` manual-edit metadata) intact.
+  DocumentSummary _copyDoc(DocumentSummary src, {required List<String> tags}) =>
+      DocumentSummary(
+        id: src.id,
+        title: src.title,
+        snippet: src.snippet,
+        tags: List.of(tags),
+        paths: src.paths,
+        mimeType: src.mimeType,
+        originalName: src.originalName,
+        extra: src.extra,
+      );
 
   Future<void> _openExternally() async {
     try {
@@ -357,16 +456,48 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     return map[mime] ?? '';
   }
 
-  void _addTag(String value) {
-    final tag = value.trim();
-    if (tag.isEmpty) return;
-    if (_doc.tags.contains(tag)) {
-      _tagController.clear();
-      return;
-    }
-    final next = [..._doc.tags, tag];
-    _tagController.clear();
-    _saveTags(next);
+  /// Instantly (optimistically) add [tag] to the document's local tags and
+  /// persist the new set in the background. No-op when the tag is blank or
+  /// already present.
+  void _addTag(String tag) {
+    final clean = tag.trim();
+    if (clean.isEmpty || _doc.tags.contains(clean)) return;
+    _applyTagsOptimistically([..._doc.tags, clean]);
+  }
+
+  /// Instantly (optimistically) remove [tag] from the document's local tags and
+  /// persist the new set in the background.
+  void _removeTag(String tag) {
+    if (!_doc.tags.contains(tag)) return;
+    _applyTagsOptimistically(_doc.tags.where((e) => e != tag).toList());
+  }
+
+  /// Tag names the add-tag composer can one-tap: the last suggestion run plus
+  /// every tag already known to the repository, filtered to ones not yet on
+  /// this document. Kept compact (up to [kAddTagSuggestionLimit]).
+  Future<List<String>> _composerTagSuggestions() async {
+    final known = <String>{
+      ..._lastSuggestedTags,
+      ...await widget.documentService.listTags(),
+    };
+    final applied = _doc.tags.toSet();
+    return known.where((t) => !applied.contains(t)).take(8).toList();
+  }
+
+  /// Opens the compact add-tag composer: a text field to name a brand-new tag
+  /// and a Wrap of "existing but not yet applied" tags (from the last
+  /// [DocumentService.suggestTags] run, or [DocumentService.listTags]) that can
+  /// be applied instantly.
+  Future<void> _openAddTagComposer() async {
+    final suggestions = await _composerTagSuggestions();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _AddTagComposerDialog(
+        suggestions: suggestions,
+        onSubmit: (tag) => _addTag(tag),
+      ),
+    );
   }
 
   @override
@@ -417,28 +548,33 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: FilledButton.tonalIcon(
-                      onPressed: _suggesting || _loadingContent
-                          ? null
-                          : _suggestMetadata,
-                      icon: _suggesting
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.auto_fix_high, size: 16),
-                      label: Text(
-                        _suggesting ? 'Suggesting…' : 'Suggest title & tags',
+                  Row(
+                    children: [
+                      // Distinct "Suggest tags" action (split from the title
+                      // magic wand). Runs async in the background.
+                      FilledButton.tonalIcon(
+                        onPressed: _suggestingTags || _loadingContent
+                            ? null
+                            : _suggestTags,
+                        icon: _suggestingTags
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.sell_outlined, size: 16),
+                        label: Text(
+                          _suggestingTags ? 'Suggesting…' : 'Suggest tags',
+                        ),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          textStyle: const TextStyle(fontSize: 12.5),
+                        ),
                       ),
-                      style: FilledButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        textStyle: const TextStyle(fontSize: 12.5),
-                      ),
-                    ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   Text('Tags', style: Theme.of(context).textTheme.titleSmall),
@@ -449,38 +585,20 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                     _buildPaths(),
                   ],
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 40,
-                          child: TextField(
-                            controller: _tagController,
-                            enabled: !_savingTags,
-                            decoration: const InputDecoration(
-                              hintText: 'Add a tag…',
-                              prefixIcon: Icon(Icons.tag, size: 18),
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 8,
-                              ),
-                            ),
-                            onSubmitted: _addTag,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton.filled(
+                  // Replaces the old add-tag text field with a same-sized PLUS
+                  // button that opens the compact composer (new tag name +
+                  // one-tap existing/suggested tag chips).
+                  SizedBox(
+                    height: 40,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton.filled(
                         tooltip: 'Add tag',
                         visualDensity: VisualDensity.compact,
-                        onPressed: _savingTags
-                            ? null
-                            : () => _addTag(_tagController.text),
+                        onPressed: _openAddTagComposer,
                         icon: const Icon(Icons.add),
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -516,13 +634,12 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   }
 
   Widget _buildTitleEditor() {
-    final busy = _savingTitle;
+    final suggestingTitle = _suggestingTitle;
     return Row(
       children: [
         Expanded(
           child: TextField(
             controller: _titleController,
-            enabled: !busy,
             style: Theme.of(context).textTheme.headlineSmall,
             decoration: InputDecoration(
               hintText: 'Document title',
@@ -533,7 +650,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
             onSubmitted: _saveTitle,
           ),
         ),
-        if (busy)
+        // Magic-wand "Suggest title": replaces the old 'Save title' button.
+        // Runs asynchronously in the background — the UI is never blocked.
+        if (suggestingTitle)
           const Padding(
             padding: EdgeInsets.all(8),
             child: SizedBox(
@@ -544,10 +663,10 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
           )
         else
           IconButton(
-            tooltip: 'Save title',
+            tooltip: 'Suggest title',
             visualDensity: VisualDensity.compact,
-            onPressed: () => _saveTitle(_titleController.text),
-            icon: const Icon(Icons.check, size: 20),
+            onPressed: _loadingContent ? null : _suggestTitle,
+            icon: const Icon(Icons.auto_fix_high, size: 20),
           ),
       ],
     );
@@ -576,6 +695,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
 
   /// Compact, deterministic-colored tag chips without the label icon. Editable
   /// in the detail view (delete to remove).
+  ///
+  /// Tag add/remove is optimistic: the chip disappears/appears instantly and
+  /// the service persist runs in the background (reverting on failure).
   Widget _buildTags() {
     return Wrap(
       spacing: 6,
@@ -589,19 +711,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
             labelStyle: Theme.of(context).textTheme.labelSmall,
             backgroundColor: tagTintFor(context, tag),
             side: BorderSide(color: tagColorFor(tag).withValues(alpha: 0.45)),
-            deleteIcon: _savingTags
-                ? null
-                : TagDeleteIcon(color: tagColorFor(tag)),
+            deleteIcon: TagDeleteIcon(color: tagColorFor(tag)),
             deleteIconColor: tagColorFor(tag),
-            onDeleted: _savingTags
-                ? null
-                : () => _saveTags(_doc.tags.where((e) => e != tag).toList()),
-          ),
-        if (_savingTags)
-          const SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            onDeleted: () => _removeTag(tag),
           ),
       ],
     );
@@ -649,6 +761,129 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
         ),
       ),
+    );
+  }
+}
+
+/// The compact add-tag composer dialog: a text field to name a brand-new tag
+/// plus a Wrap of "existing but not yet applied" tags ([suggestions]) that can
+/// be applied with a single tap.
+///
+/// This is a self-contained [StatefulWidget] so the [TextEditingController]
+/// lives exactly as long as the dialog (created in [initState], disposed in
+/// [dispose]) — avoiding "used after being disposed" crashes during the
+/// dialog's exit animation.
+class _AddTagComposerDialog extends StatefulWidget {
+  const _AddTagComposerDialog({
+    required this.suggestions,
+    required this.onSubmit,
+  });
+
+  /// Tag names (from suggestTags or the repository) not yet applied to the
+  /// document, offered as one-tap chips.
+  final List<String> suggestions;
+
+  /// Called with a trimmed tag name when the user confirms (Add button, Enter,
+  /// or tapping a suggestion chip).
+  final ValueChanged<String> onSubmit;
+
+  @override
+  State<_AddTagComposerDialog> createState() => _AddTagComposerDialogState();
+}
+
+class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
+  late final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit(String raw) {
+    final tag = raw.trim();
+    if (tag.isEmpty) return;
+    Navigator.of(context).pop();
+    widget.onSubmit(tag);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add tag'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 40,
+                  child: TextField(
+                    controller: _controller,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      hintText: 'New tag name…',
+                      prefixIcon: Icon(Icons.tag, size: 18),
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                    ),
+                    onSubmitted: _submit,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                tooltip: 'Add tag',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _submit(_controller.text),
+                icon: const Icon(Icons.add),
+              ),
+            ],
+          ),
+          if (widget.suggestions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Existing tags',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final tag in widget.suggestions)
+                  ActionChip(
+                    key: ValueKey('suggest-$tag'),
+                    label: Text(tag),
+                    visualDensity: VisualDensity.compact,
+                    labelStyle: TextStyle(
+                      fontSize: 11.5,
+                      color: tagColorFor(tag),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    backgroundColor: tagTintFor(context, tag),
+                    side: BorderSide(
+                      color: tagColorFor(tag).withValues(alpha: 0.45),
+                    ),
+                    onPressed: () => _submit(tag),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
     );
   }
 }

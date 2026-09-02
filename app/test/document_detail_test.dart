@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -28,10 +29,8 @@ DocumentSummary _doc({
   extra: extra,
 );
 
-/// The inline title field is the first TextField; the tag composer is the
-/// second (hinted 'Add a tag…').
+/// The inline title field is the first TextField.
 Finder _titleField() => find.byType(TextField).first;
-Finder _tagField() => find.byType(TextField).last;
 
 /// The delete (X) affordance on an [InputChip] whose label text is [tagLabel].
 ///
@@ -44,6 +43,77 @@ Finder _deleteIconFor(String tagLabel) {
     matching: find.byType(InputChip),
   );
   return find.descendant(of: chip, matching: find.byIcon(Icons.clear));
+}
+
+/// A [FakeDocumentService] whose tag persistence completes only when the
+/// injected [Completer] resolves — used to assert that tag add/remove updates
+/// the UI *before* the persist round-trip finishes.
+class _GatedTagService extends FakeDocumentService {
+  _GatedTagService({
+    required this.gate,
+    super.documents = const [],
+  });
+
+  final Completer<void> gate;
+
+  @override
+  Future<void> setTags(String id, List<String> nextTags) async {
+    // Record the persist intent immediately so the test can assert it fired;
+    // only the actual persistence is gated (the UI must stay optimistic).
+    setTagsCount++;
+    lastSetTags = List.of(nextTags);
+    await gate.future;
+    final index = documents.indexWhere((d) => d.id == id);
+    if (index < 0) throw StateError('document $id not found');
+    final doc = documents[index];
+    documents[index] = DocumentSummary(
+      id: doc.id,
+      title: doc.title,
+      snippet: doc.snippet,
+      tags: List.of(nextTags),
+      paths: doc.paths,
+      mimeType: doc.mimeType,
+      originalName: doc.originalName,
+      extra: {...doc.extra, 'tags_manual': 'true'},
+    );
+  }
+}
+
+/// A [FakeDocumentService] whose tag persistence fails after a microtask
+/// delay, so the optimistic chip renders before the revert applies.
+class _FailingTagService extends FakeDocumentService {
+  _FailingTagService({super.documents = const []});
+
+  @override
+  Future<void> setTags(String id, List<String> nextTags) async {
+    await Future<void>.delayed(Duration.zero);
+    throw StateError('persist failed');
+  }
+}
+
+/// A [FakeDocumentService] whose suggestion runs complete only when the
+/// injected [Completer] resolves — used to assert that suggestion is async and
+/// non-blocking.
+class _GatedSuggestService extends FakeDocumentService {
+  _GatedSuggestService({
+    required this.gate,
+    super.documents = const [],
+    SuggestionPlan suggestion = const SuggestionPlan(title: null, tags: []),
+  }) : super(suggestion: suggestion);
+
+  final Completer<void> gate;
+
+  @override
+  Future<SuggestionPlan> suggestTitle(String id) async {
+    await gate.future;
+    return super.suggestTitle(id);
+  }
+
+  @override
+  Future<SuggestionPlan> suggestTags(String id) async {
+    await gate.future;
+    return super.suggestTags(id);
+  }
 }
 
 void main() {
@@ -127,8 +197,22 @@ void main() {
       expect(find.byType(InputChip), findsOneWidget);
       expect(find.text('finance'), findsOneWidget);
 
-      await tester.enterText(_tagField(), 'tax');
-      await tester.tap(find.byIcon(Icons.add));
+      // Open the compact composer via the PLUS button and name a new tag.
+      await tester.tap(
+        find.byTooltip('Add tag'),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField).last,
+        'tax',
+      );
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byTooltip('Add tag'),
+        ),
+      );
       await tester.pumpAndSettle();
 
       // The service persisted the new tag list.
@@ -138,6 +222,121 @@ void main() {
       expect(find.byType(InputChip), findsNWidgets(2));
       expect(find.text('tax'), findsOneWidget);
     });
+
+    testWidgets(
+      'adds a tag optimistically — the chip appears before the persist '
+      'round-trip finishes',
+      (tester) async {
+        final doc = _doc(tags: const ['finance']);
+        final gate = Completer<void>();
+        final service = _GatedTagService(
+          gate: gate,
+          documents: [doc],
+        );
+
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byTooltip('Add tag'),
+          warnIfMissed: false,
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).last, 'tax');
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byTooltip('Add tag'),
+          ),
+        );
+        // The dialog pops; the optimistic chip appears with just one pump —
+        // the persist is still pending on the gate.
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.byType(InputChip),
+          findsNWidgets(2),
+          reason: 'The new chip must be visible before persistence completes.',
+        );
+        // The chip label (not the composing TextField, which may still be
+        // animating out) carries the new tag.
+        expect(
+          find.descendant(
+            of: find.byType(InputChip),
+            matching: find.text('tax'),
+          ),
+          findsOneWidget,
+        );
+        expect(service.setTagsCount, 1);
+
+        // Release the gate; the optimistic UI stays.
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(
+            of: find.byType(InputChip),
+            matching: find.text('tax'),
+          ),
+          findsOneWidget,
+        );
+        expect(service.lastSetTags, containsAll(['finance', 'tax']));
+      },
+    );
+
+    testWidgets(
+      'reverts an optimistically-added tag when the persist fails',
+      (tester) async {
+        final doc = _doc(tags: const ['finance']);
+        final service = _FailingTagService(
+          documents: [doc],
+        );
+
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byTooltip('Add tag'),
+          warnIfMissed: false,
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).last, 'doomed');
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byTooltip('Add tag'),
+          ),
+        );
+        await tester.pump();
+
+        // Optimistic chip appeared (the dialog's TextField may still be animating
+        // out, so scope to the chip).
+        expect(
+          find.descendant(
+            of: find.byType(InputChip),
+            matching: find.text('doomed'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.byType(InputChip), findsNWidgets(2));
+
+        // The persist fails → the chip reverts and an error snackbar shows.
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(
+            of: find.byType(InputChip),
+            matching: find.text('doomed'),
+          ),
+          findsNothing,
+        );
+        expect(find.byType(InputChip), findsOneWidget);
+        expect(find.textContaining('Could not update tags'), findsOneWidget);
+      },
+    );
 
     testWidgets('removes a tag through the service', (tester) async {
       final doc = _doc(tags: const ['finance', 'tax']);
@@ -230,7 +429,8 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(_titleField(), 'Renamed title');
-      await tester.tap(find.byTooltip('Save title'));
+      // There is no 'Save title' button anymore — committing via Enter/submit.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       expect(service.updateTitleCount, 1);
@@ -242,11 +442,35 @@ void main() {
       );
       expect(find.text('Renamed title'), findsOneWidget);
     });
+
     testWidgets(
-      'auto-suggest calls the service and applies title + tags when nothing '
-      'was manually edited',
+      'renders the split suggestion actions (magic wand + tags button)',
       (tester) async {
-        final doc = _doc(tags: const ['stale']);
+        final doc = _doc();
+        final service = FakeDocumentService(
+          documents: [doc],
+          contentByDocumentId: {'doc-1': 'Report body'},
+        );
+
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        // The magic-wand "Suggest title" replaced the old 'Save title' check.
+        expect(find.byTooltip('Suggest title'), findsOneWidget);
+        expect(find.byIcon(Icons.auto_fix_high), findsOneWidget);
+        expect(find.byTooltip('Save title'), findsNothing);
+        // A distinct "Suggest tags" action exists (not a combined button).
+        expect(find.text('Suggest tags'), findsOneWidget);
+        expect(find.text('Suggest title & tags'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'magic wand suggests a title and applies it when not manually edited',
+      (tester) async {
+        final doc = _doc(title: 'Old title', tags: const ['stale']);
         final service = FakeDocumentService(
           documents: [doc],
           contentByDocumentId: {'doc-1': 'Report body'},
@@ -261,25 +485,71 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Suggest title & tags'));
+        await tester.tap(find.byTooltip('Suggest title'));
         await tester.pumpAndSettle();
 
-        // The per-file button now reuses the core re-organize-one path, which
-        // honors the manual-edit flags internally.
-        expect(service.reorganizeOneCount, 1);
+        // Only the title suggestion ran — the tags stay untouched.
+        expect(service.suggestTitleCount, 1);
+        expect(service.suggestTagsCount, 0);
         expect(service.updateTitleCount, 1);
         expect(service.lastTitle, 'Suggested title');
-        expect(service.setTagsCount, 1);
-        expect(service.lastSetTags, containsAll(['finance', 'q3']));
-        // UI reflects the applied suggestion.
+        expect(service.setTagsCount, 0);
+        // UI reflects the applied title and the snackbar confirms it.
         expect(find.text('Suggested title'), findsOneWidget);
-        expect(find.text('finance'), findsWidgets);
-        expect(find.text('stale'), findsNothing);
+        expect(
+          find.textContaining('Title suggested: Suggested title'),
+          findsOneWidget,
+        );
       },
     );
 
     testWidgets(
-      'auto-suggest respects the manual title flag and keeps the user title',
+      'suggest title is async and does not block the UI while running',
+      (tester) async {
+        final doc = _doc(title: 'Old title');
+        final gate = Completer<void>();
+        final service = _GatedSuggestService(
+          gate: gate,
+          documents: [doc],
+          suggestion: const SuggestionPlan(title: 'Deferred title', tags: []),
+        );
+
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        // The wand click returns immediately; while the suggestion is pending
+        // the spinner shows and the UI stays interactive.
+        await tester.tap(find.byTooltip('Suggest title'));
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byType(DocumentDetailView),
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsWidgets,
+        );
+        // The title field is still usable — the UI did not block.
+        await tester.enterText(_titleField(), 'Typed while suggesting');
+        expect(
+          tester.widget<TextField>(_titleField()).controller!.text,
+          'Typed while suggesting',
+        );
+
+        // Release the suggestion; the completed run updates the title.
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('Deferred title'), findsWidgets);
+        expect(
+          find.textContaining('Title suggested: Deferred title'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'suggest title respects the manual title flag and keeps the user title',
       (tester) async {
         final doc = _doc(
           title: 'User title',
@@ -299,52 +569,176 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Suggest title & tags'));
+        await tester.tap(find.byTooltip('Suggest title'));
         await tester.pumpAndSettle();
 
         // The suggestion ran, but the title was NOT overwritten.
-        expect(service.reorganizeOneCount, 1);
+        expect(service.suggestTitleCount, 1);
         expect(service.updateTitleCount, 0);
         expect(service.lastTitle, isNull);
         expect(find.text('User title'), findsOneWidget);
-        // Tags still applied (tags_manual absent).
-        expect(service.setTagsCount, 1);
-        expect(service.lastSetTags, contains('auto'));
+        expect(find.text('Suggested title'), findsNothing);
+        // The wand only touches title — tags are never touched.
+        expect(service.suggestTagsCount, 0);
+        expect(service.setTagsCount, 0);
+        expect(
+          find.textContaining('Title unchanged (manually edited)'),
+          findsOneWidget,
+        );
       },
     );
 
-    testWidgets('auto-suggest respects the manual tags flag and keeps tags', (
-      tester,
-    ) async {
-      final doc = _doc(
-        tags: const ['keep-me'],
-        extra: const {'tags_manual': 'true'},
-      );
-      final service = FakeDocumentService(
-        documents: [doc],
-        contentByDocumentId: {'doc-1': 'Report body'},
-        suggestion: const SuggestionPlan(
-          title: 'Suggested title',
-          tags: ['auto'],
-        ),
-      );
+    testWidgets(
+      'suggest tags applies the suggested tags when not manually edited',
+      (tester) async {
+        final doc = _doc(tags: const ['stale'], title: 'Keep title');
+        final service = FakeDocumentService(
+          documents: [doc],
+          contentByDocumentId: {'doc-1': 'Report body'},
+          suggestion: const SuggestionPlan(
+            title: 'Discarded title suggestion',
+            tags: ['finance', 'q3'],
+          ),
+        );
 
-      await tester.pumpWidget(
-        _wrap(DocumentDetailView(document: doc, documentService: service)),
-      );
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Suggest title & tags'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Suggest tags'));
+        await tester.pumpAndSettle();
 
-      expect(service.reorganizeOneCount, 1);
-      expect(service.updateTitleCount, 1);
-      expect(service.lastTitle, 'Suggested title');
-      // Tags were NOT overwritten.
-      expect(service.setTagsCount, 0);
-      expect(find.text('keep-me'), findsOneWidget);
-      expect(find.text('auto'), findsNothing);
-    });
+        // Only the tags suggestion ran — the title stays untouched.
+        expect(service.suggestTagsCount, 1);
+        expect(service.suggestTitleCount, 0);
+        expect(service.setTagsCount, 1);
+        expect(service.lastSetTags, containsAll(['finance', 'q3']));
+        expect(find.text('finance'), findsWidgets);
+        expect(find.text('stale'), findsNothing);
+        expect(find.text('Discarded title suggestion'), findsNothing);
+        expect(
+          find.textContaining('Tags suggested: finance, q3'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'suggest tags is async and does not block the UI while running',
+      (tester) async {
+        final doc = _doc();
+        final gate = Completer<void>();
+        final service = _GatedSuggestService(
+          gate: gate,
+          documents: [doc],
+          suggestion: const SuggestionPlan(title: null, tags: ['deferred']),
+        );
+
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Suggest tags'));
+        await tester.pump();
+        // The button shows an in-flight spinner; the UI is still responsive.
+        expect(find.text('Suggesting…'), findsOneWidget);
+        await tester.enterText(_titleField(), 'Still typing');
+        expect(
+          tester.widget<TextField>(_titleField()).controller!.text,
+          'Still typing',
+        );
+
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('deferred'), findsWidgets);
+        expect(
+          find.textContaining('Tags suggested: deferred'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'suggest tags respects the manual tags flag and keeps tags',
+      (tester) async {
+        final doc = _doc(
+          tags: const ['keep-me'],
+          extra: const {'tags_manual': 'true'},
+        );
+        final service = FakeDocumentService(
+          documents: [doc],
+          contentByDocumentId: {'doc-1': 'Report body'},
+          suggestion: const SuggestionPlan(
+            title: 'Suggested title',
+            tags: ['auto'],
+          ),
+        );
+
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Suggest tags'));
+        await tester.pumpAndSettle();
+
+        // The suggestion ran, but the tags were NOT overwritten; the title is
+        // never touched by the tags action either.
+        expect(service.suggestTagsCount, 1);
+        expect(service.updateTitleCount, 0);
+        expect(service.setTagsCount, 0);
+        expect(find.text('keep-me'), findsOneWidget);
+        expect(find.text('auto'), findsNothing);
+        expect(
+          find.textContaining('Tags unchanged (manually edited)'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'plus composer shows existing-but-not-applied tags and applies a tap',
+      (tester) async {
+        final doc = _doc(tags: const ['already-there']);
+        final service = FakeDocumentService(
+          documents: [doc],
+          tags: const ['existing-tag', 'already-there', 'other-known'],
+          contentByDocumentId: {'doc-1': 'Report body'},
+        );
+
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        // Open the composer via the PLUS button.
+        await tester.tap(
+          find.byTooltip('Add tag'),
+          warnIfMissed: false,
+        );
+        await tester.pumpAndSettle();
+
+        // The dialog lists known tags that are not yet on the document.
+        expect(find.text('Add tag'), findsOneWidget);
+        expect(find.text('existing-tag'), findsOneWidget);
+        expect(find.text('other-known'), findsOneWidget);
+        // Tags already applied are filtered out of the suggestion list.
+        expect(find.text('already-there'), findsNWidgets(1));
+
+        // Selecting a suggested tag applies it instantly (optimistically) and
+        // closes the dialog.
+        await tester.tap(find.text('existing-tag'));
+        await tester.pumpAndSettle();
+
+        expect(service.setTagsCount, 1);
+        expect(service.lastSetTags, containsAll(['already-there', 'existing-tag']));
+        expect(find.byType(InputChip), findsNWidgets(2));
+        expect(find.text('existing-tag'), findsOneWidget);
+      },
+    );
+
     testWidgets('opens the raw bytes with the injected external opener', (
       tester,
     ) async {

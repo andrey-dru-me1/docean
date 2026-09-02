@@ -338,6 +338,14 @@ class _FailingDocumentService implements DocumentService {
       throw StateError('repository unavailable');
 
   @override
+  Future<SuggestionPlan> suggestTitle(String id) async =>
+      throw StateError('repository unavailable');
+
+  @override
+  Future<SuggestionPlan> suggestTags(String id) async =>
+      throw StateError('repository unavailable');
+
+  @override
   Future<ReorganizeResult> reorganizeAll() async =>
       throw StateError('repository unavailable');
 

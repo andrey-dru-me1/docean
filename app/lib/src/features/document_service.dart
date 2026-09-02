@@ -9,6 +9,10 @@
 /// native library.
 library;
 
+import 'dart:isolate';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import '../rust/api/auto_org.dart'
     show
         autoOrgDefaultConfig,
@@ -16,11 +20,13 @@ import '../rust/api/auto_org.dart'
         autoOrgReorganizeAll,
         autoOrgReorganizeOne;
 import '../rust/api/search.dart' as search_bridge;
-import '../rust/api/storage.dart' show DocumentRepository;
+import '../rust/api/storage.dart'
+    show DocumentRepository, openRepository;
 import '../rust/domain.dart' show Document, NodeKind;
 import '../rust/storage.dart' show DocumentQuery;
 import '../ui/document_view.dart' show DocumentSummary;
-import 'repository.dart' show openSharedRepository;
+import 'repository.dart'
+    show defaultRepositoryRoot, openSharedRepository;
 
 /// The document-library service contract. Implement with the Rust bridge,
 /// fakes in tests.
@@ -56,6 +62,20 @@ abstract interface class DocumentService {
   /// `title_manual`/`tags_manual` flags on the document's `extra` metadata.
   Future<SuggestionPlan> suggestMetadata(String id);
 
+  /// Suggest a title for a document and — unless the user manually renamed it
+  /// (`extra['title_manual']`) — persist it through [updateTitle].
+  ///
+  /// Runs the deterministic organizer in the background; the returned plan's
+  /// `tags` list is empty because this action owns only the title.
+  Future<SuggestionPlan> suggestTitle(String id);
+
+  /// Suggest tags for a document and — unless the user manually tagged it
+  /// (`extra['tags_manual']`) — persist them through [setTags].
+  ///
+  /// Runs the deterministic organizer in the background; the returned plan's
+  /// `title` is `null` because this action owns only the tags.
+  Future<SuggestionPlan> suggestTags(String id);
+
   /// Re-run the deterministic auto-organization pass across **all** documents,
   /// preserving every user's manual edits (the `title_manual` / `tags_manual`
   /// flags are honored inside the core, so hand-edited metadata is never
@@ -83,9 +103,11 @@ abstract interface class DocumentService {
 
 /// A suggestion from the deterministic auto-organization pipeline.
 ///
-/// Suggestion-only: nothing is persisted by [DocumentService.suggestMetadata];
-/// the caller applies the parts it wants (typically honoring the
-/// `title_manual`/`tags_manual` flags on the document's `extra` metadata).
+/// Suggestion-only: nothing is persisted here by itself; the split action
+/// methods ([DocumentService.suggestTitle] / [DocumentService.suggestTags])
+/// persist the part they own (honoring the `title_manual`/`tags_manual` flags
+/// on the document's `extra` metadata), and return the plan so the caller can
+/// notify the user about what (if anything) was applied.
 class SuggestionPlan {
   const SuggestionPlan({required this.title, required this.tags});
 
@@ -98,6 +120,13 @@ class SuggestionPlan {
   /// Whether anything meaningful was suggested at all (a non-blank title or at
   /// least one tag).
   bool get isEmpty => (title == null || title!.trim().isEmpty) && tags.isEmpty;
+
+  /// A trimmed copy of [title], or `null` when it is blank.
+  String? get cleanTitle {
+    final t = title?.trim();
+    if (t == null || t.isEmpty) return null;
+    return t;
+  }
 }
 
 /// The aggregate outcome of a bulk re-organization pass (`org_bulk_stats`).
@@ -233,6 +262,39 @@ class BridgeDocumentService implements DocumentService {
     return SuggestionPlan(title: plan.suggestedTitle, tags: List.of(plan.tags));
   }
 
+  /// Resolve the on-disk repository root (main-isolate side of the round trip).
+  Future<String> _resolveRoot() async {
+    final resolve = _repositoryRoot ?? defaultRepositoryRoot;
+    return resolve();
+  }
+
+  /// Suggest a title in the background and apply it (unless the user manually
+  /// renamed the document). See [DocumentService.suggestTitle].
+  @override
+  Future<SuggestionPlan> suggestTitle(String id) async {
+    final root = await _resolveRoot();
+    if (kIsWeb) {
+      // The web bridge is single-isolate (WASM); there is no OS thread pool to
+      // offload to, so the direct (non-isolate) call is the only option. The
+      // async `Future` still prevents the caller from blocking synchronously.
+      return _suggestTitleOnCurrentIsolate(root, id);
+    }
+    return Isolate.run(() => _suggestTitleIsolate(root, id));
+  }
+
+  /// Suggest tags in the background and apply them (unless the user manually
+  /// tagged the document). See [DocumentService.suggestTags].
+  @override
+  Future<SuggestionPlan> suggestTags(String id) async {
+    final root = await _resolveRoot();
+    if (kIsWeb) {
+      return _suggestTagsOnCurrentIsolate(root, id);
+    }
+    return Isolate.run(() => _suggestTagsIsolate(root, id));
+  }
+
+  /// Re-run the deterministic auto-organization pass across **all** documents,
+
   /// Re-run the deterministic auto-organization pass across **all** documents,
   /// preserving every user's manual edits (the core honors the
   /// `title_manual`/`tags_manual` flags and refreshes the search metadata).
@@ -317,6 +379,83 @@ class BridgeDocumentService implements DocumentService {
   }
 }
 
+/// Background-isolate runner for [DocumentService.suggestTitle].
+Future<SuggestionPlan> _suggestTitleIsolate(String root, String id) async {
+  final repo = await openRepository(root: root);
+  final plan = autoOrgOrganize(
+    repo: repo,
+    documentId: id,
+    config: autoOrgDefaultConfig(),
+  );
+  final suggested = plan.suggestedTitle?.trim();
+  if (suggested != null && suggested.isNotEmpty) {
+    final doc = await repo.get_(id: id);
+    if (doc.extra['title_manual'] != 'true') {
+      await repo.updateTitle(documentId: id, title: suggested);
+    }
+  }
+  return SuggestionPlan(title: plan.suggestedTitle, tags: const []);
+}
+
+/// Runs in a background isolate so the synchronous `auto_org_organize` bridge
+/// call plus the `set_tags` persist never block the UI isolate.
+Future<SuggestionPlan> _suggestTagsIsolate(String root, String id) async {
+  final repo = await openRepository(root: root);
+  final plan = autoOrgOrganize(
+    repo: repo,
+    documentId: id,
+    config: autoOrgDefaultConfig(),
+  );
+  if (plan.tags.isNotEmpty) {
+    final doc = await repo.get_(id: id);
+    if (doc.extra['tags_manual'] != 'true') {
+      await repo.setTags(documentId: id, tags: List.of(plan.tags));
+    }
+  }
+  return SuggestionPlan(title: null, tags: List.of(plan.tags));
+}
+
+/// Web (single-isolate) fallback for [DocumentService.suggestTitle].
+Future<SuggestionPlan> _suggestTitleOnCurrentIsolate(
+  String root,
+  String id,
+) async {
+  final repo = await openRepository(root: root);
+  final plan = autoOrgOrganize(
+    repo: repo,
+    documentId: id,
+    config: autoOrgDefaultConfig(),
+  );
+  final suggested = plan.suggestedTitle?.trim();
+  if (suggested != null && suggested.isNotEmpty) {
+    final doc = await repo.get_(id: id);
+    if (doc.extra['title_manual'] != 'true') {
+      await repo.updateTitle(documentId: id, title: suggested);
+    }
+  }
+  return SuggestionPlan(title: plan.suggestedTitle, tags: const []);
+}
+
+/// Web (single-isolate) fallback for [DocumentService.suggestTags].
+Future<SuggestionPlan> _suggestTagsOnCurrentIsolate(
+  String root,
+  String id,
+) async {
+  final repo = await openRepository(root: root);
+  final plan = autoOrgOrganize(
+    repo: repo,
+    documentId: id,
+    config: autoOrgDefaultConfig(),
+  );
+  if (plan.tags.isNotEmpty) {
+    final doc = await repo.get_(id: id);
+    if (doc.extra['tags_manual'] != 'true') {
+      await repo.setTags(documentId: id, tags: List.of(plan.tags));
+    }
+  }
+  return SuggestionPlan(title: null, tags: List.of(plan.tags));
+}
+
 /// A test double backed by in-memory data, used by widget tests.
 class FakeDocumentService implements DocumentService {
   FakeDocumentService({
@@ -367,6 +506,12 @@ class FakeDocumentService implements DocumentService {
 
   /// How many times [suggestMetadata] has been called (auto-suggest assertion).
   int suggestCount = 0;
+
+  /// How many times [suggestTitle] has been called (detail wand assertion).
+  int suggestTitleCount = 0;
+
+  /// How many times [suggestTags] has been called (detail button assertion).
+  int suggestTagsCount = 0;
 
   /// How many times [reorganizeAll] has been called (Settings assertion).
   int reorganizeAllCount = 0;
@@ -465,6 +610,37 @@ class FakeDocumentService implements DocumentService {
       await updateTitle(id, plan.title!.trim());
     }
     return SuggestionPlan(title: plan.title, tags: List.of(plan.tags));
+  }
+
+  /// The split "Suggest title" action. Applies the suggested title only when
+  /// the user has not manually renamed the document (the real core honors the
+  /// same `extra['title_manual']` flag), and returns only the title portion so
+  /// the caller can report what happened.
+  @override
+  Future<SuggestionPlan> suggestTitle(String id) async {
+    suggestTitleCount++;
+    final doc = _byId(id);
+    final plan = suggestion ?? const SuggestionPlan(title: null, tags: []);
+    if (!doc.titleManuallyEdited &&
+        plan.title != null &&
+        plan.title!.trim().isNotEmpty) {
+      await updateTitle(id, plan.title!.trim());
+    }
+    return SuggestionPlan(title: plan.title, tags: const []);
+  }
+
+  /// The split "Suggest tags" action. Applies the suggested tags only when the
+  /// user has not manually tagged the document, and returns only the tags
+  /// portion so the caller can report what happened.
+  @override
+  Future<SuggestionPlan> suggestTags(String id) async {
+    suggestTagsCount++;
+    final doc = _byId(id);
+    final plan = suggestion ?? const SuggestionPlan(title: null, tags: []);
+    if (!doc.tagsManuallyEdited && plan.tags.isNotEmpty) {
+      await setTags(id, List.of(plan.tags));
+    }
+    return SuggestionPlan(title: null, tags: List.of(plan.tags));
   }
 
   DocumentSummary _copy(
