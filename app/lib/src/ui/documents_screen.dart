@@ -299,6 +299,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             onTapTile: _selectionMode
                 ? () => _toggleSelected(document.id)
                 : () => widget.onOpenDocument(document),
+            onCheckboxTap: _selectionMode
+                ? () => _toggleSelected(document.id)
+                : () => _enterSelectionMode(document.id),
             onLongPress: () => _enterSelectionMode(document.id),
             onTagTap: _toggleTagFilter,
           );
@@ -332,11 +335,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     });
   }
 
-  /// Toggle a tag in the filter bar: clicking a tag that is already the active
-  /// filter removes it; clicking a tag that is not active sets it as the filter.
+  /// Toggle a tag in the filter bar: clicking a tag that is already an active
+  /// filter removes it; clicking a tag that is not active adds it.
   void _toggleTagFilter(String tag) {
     setState(() {
-      _tagFilter = _tagFilter == tag ? null : tag;
+      if (!_tagFilters.add(tag)) _tagFilters.remove(tag);
     });
   }
 
@@ -826,16 +829,21 @@ class _DocumentPreviewTile extends StatelessWidget {
     required this.onLongPress,
     this.selectionMode = false,
     this.selected = false,
+    this.onCheckboxTap,
     this.onTagTap,
   });
 
   final DocumentSummary document;
   final DocumentPreviewLoader loader;
 
-  /// Invoked when the tile (or its checkbox) is tapped: opens the document in
-  /// browse mode, or toggles selection in selection mode. Tapping the
-  /// always-visible checkbox in browse mode enters selection mode.
+  /// Invoked when the tile is tapped: opens the document in browse mode, or
+  /// toggles selection in selection mode.
   final VoidCallback onTapTile;
+
+  /// Invoked when the always-visible select checkbox is tapped: in browse
+  /// mode this enters selection mode with this tile pre-selected; in selection
+  /// mode it toggles selection. Never opens the document.
+  final VoidCallback? onCheckboxTap;
 
   /// Invoked on long-press (always enters selection mode with this tile
   /// pre-selected).
@@ -879,23 +887,6 @@ class _DocumentPreviewTile extends StatelessWidget {
             // progressively darker toward the bottom so the title stays
             // readable over any preview content.
             const IgnorePointer(child: _TileScrim()),
-            // Always-visible select checkbox in the bottom-right corner.
-            Positioned(
-              bottom: 36,
-              right: 8,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: scheme.surface.withValues(alpha: 0.85),
-                  shape: BoxShape.circle,
-                ),
-                child: Checkbox(
-                  key: ValueKey('select-check-${document.id}'),
-                  value: selectionMode ? selected : false,
-                  onChanged: (_) => onTapTile(),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            ),
             if (selectionMode)
               Positioned.fill(
                 child: DecoratedBox(
@@ -927,9 +918,11 @@ class _DocumentPreviewTile extends StatelessWidget {
                   ],
                 ),
               ),
+            // Title pinned above the corner checkbox: the right inset reserves
+            // the checkbox zone so the label never runs beneath the square.
             Positioned(
               left: 10,
-              right: 10,
+              right: 48,
               bottom: 8,
               child: Text(
                 document.title,
@@ -943,6 +936,20 @@ class _DocumentPreviewTile extends StatelessWidget {
                     Shadow(color: Colors.black54, blurRadius: 2),
                   ],
                 ),
+              ),
+            ),
+            // Always-visible select checkbox inset slightly from the corner and
+            // painted last so it stays tappable over the scrim/title. No backdrop
+            // circle: the unchecked box renders transparently, and the bottom
+            // scrim keeps the checked state readable over any preview content.
+            Positioned(
+              bottom: 4,
+              right: 4,
+              child: Checkbox(
+                key: ValueKey('select-check-${document.id}'),
+                value: selectionMode ? selected : false,
+                onChanged: (_) => onCheckboxTap?.call(),
+                visualDensity: VisualDensity.compact,
               ),
             ),
           ],

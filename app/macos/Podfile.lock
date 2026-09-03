@@ -7,12 +7,19 @@ PODS:
     - Flutter
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
+  - pdfx (1.0.0):
+    - Flutter
+    - FlutterMacOS
+  - url_launcher_macos (0.0.1):
+    - FlutterMacOS
 
 DEPENDENCIES:
   - desktop_drop (from `Flutter/ephemeral/.symlinks/plugins/desktop_drop/macos`)
   - docer_rust_builder (from `Flutter/ephemeral/.symlinks/plugins/docer_rust_builder/macos`)
   - file_picker_darwin (from `Flutter/ephemeral/.symlinks/plugins/file_picker_darwin/darwin`)
   - FlutterMacOS (from `Flutter/ephemeral`)
+  - pdfx (from `Flutter/ephemeral/.symlinks/plugins/pdfx/darwin`)
+  - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
 
 EXTERNAL SOURCES:
   desktop_drop:
@@ -23,12 +30,18 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/file_picker_darwin/darwin
   FlutterMacOS:
     :path: Flutter/ephemeral
+  pdfx:
+    :path: Flutter/ephemeral/.symlinks/plugins/pdfx/darwin
+  url_launcher_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos
 
 SPEC CHECKSUMS:
   desktop_drop: 10a3e6a7fa9dbe350541f2574092fecfa345a07b
   docer_rust_builder: 10b9a81f606be2dc3ffdfd0bb7a862e6a90ea7e1
   file_picker_darwin: 5c32d1a83c7cd2e4e2d2eaea629cf830b3b5dc49
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  pdfx: 824a9108791a81e400da7d1a903ab73668365072
+  url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
 
 PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
 

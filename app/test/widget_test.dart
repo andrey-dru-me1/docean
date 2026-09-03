@@ -275,10 +275,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('select-documents')));
     await tester.pumpAndSettle();
 
-    // Selection mode shows the bulk toolbar with the selected count and the
-    // bulk actions (the former Settings "Re-organize" lives here now).
+    // 'Select all' enters selection mode with every filtered document already
+    // selected (mirrors DocumentsScreen._selectAllFiltered + the dedicated
+    // documents_browse_test.dart expectations).
     expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
-    expect(find.text('0 selected'), findsOneWidget);
+    expect(find.text('1 selected'), findsOneWidget);
     expect(find.byKey(const ValueKey('select-all')), findsOneWidget);
     expect(find.byKey(const ValueKey('bulk-reorganize')), findsOneWidget);
   });

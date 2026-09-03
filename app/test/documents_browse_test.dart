@@ -365,6 +365,31 @@ void main() {
       expect(find.text('1 selected'), findsOneWidget);
     });
 
+    testWidgets(
+      'tapping a tile checkbox in browse mode enters selection mode',
+      (tester) async {
+        final opened = <DocumentSummary>[];
+        final service = FakeDocumentService(documents: [_doc('b-1', 'Browse one')]);
+
+        await tester.pumpWidget(
+          _wrap(
+            DocumentsScreen(documentService: service, onOpenDocument: opened.add),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tapping the always-visible checkbox must NOT open the document
+        // (no sidebar/detail navigation); it enters selection mode with the
+        // tapped document pre-selected.
+        await tester.tap(find.byKey(const ValueKey('select-check-b-1')));
+        await tester.pumpAndSettle();
+
+        expect(opened, isEmpty);
+        expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+        expect(find.text('1 selected'), findsOneWidget);
+      },
+    );
+
     testWidgets('select-all selects every currently-filtered document', (
       tester,
     ) async {
@@ -694,7 +719,7 @@ void main() {
 
         // Tap the 'finance' tag on the first preview tile to filter.
         await tester.tap(
-          find.byKey(const ValueKey('tile-tag-tap-finance')),
+          find.byKey(const ValueKey('tile-tag-tap-finance')).first,
         );
         await tester.pumpAndSettle();
 
@@ -711,7 +736,7 @@ void main() {
 
         // Tapping the same tag on a tile again should REMOVE the filter.
         await tester.tap(
-          find.byKey(const ValueKey('tile-tag-tap-finance')),
+          find.byKey(const ValueKey('tile-tag-tap-finance')).first,
         );
         await tester.pumpAndSettle();
 
