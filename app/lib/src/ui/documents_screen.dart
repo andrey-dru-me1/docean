@@ -134,8 +134,12 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   List<DocumentSummary> get _filtered {
     final q = _query.trim().toLowerCase();
     return _all.where((d) {
-      if (_tagFilters.isNotEmpty && !_tagFilters.any(d.tags.contains)) return false;
-      if (_pathFilter != null && !d.paths.contains(_pathFilter)) return false;
+      if (_tagFilters.isNotEmpty && !_tagFilters.any(d.tags.contains)) {
+        return false;
+      }
+      if (_pathFilter != null && !d.paths.contains(_pathFilter)) {
+        return false;
+      }
       if (q.isNotEmpty &&
           !d.title.toLowerCase().contains(q) &&
           !d.id.toLowerCase().contains(q)) {
@@ -908,11 +912,14 @@ class _DocumentPreviewTile extends StatelessWidget {
                       TagChip(
                         // Tapping the chip toggles it in the filter bar; the
                         // handler lives on TagChip itself so the pill is
-                        // interactive (hover feedback) and its tap never falls
-                        // through to the tile's open-document InkWell below.
+                        // interactive (tap-only: no hover lightening, no click
+                        // cursor) and its tap never falls through to the
+                        // tile's open-document InkWell below.
                         key: ValueKey('tile-tag-tap-$tag'),
                         label: tag,
-                        onPressed: onTagTap != null ? () => onTagTap!(tag) : null,
+                        onPressed: onTagTap != null
+                            ? () => onTagTap!(tag)
+                            : null,
                       ),
                   ],
                 ),

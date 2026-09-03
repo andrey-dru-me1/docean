@@ -63,36 +63,35 @@ void main() {
       );
     });
 
-    testWidgets(
-      'renders the shared opaque tag-color pill on any theme',
-      (tester) async {
-        // The pill draws the grid-tile overlay style everywhere: an opaque
-        // fill of the tag's own color with an opaque tag-colored ring and a
-        // white shadowed label — the same in light and dark themes.
-        for (final wrap in [_wrap, _wrapDark]) {
-          await tester.pumpWidget(wrap(const TagChip(label: 'finance')));
+    testWidgets('renders the shared opaque tag-color pill on any theme', (
+      tester,
+    ) async {
+      // The pill draws the grid-tile overlay style everywhere: an opaque
+      // fill of the tag's own color with an opaque tag-colored ring and a
+      // white shadowed label — the same in light and dark themes.
+      for (final wrap in [_wrap, _wrapDark]) {
+        await tester.pumpWidget(wrap(const TagChip(label: 'finance')));
 
-          final color = tagColorFor('finance');
-          final pill = _pillDecoration(tester);
-          expect(pill.borderRadius, BorderRadius.circular(999));
-          // Fully opaque: the resting pill is the tag's exact color and the
-          // ring is an opaque lightened shade — no translucency anywhere.
-          expect(pill.color, color);
-          expect(
-            (pill.border! as Border).top.color,
-            Color.lerp(color, Colors.white, 0.12)!,
-          );
+        final color = tagColorFor('finance');
+        final pill = _pillDecoration(tester);
+        expect(pill.borderRadius, BorderRadius.circular(999));
+        // Fully opaque: the resting pill is the tag's exact color and the
+        // ring is an opaque lightened shade — no translucency anywhere.
+        expect(pill.color, color);
+        expect(
+          (pill.border! as Border).top.color,
+          Color.lerp(color, Colors.white, 0.12)!,
+        );
 
-          final chip = tester.widget<TagChip>(find.byType(TagChip));
-          expect(chip.selected, isFalse);
+        final chip = tester.widget<TagChip>(find.byType(TagChip));
+        expect(chip.selected, isFalse);
 
-          // White shadowed label for readability over the opaque fill.
-          final text = tester.widget<Text>(find.text('finance'));
-          expect(text.style?.color, Colors.white);
-          expect(text.style?.shadows, isNotNull);
-        }
-      },
-    );
+        // White shadowed label for readability over the opaque fill.
+        final text = tester.widget<Text>(find.text('finance'));
+        expect(text.style?.color, Colors.white);
+        expect(text.style?.shadows, isNotNull);
+      }
+    });
 
     testWidgets('selected filter chips lighten toward white', (tester) async {
       await tester.pumpWidget(
@@ -112,7 +111,7 @@ void main() {
     });
 
     testWidgets(
-      'interactive pill lightens on mouse hover and shows a click cursor',
+      'interactive pill stays visually constant on mouse hover and has no click cursor',
       (tester) async {
         var taps = 0;
         tester.view.physicalSize = const Size(400, 200);
@@ -120,34 +119,30 @@ void main() {
         addTearDown(tester.view.reset);
 
         await tester.pumpWidget(
-          _wrap(
-            TagChip(label: 'finance', onPressed: () => taps++),
-          ),
+          _wrap(TagChip(label: 'finance', onPressed: () => taps++)),
         );
 
         final color = tagColorFor('finance');
         expect(_pillDecoration(tester).color, color);
 
-        // Hover with a mouse pointer: the pill lightens but stays opaque.
+        // Hover with a mouse pointer: the pill neither lightens nor swaps its
+        // cursor — no hover feedback beyond the (absent here) delete ×.
         final chip = find.byType(TagChip);
-        final mouse = await tester.createGesture(
-          kind: PointerDeviceKind.mouse,
-        );
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer(location: tester.getCenter(chip));
         await tester.pumpAndSettle();
 
         final hovered = _pillDecoration(tester);
-        expect(hovered.color, Color.lerp(color, Colors.white, 0.22)!);
-        expect(hovered.color!.a, 1.0);
+        expect(hovered.color, color);
+        expect(
+          find.descendant(of: chip, matching: find.byType(MouseRegion)),
+          findsNothing,
+          reason: 'the TagChip must not wrap its pill in a MouseRegion',
+        );
 
-        // The pill is tappable.
+        // The pill is still tappable.
         await tester.tap(chip, warnIfMissed: false);
         expect(taps, 1);
-
-        // Moving away restores the resting color.
-        await mouse.moveTo(const Offset(-50, -50));
-        await tester.pumpAndSettle();
-        expect(_pillDecoration(tester).color, color);
       },
     );
   });
@@ -166,7 +161,10 @@ void main() {
           SizedBox(
             width: 100,
             height: 32,
-            child: TagDeleteIcon(color: Colors.teal, onDeleted: () => taps++),
+            child: TagDeleteIcon(
+              background: Colors.teal,
+              onDeleted: () => taps++,
+            ),
           ),
         ),
       );
@@ -178,8 +176,7 @@ void main() {
       );
       expect(opacity.opacity, 0);
 
-      // Hover over the icon with a mouse; after the fade the × is visible and
-      // rendered as a light-gray circle.
+      // Hover over the icon with a mouse; after the fade the × is visible.
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: tester.getCenter(iconFinder));
       await tester.pumpAndSettle();
@@ -188,20 +185,39 @@ void main() {
       );
       expect(opacityAfter.opacity, 1);
 
-      // The × lives inside a light-gray circular disc.
-      final circleContainer = find.ancestor(
-        of: iconFinder,
-        matching: find.byWidgetPredicate(
-          (w) =>
-              w is Container &&
-              w.decoration is BoxDecoration &&
-              (w.decoration! as BoxDecoration).shape == BoxShape.circle,
+      // No circular disc: the cross is a bare white × (with a soft shadow) —
+      // the only circle/decorated container is gone.
+      expect(
+        find.ancestor(
+          of: iconFinder,
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is Container &&
+                w.decoration is BoxDecoration &&
+                (w.decoration! as BoxDecoration).shape == BoxShape.circle,
+          ),
+        ),
+        findsNothing,
+      );
+      final icon = tester.widget<Icon>(iconFinder);
+      expect(icon.color, Colors.white);
+      expect(icon.shadows, isNotNull);
+
+      // The dimming scrim: a horizontal gradient that starts with the pill's
+      // own fill (opaque) and fades to transparent rightward.
+      final scrim = tester.widget<DecoratedBox>(
+        find.descendant(
+          of: find.byType(TagDeleteIcon),
+          matching: find.byType(DecoratedBox),
         ),
       );
-      expect(circleContainer, findsOneWidget);
-      final circle = tester.widget<Container>(circleContainer);
-      final decoration = circle.decoration! as BoxDecoration;
-      expect(decoration.color, const Color(0xFFE0E0E0));
+      final scrimDecoration = scrim.decoration as BoxDecoration;
+      final gradient = scrimDecoration.gradient! as LinearGradient;
+      expect(gradient.colors.first, Colors.teal);
+      expect(gradient.colors.first.a, 1.0);
+      expect(gradient.colors.last.a, 0.0);
+      expect(gradient.begin, Alignment.centerLeft);
+      expect(gradient.end, Alignment.centerRight);
 
       // Tapping the visible × fires the delete callback.
       await tester.tap(iconFinder, warnIfMissed: false);

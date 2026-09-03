@@ -70,20 +70,22 @@ Color tagTintFor(BuildContext context, String name) {
 /// shadow), so dark and light themes — and arbitrary preview content
 /// underneath — both stay readable.
 ///
-/// Hover and select both make the *background* lighter: an active filter
-/// (selected) and any interactive pill under the pointer lighten toward white,
-/// so the state is obvious at a glance while nothing on the chip is
-/// translucent.
+/// Selection lightens the fill toward white; hovering lightens **nothing** and
+/// never swaps the cursor to a pointer — the delete × on removable chips is
+/// the sole hover affordance. Nothing on the chip is translucent.
 ///
 /// * When [onSelected] is provided the chip acts as a filter: tapping toggles
 ///   [selected] (the pill lightens when selected).
 /// * When [onPressed] is provided the chip is tappable (action-style).
 /// * When [onDeleted] is provided a hover/touch delete affordance (×) is
-///   overlaid on the chip — it reserves no extra space and only appears when
-///   the chip is hovered (mouse) or touched (touch/stylus).
+///   overlaid flush against the pill's **right edge** — it reserves no extra
+///   space and only appears when the chip is hovered (mouse) or touched
+///   (touch/stylus). The × has no circular disc: a gradient scrim fades the
+///   label tail into the pill fill so the cross reads as part of the pill.
 ///
-/// Interactive pills (any handler) lighten on hover and show a click cursor on
-/// mouse platforms; display-only pills stay inert (no hover feedback).
+/// Interactive pills (any handler) never lighten on hover nor show a click
+/// cursor; display-only pills stay inert (nothing distinguishes them until
+/// tapped).
 ///
 /// The visual palette is always the same — the same tag always looks the
 /// same regardless of which surface it appears on.
@@ -111,9 +113,11 @@ class TagChip extends StatefulWidget {
   /// When non-null the chip is tappable (action-style, no selection state).
   final VoidCallback? onPressed;
 
-  /// When non-null a hover/touch delete affordance (×) is overlaid on top of
-  /// the chip — no extra space is reserved. The cross appears centered on the
-  /// chip only while hovering (mouse) or after a touch interaction.
+  /// When non-null a hover/touch delete affordance (×) is overlaid flush
+  /// against the pill's **right edge** — no extra space is reserved, and there
+  /// is no circular disc: a gradient scrim fades the label tail into the pill
+  /// fill so the cross reads as part of the pill. It appears only while
+  /// hovering (mouse) or after a touch interaction.
   final VoidCallback? onDeleted;
 
   @override
@@ -121,10 +125,6 @@ class TagChip extends StatefulWidget {
 }
 
 class _TagChipState extends State<TagChip> {
-  /// Whether a mouse pointer is hovering this pill. Interactive pills
-  /// brighten slightly so the affordance reads as live.
-  bool _hovering = false;
-
   bool get _interactive =>
       widget.onSelected != null ||
       widget.onPressed != null ||
@@ -160,17 +160,6 @@ class _TagChipState extends State<TagChip> {
       shadows: const [Shadow(color: Colors.black45, blurRadius: 3)],
     );
 
-    // Hover feedback: interactive pills (and the active filter under the
-    // pointer) lighten their fill and ring toward white; display-only pills
-    // stay exactly the same on hover. A selected pill keeps lightening on
-    // hover too (it never reads as de-selected).
-    final hoverBackground = widget.selected
-        ? Color.lerp(color, Colors.white, 0.52)!
-        : Color.lerp(color, Colors.white, 0.22)!;
-    final hoverBorder = widget.selected
-        ? Color.lerp(color, Colors.white, 0.55)!
-        : Color.lerp(color, Colors.white, 0.28)!;
-
     final pill = AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       curve: Curves.easeOut,
@@ -178,11 +167,9 @@ class _TagChipState extends State<TagChip> {
       // label breathes (the user-tuned vertical padding stays).
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: _hovering && _interactive ? hoverBackground : background,
+        color: background,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: _hovering && _interactive ? hoverBorder : borderColor,
-        ),
+        border: Border.all(color: borderColor),
       ),
       child: Text(
         widget.label,
@@ -192,37 +179,36 @@ class _TagChipState extends State<TagChip> {
       ),
     );
 
-    // Display-only chip: no hover affordance, no cursor, no tap handling.
+    // Display-only chip: inert — no tap handling, no cursor.
     if (!_interactive) {
       return pill;
     }
 
-    // Interactive chip: hover feedback + click cursor on the pill, plus tap
-    // handling. No key is set here — the widget's own key (e.g.
-    // `filter-$tag`) lives on the TagChip element, so find-by-key resolve this
-    // chip exactly once.
+    // Interactive chip: tap handling only. No hover feedback and no click
+    // cursor — the delete × on removable chips is the sole hover affordance.
+    // No key is set here — the widget's own key (e.g. `filter-$tag`) lives on
+    // the TagChip element, so find-by-key resolve this chip exactly once.
     final tap = GestureDetector(
       onTap: _handleTap,
       behavior: HitTestBehavior.opaque,
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hovering = true),
-        onExit: (_) => setState(() => _hovering = false),
-        cursor: SystemMouseCursors.click,
-        child: pill,
-      ),
+      child: pill,
     );
 
-    // Delete-able chip: overlay the hover-reveal × on top. Its own
-    // MouseRegion tracks the × independently for the reveal, so the outer
-    // region only brightens the pill while the × sits above it.
+    // Delete-able chip: overlay the hover-reveal × flush against the pill's
+    // right edge. Its own MouseRegion tracks the × independently for the
+    // reveal, so the pill itself stays constant on hover.
     if (widget.onDeleted != null) {
       return Stack(
         clipBehavior: Clip.none,
         children: [
           tap,
-          Positioned.fill(
+          Positioned(
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: _kDeleteAffordanceWidth,
             child: TagDeleteIcon(
-              color: color,
+              background: background,
               onDeleted: widget.onDeleted!,
             ),
           ),
@@ -238,12 +224,21 @@ class _TagChipState extends State<TagChip> {
 (int, int) spanRange(HighlightSpan span) =>
     (span.start.toInt(), span.end.toInt());
 
+/// Width of the delete affordance lane laid over a chip's right edge.
+///
+/// The overlay is a thin strip (no reserved layout space, no rounded
+/// container): the cross inside it is a bare white × over the gradient scrim.
+const double _kDeleteAffordanceWidth = 22;
+
 /// The delete (×) affordance for a tag chip that supports removal.
 ///
-/// This widget is designed to sit as a [Positioned.fill] child inside a
-/// [Stack] wrapping a chip — it occupies the chip's full area but reserves
-/// **no extra layout space**. The × appears as a small light-gray circle
-/// centered on the chip.
+/// This widget sits as a [Positioned] strip flush against a chip's **right
+/// edge** inside a [Stack] — it reserves **no extra layout space** and draws
+/// no circle/disc. When visible it fades in a white × (soft shadow) over a
+/// horizontal gradient scrim that blends from the pill's own fill to
+/// transparent ([background] → transparent rightward), so the label tail
+/// visibly dims under the affordance while the strip stays visually attached
+/// to the pill.
 ///
 /// Desktop (mouse pointer) users get a clean chip that reveals the × **only on
 /// hover** (`MouseRegion`), keeping the tag row compact and uncluttered; touch
@@ -252,12 +247,13 @@ class _TagChipState extends State<TagChip> {
 class TagDeleteIcon extends StatefulWidget {
   const TagDeleteIcon({
     super.key,
-    required this.color,
+    required this.background,
     required this.onDeleted,
   });
 
-  /// The tag's deterministic color, used for the cross icon tint.
-  final Color color;
+  /// The current pill fill (resting or hover-lightened) used as the opaque end
+  /// of the fade-out scrim that dims the label tail behind the cross.
+  final Color background;
 
   /// Called when the user taps the × to remove the tag.
   final VoidCallback onDeleted;
@@ -293,8 +289,8 @@ class _TagDeleteIconState extends State<TagDeleteIcon> {
         cursor: visible ? SystemMouseCursors.click : MouseCursor.defer,
         // The tap handler stays *above* the visibility gate so a touch that
         // reveals the × also registers as the deletion (matching the chip's
-        // original single-tap-to-delete behavior); only the visual circle is
-        // hidden/ignored until hover or touch.
+        // original single-tap-to-delete behavior); only the visual scrim +
+        // cross are hidden/ignored until hover or touch.
         child: GestureDetector(
           onTap: widget.onDeleted,
           // Always hit-testable even while the inner visual is hidden/ignored,
@@ -306,18 +302,35 @@ class _TagDeleteIconState extends State<TagDeleteIcon> {
               opacity: visible ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 120),
               curve: Curves.easeOut,
-              child: Center(
-                child: Container(
-                  width: 18,
-                  height: 18,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE0E0E0), // light-gray circle
-                    shape: BoxShape.circle,
+              // A full-width lane: the scrim is the background, the bare ×
+              // floats over it — no circle, no disc.
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  // The dim: a horizontal gradient that starts fully opaque
+                  // with the pill's own fill (matching the pill background, so
+                  // the seam is invisible) and fades to transparent rightward,
+                  // so the label tail under the × is gradiently dimmed.
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      widget.background,
+                      widget.background.withValues(alpha: 0),
+                    ],
                   ),
-                  child: Icon(
-                    Icons.clear,
-                    size: 12,
-                    color: widget.color.withValues(alpha: 0.8),
+                ),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Icon(
+                      Icons.clear,
+                      size: 12,
+                      color: Colors.white,
+                      shadows: const [
+                        Shadow(color: Colors.black54, blurRadius: 4),
+                      ],
+                    ),
                   ),
                 ),
               ),
