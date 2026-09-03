@@ -61,32 +61,37 @@ Color tagTintFor(BuildContext context, String name) {
   return Color.alphaBlend(light.withValues(alpha: 0.70), scheme.surface);
 }
 
-/// A compact, colored tag chip used consistently across every surface:
+/// A compact, colored tag pill used consistently across every surface:
 /// preview tiles, filter bars, search results, and the info sidebar.
 ///
 /// The color is derived deterministically from the tag name (see
-/// [tagColorFor]); the background is the tag's tinted hue so dark and light
-/// themes both stay readable.
+/// [tagColorFor]); the pill always renders an **opaque** fill of the tag's own
+/// color with an opaque tag-colored ring and a white label (with a soft
+/// shadow), so dark and light themes — and arbitrary preview content
+/// underneath — both stay readable.
 ///
-/// * When [onSelected] is provided the chip acts as a filter (with a
-///   checkmark when [selected]).
+/// Hover and select both make the *background* lighter: an active filter
+/// (selected) and any interactive pill under the pointer lighten toward white,
+/// so the state is obvious at a glance while nothing on the chip is
+/// translucent.
+///
+/// * When [onSelected] is provided the chip acts as a filter: tapping toggles
+///   [selected] (the pill lightens when selected).
 /// * When [onPressed] is provided the chip is tappable (action-style).
 /// * When [onDeleted] is provided a hover/touch delete affordance (×) is
 ///   overlaid on the chip — it reserves no extra space and only appears when
 ///   the chip is hovered (mouse) or touched (touch/stylus).
 ///
+/// Interactive pills (any handler) lighten on hover and show a click cursor on
+/// mouse platforms; display-only pills stay inert (no hover feedback).
+///
 /// The visual palette is always the same — the same tag always looks the
 /// same regardless of which surface it appears on.
-///
-/// Note: the chip deliberately passes **no `avatar`** — a zero-size avatar
-/// placeholder would still reserve the avatar slot and push the label away
-/// from the chip's left edge.
-class TagChip extends StatelessWidget {
+class TagChip extends StatefulWidget {
   const TagChip({
     super.key,
     required this.label,
     this.selected = false,
-    this.overlay = false,
     this.onSelected,
     this.onPressed,
     this.onDeleted,
@@ -94,19 +99,13 @@ class TagChip extends StatelessWidget {
 
   final String label;
 
-  /// Selection state for filter chips: when selected the chip is filled with a
-  /// stronger tint so the active filter is obvious at a glance.
+  /// Selection state for filter chips: when selected the pill is filled with a
+  /// stronger tint and a fully-opaque ring so the active filter is obvious at
+  /// a glance.
   final bool selected;
 
-  /// Renders the chip on top of a visual preview (e.g. the Documents grid
-  /// tiles): the washed-out tint is replaced with a translucent tint of the
-  /// tag's own color and a tag-colored ring, so the chip retains its color
-  /// identity while a white label (with a soft shadow) stays readable over
-  /// arbitrary image content.
-  final bool overlay;
-
   /// When non-null the chip is interactive: tapping toggles [selected].
-  /// This turns the chip into a filter chip (with a checkmark).
+  /// This turns the chip into a filter chip.
   final ValueChanged<bool>? onSelected;
 
   /// When non-null the chip is tappable (action-style, no selection state).
@@ -118,92 +117,120 @@ class TagChip extends StatelessWidget {
   final VoidCallback? onDeleted;
 
   @override
+  State<TagChip> createState() => _TagChipState();
+}
+
+class _TagChipState extends State<TagChip> {
+  /// Whether a mouse pointer is hovering this pill. Interactive pills
+  /// brighten slightly so the affordance reads as live.
+  bool _hovering = false;
+
+  bool get _interactive =>
+      widget.onSelected != null ||
+      widget.onPressed != null ||
+      widget.onDeleted != null;
+
+  void _handleTap() {
+    if (widget.onSelected != null) {
+      widget.onSelected!(!widget.selected);
+    } else if (widget.onPressed != null) {
+      widget.onPressed!();
+    }
+    // onDeleted is handled by the overlay TagDeleteIcon, not the pill itself.
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final color = tagColorFor(label);
-    final background = overlay
-        // A translucent tint of the tag's own color (instead of a mono dark
-        // scrim) so on-preview chips keep their deterministic color identity
-        // while still scrimming arbitrary image content underneath.
-        ? color.withValues(alpha: 0.55)
-        : selected
-        ? tagTintFor(context, label).withValues(alpha: 0.38)
-        : tagTintFor(context, label);
-    final labelColor = overlay ? Colors.white : color;
+    final color = tagColorFor(widget.label);
+
+    // The grid-tile overlay look: a fully-opaque fill of the tag's own color
+    // with an opaque tag-colored ring and white label — the visual every
+    // surface now shares. Nothing here is translucent.
+    final background = widget.selected
+        ? Color.lerp(color, Colors.white, 0.38)!
+        : color;
+    final borderColor = widget.selected
+        ? Color.lerp(color, Colors.white, 0.42)!
+        : Color.lerp(color, Colors.white, 0.12)!;
     final labelStyle = TextStyle(
       fontSize: 11.5,
-      color: labelColor,
+      color: Colors.white,
       fontWeight: FontWeight.w600,
-      shadows: overlay
-          ? const [Shadow(color: Colors.black45, blurRadius: 3)]
-          : null,
+      height: 1,
+      shadows: const [Shadow(color: Colors.black45, blurRadius: 3)],
     );
 
-    if (onSelected != null) {
-      return FilterChip(
-        key: key,
-        label: Text(label),
-        selected: selected,
-        visualDensity: VisualDensity.compact,
-        backgroundColor: background,
-        selectedColor: tagTintFor(context, label).withValues(alpha: 0.38),
-        side: BorderSide(color: color.withValues(alpha: 0.45)),
-        labelStyle: labelStyle,
-        showCheckmark: false,
-        onSelected: onSelected,
-      );
+    // Hover feedback: interactive pills (and the active filter under the
+    // pointer) lighten their fill and ring toward white; display-only pills
+    // stay exactly the same on hover. A selected pill keeps lightening on
+    // hover too (it never reads as de-selected).
+    final hoverBackground = widget.selected
+        ? Color.lerp(color, Colors.white, 0.52)!
+        : Color.lerp(color, Colors.white, 0.22)!;
+    final hoverBorder = widget.selected
+        ? Color.lerp(color, Colors.white, 0.55)!
+        : Color.lerp(color, Colors.white, 0.28)!;
+
+    final pill = AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      // Compact pill, slightly taller than the original chips so the white
+      // label breathes (the user-tuned vertical padding stays).
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: _hovering && _interactive ? hoverBackground : background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: _hovering && _interactive ? hoverBorder : borderColor,
+        ),
+      ),
+      child: Text(
+        widget.label,
+        style: labelStyle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+
+    // Display-only chip: no hover affordance, no cursor, no tap handling.
+    if (!_interactive) {
+      return pill;
     }
 
-    if (onPressed != null) {
-      return ActionChip(
-        key: key,
-        label: Text(label),
-        visualDensity: VisualDensity.compact,
-        backgroundColor: background,
-        side: BorderSide(color: color.withValues(alpha: 0.45)),
-        labelStyle: labelStyle,
-        onPressed: onPressed,
-      );
-    }
+    // Interactive chip: hover feedback + click cursor on the pill, plus tap
+    // handling. No key is set here — the widget's own key (e.g.
+    // `filter-$tag`) lives on the TagChip element, so find-by-key resolve this
+    // chip exactly once.
+    final tap = GestureDetector(
+      onTap: _handleTap,
+      behavior: HitTestBehavior.opaque,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        cursor: SystemMouseCursors.click,
+        child: pill,
+      ),
+    );
 
-    if (onDeleted != null) {
+    // Delete-able chip: overlay the hover-reveal × on top. Its own
+    // MouseRegion tracks the × independently for the reveal, so the outer
+    // region only brightens the pill while the × sits above it.
+    if (widget.onDeleted != null) {
       return Stack(
         clipBehavior: Clip.none,
         children: [
-          Chip(
-            key: key,
-            visualDensity: VisualDensity.compact,
-            backgroundColor: background,
-            side: BorderSide(
-              color: overlay
-                  ? color.withValues(alpha: 0.85)
-                  : color.withValues(alpha: 0.45),
-            ),
-            labelStyle: labelStyle,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            labelPadding: const EdgeInsets.symmetric(horizontal: 2),
-            label: Text(label),
-          ),
+          tap,
           Positioned.fill(
-            child: TagDeleteIcon(color: color, onDeleted: onDeleted!),
+            child: TagDeleteIcon(
+              color: color,
+              onDeleted: widget.onDeleted!,
+            ),
           ),
         ],
       );
     }
 
-    return Chip(
-      key: key,
-      visualDensity: VisualDensity.compact,
-      backgroundColor: background,
-      side: BorderSide(
-        color: overlay
-            ? color.withValues(alpha: 0.85)
-            : color.withValues(alpha: 0.45),
-      ),
-      labelStyle: labelStyle,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      labelPadding: const EdgeInsets.symmetric(horizontal: 2),
-      label: Text(label),
-    );
+    return tap;
   }
 }
 

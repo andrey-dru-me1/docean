@@ -127,8 +127,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Filter to 'finance' only.
-      await tester.tap(find.widgetWithText(FilterChip, 'finance'));
+      // Filter to 'finance' only. The filter bar uses the shared TagChip pill
+      // (no longer a Material FilterChip), keyed for unambiguous taps
+      // (grid-tile overlays are TagChips too now).
+      await tester.tap(find.byKey(const ValueKey('filter-finance')));
       await tester.pumpAndSettle();
 
       expect(find.text('Alpha report'), findsOneWidget);
@@ -410,7 +412,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Filter to the 'finance' tag only: 2 of the 3 documents match.
-      await tester.tap(find.widgetWithText(FilterChip, 'finance'));
+      await tester.tap(find.byKey(const ValueKey('filter-finance')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('select-documents')));
       await tester.pumpAndSettle();
@@ -728,11 +730,12 @@ void main() {
         expect(find.text('Personal notes'), findsNothing);
         expect(find.text('Both tags'), findsOneWidget);
 
-        // The filter bar tag chip for 'finance' is now selected.
-        expect(
-          find.widgetWithText(FilterChip, 'finance'),
-          findsOneWidget,
+        // The filter bar tag chip for 'finance' is now selected (the keyed
+        // filter chip, not any grid-tile overlay with the same label).
+        final active = tester.widget<TagChip>(
+          find.byKey(const ValueKey('filter-finance')),
         );
+        expect(active.selected, isTrue);
 
         // Tapping the same tag on a tile again should REMOVE the filter.
         await tester.tap(

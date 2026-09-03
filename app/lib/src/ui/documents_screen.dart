@@ -905,15 +905,14 @@ class _DocumentPreviewTile extends StatelessWidget {
                   runSpacing: 4,
                   children: [
                     for (final tag in document.tags)
-                      GestureDetector(
+                      TagChip(
+                        // Tapping the chip toggles it in the filter bar; the
+                        // handler lives on TagChip itself so the pill is
+                        // interactive (hover feedback) and its tap never falls
+                        // through to the tile's open-document InkWell below.
                         key: ValueKey('tile-tag-tap-$tag'),
-                        onTap: onTagTap != null ? () => onTagTap!(tag) : null,
-                        behavior: HitTestBehavior.opaque,
-                        child: TagChip(
-                          key: ValueKey('tile-tag-$tag'),
-                          label: tag,
-                          overlay: true,
-                        ),
+                        label: tag,
+                        onPressed: onTagTap != null ? () => onTagTap!(tag) : null,
                       ),
                   ],
                 ),

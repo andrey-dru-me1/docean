@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:docer/src/ui/widgets.dart'
-    show TagChip, TagDeleteIcon, tagColorFor, tagTintFor;
+    show TagChip, TagDeleteIcon, tagColorFor;
 
 Widget _wrap(Widget child) => MaterialApp(
   home: Scaffold(body: Center(child: child)),
@@ -20,93 +20,134 @@ Widget _wrapDark(Widget child) => MaterialApp(
   home: Scaffold(body: Center(child: child)),
 );
 
+/// The tag pill's [BoxDecoration] (findable via the rendered [AnimatedContainer]).
+BoxDecoration _pillDecoration(WidgetTester tester) {
+  final container = tester.widget<AnimatedContainer>(
+    find.descendant(
+      of: find.byType(TagChip),
+      matching: find.byType(AnimatedContainer),
+    ),
+  );
+  return container.decoration! as BoxDecoration;
+}
+
 void main() {
   group('TagChip', () {
-    testWidgets('renders without a reserved avatar slot in the chip', (
+    testWidgets('renders a compact pill with no reserved avatar slot', (
       tester,
     ) async {
       await tester.pumpWidget(_wrap(const TagChip(label: 'finance')));
 
-      // The chip has no avatar (a zero-size avatar placeholder still reserves
-      // the avatar slot and would push the label away from the left edge).
-      final chipWidget = tester.widget<Chip>(find.byType(Chip));
-      expect(chipWidget.avatar, isNull);
-
-      // The label starts right after the chip's own horizontal padding (now 4),
-      // i.e. at the chip's left edge — not after an avatar gap.
-      final chip = find.byType(Chip);
+      // A custom pill, not a Material Chip: the pill's container has no avatar
+      // concept, and the label sits right after the pill's own horizontal
+      // padding (8), i.e. at the pill's left edge.
+      final pill = find.byType(AnimatedContainer);
       final label = find.text('finance');
-      final chipLeft = tester.getTopLeft(chip).dx;
+      final pillLeft = tester.getTopLeft(pill).dx;
       final labelLeft = tester.getTopLeft(label).dx;
-      expect(labelLeft - chipLeft, greaterThanOrEqualTo(0));
-      expect(labelLeft - chipLeft, lessThan(12));
+      expect(labelLeft - pillLeft, greaterThanOrEqualTo(0));
+      expect(labelLeft - pillLeft, lessThan(20));
     });
 
-    testWidgets('uses tighter compact padding', (tester) async {
+    testWidgets('uses compact pill padding', (tester) async {
       await tester.pumpWidget(_wrap(const TagChip(label: 'finance')));
 
-      final chipWidget = tester.widget<Chip>(find.byType(Chip));
-      // Reduced padding (horizontal 4) / labelPadding (horizontal 2) so chips
-      // pack tighter in Wraps.
-      expect(chipWidget.padding, const EdgeInsets.symmetric(horizontal: 4));
+      final container = tester.widget<AnimatedContainer>(
+        find.byType(AnimatedContainer),
+      );
+      // Compact horizontal padding (8) so pills pack tighter in Wraps; the
+      // vertical (5) keeps the pill short but gives the 11.5px label room.
       expect(
-        chipWidget.labelPadding,
-        const EdgeInsets.symmetric(horizontal: 2),
+        container.padding,
+        const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       );
     });
 
     testWidgets(
-      'dark theme tint is a light, surface-blended color — not a dark wash',
+      'renders the shared opaque tag-color pill on any theme',
       (tester) async {
-        await tester.pumpWidget(_wrapDark(const TagChip(label: 'finance')));
+        // The pill draws the grid-tile overlay style everywhere: an opaque
+        // fill of the tag's own color with an opaque tag-colored ring and a
+        // white shadowed label — the same in light and dark themes.
+        for (final wrap in [_wrap, _wrapDark]) {
+          await tester.pumpWidget(wrap(const TagChip(label: 'finance')));
 
-        final context = tester.element(find.byType(TagChip));
-        final chipWidget = tester.widget<Chip>(find.byType(Chip));
-        final tint = tagTintFor(context, 'finance');
+          final color = tagColorFor('finance');
+          final pill = _pillDecoration(tester);
+          expect(pill.borderRadius, BorderRadius.circular(999));
+          // Fully opaque: the resting pill is the tag's exact color and the
+          // ring is an opaque lightened shade — no translucency anywhere.
+          expect(pill.color, color);
+          expect(
+            (pill.border! as Border).top.color,
+            Color.lerp(color, Colors.white, 0.12)!,
+          );
 
-        // The chip actually uses that light tint in dark mode.
-        final scheme = Theme.of(context).colorScheme;
-        expect(scheme.brightness, Brightness.dark);
-        final bg = chipWidget.backgroundColor!;
+          final chip = tester.widget<TagChip>(find.byType(TagChip));
+          expect(chip.selected, isFalse);
 
-        // The dark tint must be opaque (surface-blended) and clearly LIGHTER
-        // than the deterministic tag color (a dark material 900 shade) so the
-        // chip reads as a visible colored pill rather than a near-black smudge
-        // (the old 0.16 alpha wash over a dark surface landed around 0.02).
-        expect(tint.computeLuminance(), greaterThan(0.15));
-        // Brighter than the old 0.16-alpha wash over the same surface.
-        final oldWashLuminance = Color.alphaBlend(
-          tagColorFor('finance').withValues(alpha: 0.16),
-          scheme.surface,
-        ).computeLuminance();
-        expect(tint.computeLuminance(), greaterThan(oldWashLuminance * 3));
-        expect(bg, tint);
-        expect(bg.a, greaterThan(0.55));
+          // White shadowed label for readability over the opaque fill.
+          final text = tester.widget<Text>(find.text('finance'));
+          expect(text.style?.color, Colors.white);
+          expect(text.style?.shadows, isNotNull);
+        }
       },
     );
 
+    testWidgets('selected filter chips lighten toward white', (tester) async {
+      await tester.pumpWidget(
+        _wrap(const TagChip(label: 'finance', selected: true)),
+      );
+
+      final color = tagColorFor('finance');
+      final pill = _pillDecoration(tester);
+      // Selection lightens the background and ring toward white (both fully
+      // opaque — never translucent).
+      expect(pill.color, Color.lerp(color, Colors.white, 0.38)!);
+      expect(pill.color!.a, 1.0);
+      expect(
+        (pill.border! as Border).top.color,
+        Color.lerp(color, Colors.white, 0.42)!,
+      );
+    });
+
     testWidgets(
-      'overlay variant keeps the tag color identity with a white label',
+      'interactive pill lightens on mouse hover and shows a click cursor',
       (tester) async {
+        var taps = 0;
+        tester.view.physicalSize = const Size(400, 200);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
         await tester.pumpWidget(
-          _wrap(const TagChip(label: 'finance', overlay: true)),
+          _wrap(
+            TagChip(label: 'finance', onPressed: () => taps++),
+          ),
         );
 
-        final chipWidget = tester.widget<Chip>(find.byType(Chip));
         final color = tagColorFor('finance');
-        // Translucent tint of the tag's own color (not a mono black scrim).
-        expect(chipWidget.backgroundColor, isNotNull);
-        expect(chipWidget.backgroundColor!.a, greaterThan(0.35));
-        expect(chipWidget.backgroundColor!.a, lessThan(1.0));
-        expect(chipWidget.backgroundColor, color.withValues(alpha: 0.55));
-        // Tag-colored border, not a white ring.
-        expect(chipWidget.side?.color, color.withValues(alpha: 0.85));
-        expect(
-          chipWidget.side?.color,
-          isNot(const Color(0x47FFFFFF)), // old white ring
+        expect(_pillDecoration(tester).color, color);
+
+        // Hover with a mouse pointer: the pill lightens but stays opaque.
+        final chip = find.byType(TagChip);
+        final mouse = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
         );
-        // White label for readability over arbitrary preview content.
-        expect(chipWidget.labelStyle?.color, Colors.white);
+        await mouse.addPointer(location: tester.getCenter(chip));
+        await tester.pumpAndSettle();
+
+        final hovered = _pillDecoration(tester);
+        expect(hovered.color, Color.lerp(color, Colors.white, 0.22)!);
+        expect(hovered.color!.a, 1.0);
+
+        // The pill is tappable.
+        await tester.tap(chip, warnIfMissed: false);
+        expect(taps, 1);
+
+        // Moving away restores the resting color.
+        await mouse.moveTo(const Offset(-50, -50));
+        await tester.pumpAndSettle();
+        expect(_pillDecoration(tester).color, color);
       },
     );
   });
