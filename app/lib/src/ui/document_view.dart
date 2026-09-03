@@ -702,16 +702,30 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
             label: tag,
             onDeleted: () => _removeTag(tag),
           ),
-        // "Add tag" chip sits inline with the tags so it stays in the flow
-        // when new tags are added/removed.
+        // A plain "+" that opens the tag composer. A bare icon, no circle,
+        // centered inside a box sized to the TagChip pills' height
+        // (11.5px label + 2×5px padding + 2×1px border ≈ 24px) so it sits
+        // optically centered against the chips instead of riding above them.
+        // The Wrap's own spacing provides the horizontal gap. The tooltip
+        // keeps the affordance discoverable for mouse users and labelled for
+        // screen readers.
         Tooltip(
           message: 'Add tag',
-          child: ActionChip(
-            avatar: const Icon(Icons.add, size: 16),
-            label: const Text('Add tag'),
-            visualDensity: VisualDensity.compact,
-            labelStyle: Theme.of(context).textTheme.labelSmall,
-            onPressed: _openAddTagComposer,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _openAddTagComposer,
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: Icon(
+                  Icons.add,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ),
         ),
       ],

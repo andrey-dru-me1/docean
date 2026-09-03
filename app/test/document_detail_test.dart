@@ -687,9 +687,10 @@ void main() {
         await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
         await tester.pumpAndSettle();
 
-        // The dialog lists known tags that are not yet on the document.
-        // "Add tag" appears both as the ActionChip label and the dialog title.
-        expect(find.text('Add tag'), findsNWidgets(2));
+        // The dialog lists known tags that are not yet on the document. The
+        // sidebar's add-tag affordance is now icon-only, so "Add tag" text
+        // appears only as the dialog title.
+        expect(find.text('Add tag'), findsOneWidget);
         expect(find.text('existing-tag'), findsOneWidget);
         expect(find.text('other-known'), findsOneWidget);
         // Tags already applied are filtered out of the suggestion list.
