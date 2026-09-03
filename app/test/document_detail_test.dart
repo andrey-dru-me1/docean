@@ -429,8 +429,10 @@ void main() {
 
         // The magic-wand "Suggest title" replaced the old 'Save title' check.
         expect(find.byTooltip('Suggest title'), findsOneWidget);
-        // Both title and tags now share the same magic-wand icon.
-        expect(find.byIcon(Icons.auto_fix_high), findsNWidgets(2));
+        // Only the title keeps the magic wand; "Suggest tags" uses the tag
+        // (sell) icon so the two related actions no longer share a glyph.
+        expect(find.byIcon(Icons.auto_fix_high), findsOneWidget);
+        expect(find.byIcon(Icons.sell_outlined), findsOneWidget);
         expect(find.byTooltip('Save title'), findsNothing);
         // A distinct "Suggest tags" action exists (not a combined button).
         expect(find.byTooltip('Suggest tags'), findsOneWidget);

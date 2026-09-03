@@ -245,7 +245,7 @@ void main() {
       expect(find.textContaining('Body of the wide report'), findsOneWidget);
 
       // Closing the panel dismisses it (after the exit transition completes).
-      await tester.tap(find.byIcon(Icons.close));
+      await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pump();
       expect(find.byTooltip('Suggest tags'), findsOneWidget);
       await tester.pumpAndSettle();

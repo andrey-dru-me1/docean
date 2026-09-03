@@ -526,11 +526,6 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
             icon: const Icon(Icons.open_in_new),
             onPressed: _loadingContent ? null : _openExternally,
           ),
-          IconButton(
-            tooltip: 'Close',
-            icon: const Icon(Icons.close),
-            onPressed: widget.onBack,
-          ),
         ],
       ),
       body: ListView(
@@ -562,8 +557,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                       const Spacer(),
-                      // Magic-wand "Suggest tags" — consistent with the
-                      // title-row magic wand.
+                      // "Suggest tags" — the tag icon (sell) distinguishes it
+                      // from the title-row magic wand while matching the
+                      // bulk-selection toolbar's tag-suggest affordance.
                       if (_suggestingTags)
                         const Padding(
                           padding: EdgeInsets.all(8),
@@ -581,7 +577,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                           onPressed:
                               _loadingContent ? null : _suggestTags,
                           icon: const Icon(
-                            Icons.auto_fix_high,
+                            Icons.sell_outlined,
                             size: 20,
                           ),
                         ),
