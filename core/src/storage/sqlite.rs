@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::domain::{
-    Content, Document, DocumentId, DocumentSuggestion, FeedbackStats, HierarchyLink,
-    HierarchyPath, NodeKind, PathAssignment, SuggestionFeedback, SuggestionKind, Tag,
+    Content, Document, DocumentId, DocumentSuggestion, FeedbackStats, HierarchyLink, HierarchyPath,
+    NodeKind, PathAssignment, SuggestionFeedback, SuggestionKind, Tag,
 };
 use crate::storage::blob::{hash_bytes, BlobStore};
 use crate::storage::schema;
@@ -544,7 +544,6 @@ impl DocumentStore for SqliteDocumentStore {
             Ok(())
         })
     }
-
 }
 
 // --- pending suggestions + feedback ---------------------------------------
@@ -698,18 +697,15 @@ impl SqliteDocumentStore {
             sql.push_str(" GROUP BY term");
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
-                .query_map(
-                    rusqlite::params_from_iter(args.iter()),
-                    |r| {
-                        Ok((
-                            r.get::<_, String>(0)?,
-                            FeedbackStats {
-                                accepts: r.get::<_, f64>(1)?,
-                                rejects: r.get::<_, f64>(2)?,
-                            },
-                        ))
-                    },
-                )?
+                .query_map(rusqlite::params_from_iter(args.iter()), |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        FeedbackStats {
+                            accepts: r.get::<_, f64>(1)?,
+                            rejects: r.get::<_, f64>(2)?,
+                        },
+                    ))
+                })?
                 .collect::<Result<HashMap<_, _>, _>>()?;
             Ok(rows)
         })

@@ -318,6 +318,7 @@ impl DeterministicOrganizer {
     }
 
     /// Build ranked alternative tag sets (besides the rank-0 `rank0_tags`).
+    #[allow(clippy::too_many_arguments)]
     fn alt_tag_sets(
         &self,
         corpus: &Corpus,
@@ -328,30 +329,9 @@ impl DeterministicOrganizer {
         prefs: &PreferenceModel,
         is_learning: bool,
     ) -> Vec<Vec<String>> {
-        let mut sets: Vec<Vec<String>> = Vec::new();
-
-        // The k-NN-only set (borrowed tags only).
-        let reused = self.reused_tags_and_term(corpus, doc, model);
-        if !reused.is_empty() && reused != rank0_tags {
-            sets.push(reused);
-        }
-
-        // The cluster-only set (emergent topics only).
-        let cluster = cluster_tags.iter().map(|t| t.tag()).collect::<Vec<_>>();
-        if !cluster.is_empty() && cluster != rank0_tags {
-            sets.push(cluster);
-        }
-
-        // The keyword set (top keywords as tags).
-        let kw = keywords::extract_keywords(&doc.text, Some(model), None, 4);
-        if !kw.is_empty() && kw != rank0_tags {
-            sets.push(kw);
-        }
-
-        // A conservative top-3 of the rank-0 set.
-        if rank0_tags.len() > 3 {
-            sets.push(rank0_tags.iter().take(3).cloned().collect::<Vec<_>>());
-        }
+        // Reuses `reused_tags_and_term` for the k-NN-only set.
+        let candidate_sets = self.base_tag_sets(corpus, doc, model, cluster_tags, rank0_tags);
+        let mut sets = candidate_sets;
 
         // De-dup exact-equal sets (order-insensitive).
         let mut seen: HashMap<Vec<String>, ()> = HashMap::new();
@@ -381,9 +361,52 @@ impl DeterministicOrganizer {
         sets.into_iter().take(MAX_TAG_SET_ALTS).collect()
     }
 
+    /// The raw candidate tag sets (no dedup/re-rank): k-NN-only, cluster-only,
+    /// keywords-as-tags, and the top-3 of the rank-0 set.
+    fn base_tag_sets(
+        &self,
+        corpus: &Corpus,
+        doc: &CorpusDoc,
+        model: &TfIdfModel,
+        cluster_tags: &[TopicTag],
+        rank0_tags: &[String],
+    ) -> Vec<Vec<String>> {
+        let mut sets: Vec<Vec<String>> = Vec::new();
+
+        // The k-NN-only set (borrowed tags only).
+        let reused = self.reused_tags_and_term(corpus, doc, model);
+        if !reused.is_empty() && reused != rank0_tags {
+            sets.push(reused);
+        }
+
+        // The cluster-only set (emergent topics only).
+        let cluster = cluster_tags.iter().map(|t| t.tag()).collect::<Vec<_>>();
+        if !cluster.is_empty() && cluster != rank0_tags {
+            sets.push(cluster);
+        }
+
+        // The keyword set (top keywords as tags).
+        let kw = keywords::extract_keywords(&doc.text, Some(model), None, 4);
+        if !kw.is_empty() && kw != rank0_tags {
+            sets.push(kw);
+        }
+
+        // A conservative top-3 of the rank-0 set.
+        if rank0_tags.len() > 3 {
+            sets.push(rank0_tags.iter().take(3).cloned().collect::<Vec<_>>());
+        }
+
+        sets
+    }
+
     /// Like [`Self::reused_tags`] but returns the actual tag strings (not
     /// `TopicTag`s), so alternative sets stay comparable.
-    fn reused_tags_and_term(&self, corpus: &Corpus, doc: &CorpusDoc, model: &TfIdfModel) -> Vec<String> {
+    fn reused_tags_and_term(
+        &self,
+        corpus: &Corpus,
+        doc: &CorpusDoc,
+        model: &TfIdfModel,
+    ) -> Vec<String> {
         self.reused_tags(corpus, doc, model)
             .into_iter()
             .map(|t| t.tag())

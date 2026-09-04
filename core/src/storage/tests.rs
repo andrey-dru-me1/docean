@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 
 use crate::domain::{
-    Content, Document, HierarchyLink, HierarchyPath, NodeKind, PathAssignment, Tag,
+    Content, Document, DocumentSuggestion, HierarchyLink, HierarchyPath, NodeKind, PathAssignment,
+    SuggestionFeedback, SuggestionKind, SuggestionSource, SuggestionStatus, Tag,
 };
 use crate::storage::{hash_bytes, DocumentQuery, DocumentStore, SqliteDocumentStore, StorageError};
 
@@ -365,6 +366,114 @@ fn set_tags_replaces_document_tags_without_rewriting_bytes() {
         .set_tags(&"nope".to_owned(), &["x".to_owned()])
         .unwrap_err();
     assert!(matches!(err, StorageError::NotFound(id) if id == "nope"));
+}
+
+#[test]
+fn suggestions_and_feedback_round_trip() {
+    let mut store = temp_store("suggestions");
+    store.put(doc("d1", "Doc", &[]), b"x").unwrap();
+
+    let now = 1000i64;
+    let s = DocumentSuggestion {
+        id: "d1-title-0".to_owned(),
+        document_id: "d1".to_owned(),
+        kind: SuggestionKind::Title,
+        payload: "Suggested title".to_owned(),
+        rank: 0,
+        source: SuggestionSource::Ingest,
+        confidence: 1.0,
+        status: SuggestionStatus::Applied,
+        created_at_ms: now,
+    };
+    store.put_suggestion(&s).unwrap();
+
+    let alt = DocumentSuggestion {
+        id: "d1-title-1".to_owned(),
+        document_id: "d1".to_owned(),
+        kind: SuggestionKind::Title,
+        payload: "Alt title".to_owned(),
+        rank: 1,
+        source: SuggestionSource::Bulk,
+        confidence: 0.9,
+        status: SuggestionStatus::Pending,
+        created_at_ms: now,
+    };
+    store.put_suggestion(&alt).unwrap();
+
+    // A second applied row that should survive pruning (status = Applied is
+    // kept; only Pending-older-than-threshold is pruned below).
+    store
+        .put_suggestion(&DocumentSuggestion {
+            id: "d1-title-applied".to_owned(),
+            document_id: "d1".to_owned(),
+            kind: SuggestionKind::Title,
+            payload: "Applied title".to_owned(),
+            rank: 0,
+            source: SuggestionSource::Ingest,
+            confidence: 1.0,
+            status: SuggestionStatus::Applied,
+            created_at_ms: now,
+        })
+        .unwrap();
+
+    let rows = store
+        .suggestions_for_document(&"d1".to_owned(), Some(SuggestionKind::Title))
+        .unwrap();
+    assert_eq!(rows.len(), 3, "applied + pending + second applied");
+    assert_eq!(rows[0].payload, "Suggested title");
+    assert!(rows.iter().any(|r| r.status == SuggestionStatus::Pending));
+
+    // Status transition + prune only removes non-pending rows: the two applied
+    // rows (declared before `now + 1`) are pruned, the pending alternative stays.
+    store.prune_suggestions(now + 1).unwrap();
+    let after = store
+        .suggestions_for_document(&"d1".to_owned(), Some(SuggestionKind::Title))
+        .unwrap();
+    assert_eq!(after.len(), 1, "pending row survives prune");
+    assert_eq!(
+        after[0].id, "d1-title-1",
+        "only the pending alternative remains"
+    );
+
+    // Marking it dismissed then pruning removes it entirely.
+    store
+        .mark_suggestion("d1-title-1", SuggestionStatus::Dismissed)
+        .unwrap();
+    store.prune_suggestions(now + 1).unwrap();
+    let cleared = store
+        .suggestions_for_document(&"d1".to_owned(), Some(SuggestionKind::Title))
+        .unwrap();
+    assert!(cleared.is_empty(), "dismissed rows are pruned");
+
+    // Feedback aggregation (unique ids so the primary key stays distinct).
+    let events = [
+        ("fb-1", "invoice", "accepted", 1.0),
+        ("fb-2", "invoice", "accepted", 1.0),
+        ("fb-3", "tax", "rejected", 1.0),
+    ];
+    for (id, term, action, weight) in events {
+        store
+            .record_feedback(&SuggestionFeedback {
+                id: id.to_owned(),
+                kind: SuggestionKind::Tags,
+                context: "tag".to_owned(),
+                term: term.to_owned(),
+                action: action.to_owned(),
+                weight,
+                created_at_ms: now,
+            })
+            .unwrap();
+    }
+    let stats = store
+        .feedback_stats(Some(SuggestionKind::Tags), Some("tag"))
+        .unwrap();
+    assert_eq!(stats["invoice"].accepts, 2.0);
+    assert_eq!(stats["invoice"].rejects, 0.0);
+    assert_eq!(stats["tax"].accepts, 0.0);
+    assert_eq!(stats["tax"].rejects, 1.0);
+
+    store.clear_feedback().unwrap();
+    assert!(store.feedback_stats(None, None).unwrap().is_empty());
 }
 
 #[test]

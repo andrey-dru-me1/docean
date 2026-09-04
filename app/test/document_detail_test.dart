@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:docer/src/features/document_service.dart'
-    show FakeDocumentService, SuggestionPlan;
+    show FakeDocumentService, SuggestionEntry, SuggestionPlan;
+import 'package:docer/src/rust/domain.dart'
+    show SuggestionKind, SuggestionSource, SuggestionStatus;
 import 'package:docer/src/ui/document_view.dart'
     show DocumentDetailView, DocumentSummary;
 import 'package:docer/src/ui/widgets.dart' show TagChip;
@@ -554,9 +556,11 @@ void main() {
         // The wand only touches title — tags are never touched.
         expect(service.suggestTagsCount, 0);
         expect(service.setTagsCount, 0);
+        // Manual title is preserved; alternatives (if any) are surfaced in the
+        // review card rather than a "silently skipped" snackbar.
         expect(
           find.textContaining('Title unchanged (manually edited)'),
-          findsOneWidget,
+          findsNothing,
         );
       },
     );
@@ -664,9 +668,11 @@ void main() {
       expect(service.setTagsCount, 0);
       expect(find.text('keep-me'), findsOneWidget);
       expect(find.text('auto'), findsNothing);
+      // The manual-tag dead-end snackbar is gone; alternatives surface in the
+      // review card instead.
       expect(
         find.textContaining('Tags unchanged (manually edited)'),
-        findsOneWidget,
+        findsNothing,
       );
     });
 
@@ -847,6 +853,121 @@ void main() {
         final text = tester.widget<SnackBar>(snack).content;
         expect(text.toString(), isNot(contains('PathNotFoundException')));
       }
+    });
+
+    testWidgets('shows AI suggestion alternatives and confirms the current', (
+      tester,
+    ) async {
+      final s = FakeDocumentService(
+        documents: [
+          _doc(id: 'doc-1', title: 'My title', tags: const ['a']),
+        ],
+        suggestionsByDocumentId: {
+          'doc-1': [
+            SuggestionEntry(
+              id: 't0',
+              documentId: 'doc-1',
+              kind: SuggestionKind.title,
+              title: 'My title',
+              tags: const [],
+              rank: 0,
+              source: SuggestionSource.ingest,
+              status: SuggestionStatus.applied,
+            ),
+            SuggestionEntry(
+              id: 't1',
+              documentId: 'doc-1',
+              kind: SuggestionKind.title,
+              title: 'Alt title',
+              tags: const [],
+              rank: 1,
+              source: SuggestionSource.ingest,
+              status: SuggestionStatus.pending,
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        _wrap(
+          DocumentDetailView(
+            document: _doc(id: 'doc-1'),
+            documentService: s,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The alternative chip is visible.
+      expect(
+        find.byKey(const ValueKey('suggestion-t1')),
+        findsOneWidget,
+        reason: 'pending alternative chip should render',
+      );
+      // Tapping it applies the alternative (updates title) and reloads.
+      await tester.tap(find.byKey(const ValueKey('suggestion-t1')));
+      await tester.pumpAndSettle();
+      expect(
+        s.lastTitle,
+        'Alt title',
+        reason: 'the fake applies the chosen alternative title via updateTitle',
+      );
+      expect(
+        find.byKey(const ValueKey('suggestion-t1')),
+        findsNothing,
+        reason: 'chosen alternative disappears after review',
+      );
+    });
+
+    testWidgets('Keep button dismisses pending suggestions of that kind', (
+      tester,
+    ) async {
+      final s = FakeDocumentService(
+        documents: [
+          _doc(id: 'doc-1', title: 'My title', tags: const ['a']),
+        ],
+        suggestionsByDocumentId: {
+          'doc-1': [
+            SuggestionEntry(
+              id: 'tags0',
+              documentId: 'doc-1',
+              kind: SuggestionKind.tags,
+              title: null,
+              tags: const ['a'],
+              rank: 0,
+              source: SuggestionSource.ingest,
+              status: SuggestionStatus.applied,
+            ),
+            SuggestionEntry(
+              id: 'tags1',
+              documentId: 'doc-1',
+              kind: SuggestionKind.tags,
+              title: null,
+              tags: const ['a', 'b'],
+              rank: 1,
+              source: SuggestionSource.ingest,
+              status: SuggestionStatus.pending,
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        _wrap(
+          DocumentDetailView(
+            document: _doc(id: 'doc-1'),
+            documentService: s,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('suggestion-tags1')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('confirm-tags')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('suggestion-tags1')),
+        findsNothing,
+        reason: 'Keep dismisses pending alternatives',
+      );
     });
   });
 }

@@ -7,7 +7,8 @@ import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../features/document_preview.dart' show DocumentPreviewLoader;
-import '../features/document_service.dart' show DocumentService, SuggestionEntry;
+import '../features/document_service.dart'
+    show DocumentService, SuggestionEntry;
 import '../rust/domain.dart' show SuggestionKind;
 import 'document_preview_view.dart' show DocumentPreviewPanel;
 import 'widgets.dart' show TagChip;
@@ -350,10 +351,14 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         // suggestions card instead of being silently skipped.
         final pendingAfter = _suggestions.where((s) => s.isPending).length;
         if (pendingAfter > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('$pendingAfter alternative'
-                '${pendingAfter == 1 ? '' : 's'} available to review'),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '$pendingAfter alternative'
+                '${pendingAfter == 1 ? '' : 's'} available to review',
+              ),
+            ),
+          );
         }
       }
     } catch (e) {
@@ -397,10 +402,14 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       } else if (alreadyManual) {
         final pendingAfter = _suggestions.where((s) => s.isPending).length;
         if (pendingAfter > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('$pendingAfter alternative'
-                '${pendingAfter == 1 ? '' : 's'} available to review'),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '$pendingAfter alternative'
+                '${pendingAfter == 1 ? '' : 's'} available to review',
+              ),
+            ),
+          );
         }
       } else {
         ScaffoldMessenger.of(
@@ -763,9 +772,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     final current = applied.isNotEmpty
         ? applied.firstWhere((s) => s.kind == kind, orElse: () => pending.first)
         : pending.first;
-    final label = isTags
-        ? current.tags.join(', ')
-        : (current.title ?? 'Title');
+    final label = isTags ? current.tags.join(', ') : (current.title ?? 'Title');
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -801,11 +808,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                 child: SizedBox(
                   width: 18,
                   height: 18,
-                  child: Icon(
-                    Icons.close,
-                    size: 14,
-                    color: scheme.error,
-                  ),
+                  child: Icon(Icons.close, size: 14, color: scheme.error),
                 ),
               ),
             ),
@@ -831,9 +834,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Could not apply suggestion: $e'),
-      ));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not apply suggestion: $e')));
     }
   }
 
@@ -844,9 +847,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       await _loadSuggestions();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Could not confirm: $e'),
-      ));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not confirm: $e')));
     }
   }
 
@@ -857,9 +860,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       await _loadSuggestions();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Could not dismiss suggestion: $e'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not dismiss suggestion: $e')),
+      );
     }
   }
 

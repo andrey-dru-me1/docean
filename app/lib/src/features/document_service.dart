@@ -25,6 +25,8 @@ import '../rust/api/auto_org.dart'
         autoOrgResetLearning;
 import '../rust/api/search.dart' as search_bridge;
 import '../rust/api/storage.dart' show DocumentRepository;
+import '../rust/auto_org/config.dart' show OrgConfig;
+import 'learning_prefs.dart' show suggestionLearningMode;
 import '../rust/domain.dart'
     show
         Document,
@@ -410,6 +412,20 @@ class BridgeDocumentService implements DocumentService {
     }
   }
 
+  /// The auto-organization config with the user-selected learning mode applied.
+  OrgConfig _orgConfig() {
+    final config = autoOrgDefaultConfig();
+    return OrgConfig(
+      enabled: config.enabled,
+      generativeEnabled: config.generativeEnabled,
+      dedupThreshold: config.dedupThreshold,
+      shingleK: config.shingleK,
+      clusterK: config.clusterK,
+      rules: config.rules,
+      learningMode: suggestionLearningMode(),
+    );
+  }
+
   /// Run the existing deterministic auto-organization bridge over the whole
   /// corpus and return its suggestion (nothing is persisted here).
   @override
@@ -418,7 +434,7 @@ class BridgeDocumentService implements DocumentService {
     final plan = await autoOrgOrganize(
       repo: repo,
       documentId: id,
-      config: autoOrgDefaultConfig(),
+      config: _orgConfig(),
     );
     return SuggestionPlan(title: plan.suggestedTitle, tags: List.of(plan.tags));
   }
@@ -435,7 +451,7 @@ class BridgeDocumentService implements DocumentService {
     final plan = await autoOrgOrganize(
       repo: repo,
       documentId: id,
-      config: autoOrgDefaultConfig(),
+      config: _orgConfig(),
     );
     final suggested = plan.suggestedTitle?.trim();
     if (suggested != null && suggested.isNotEmpty) {
@@ -458,7 +474,7 @@ class BridgeDocumentService implements DocumentService {
     final plan = await autoOrgOrganize(
       repo: repo,
       documentId: id,
-      config: autoOrgDefaultConfig(),
+      config: _orgConfig(),
     );
     if (plan.tags.isNotEmpty) {
       final doc = await repo.get_(id: id);
@@ -575,10 +591,9 @@ class BridgeDocumentService implements DocumentService {
   }
 
   SuggestionEntry _entryOf(DocumentSuggestion s) {
-    final tags =
-        s.kind == SuggestionKind.tags
-            ? (jsonDecode(s.payload) as List).cast<String>()
-            : const <String>[];
+    final tags = s.kind == SuggestionKind.tags
+        ? (jsonDecode(s.payload) as List).cast<String>()
+        : const <String>[];
     return SuggestionEntry(
       id: s.id,
       documentId: s.documentId,

@@ -7,11 +7,20 @@ import '../features/provider_service.dart'
 ///
 /// Lists every backend, shows which is active, lets the user pick a provider
 /// and model, edit base URL, and store/remove an API key. Degrades gracefully
-/// when the engine is unavailable or no provider is configured.
+/// when the engine is unavailable or no provider is configured. Renders an
+/// optional extra settings panel (e.g. the suggestion-learning block) below the
+/// provider editor.
 class ProviderScreen extends StatefulWidget {
-  const ProviderScreen({super.key, required this.providerService});
+  const ProviderScreen({
+    super.key,
+    required this.providerService,
+    this.extraPanel,
+  });
 
   final ProviderService providerService;
+
+  /// Optional extra settings card (learning mode + reset).
+  final Widget? extraPanel;
 
   @override
   State<ProviderScreen> createState() => _ProviderScreenState();
@@ -216,6 +225,12 @@ class _ProviderScreenState extends State<ProviderScreen> {
           ),
         const SizedBox(height: 16),
         if (_editing != null) _buildEditor(),
+        if (widget.extraPanel != null) ...[
+          const SizedBox(height: 24),
+          Text('Suggestions', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          widget.extraPanel!,
+        ],
         const SizedBox(height: 48),
       ],
     );

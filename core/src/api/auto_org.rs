@@ -174,7 +174,11 @@ fn store_plan_suggestions(
             rank: rank as i32,
             source,
             confidence: 1.0,
-            status: if rank == 0 { SuggestionStatus::Applied } else { SuggestionStatus::Pending },
+            status: if rank == 0 {
+                SuggestionStatus::Applied
+            } else {
+                SuggestionStatus::Pending
+            },
             created_at_ms: now,
         });
     }
@@ -197,7 +201,11 @@ fn store_plan_suggestions(
             rank: rank as i32,
             source,
             confidence: 1.0,
-            status: if rank == 0 { SuggestionStatus::Applied } else { SuggestionStatus::Pending },
+            status: if rank == 0 {
+                SuggestionStatus::Applied
+            } else {
+                SuggestionStatus::Pending
+            },
             created_at_ms: now,
         });
     }
@@ -222,7 +230,10 @@ fn store_plan_suggestions(
 }
 
 /// Build the preference model from the repository's learned feedback.
-fn preference_model(repo: &DocumentRepository, config: &OrgConfig) -> Result<PreferenceModel, String> {
+fn preference_model(
+    repo: &DocumentRepository,
+    config: &OrgConfig,
+) -> Result<PreferenceModel, String> {
     if !config.learning_mode.is_enabled() {
         return Ok(PreferenceModel::neutral());
     }
@@ -448,7 +459,13 @@ fn auto_org_reorganize_one_impl(
     let doc = repo.get(document_id.clone())?;
     let title_manual = flag_is_set(&doc.extra, TITLE_MANUAL_KEY);
     let tags_manual = flag_is_set(&doc.extra, TAGS_MANUAL_KEY);
-    let counts = apply_plan(repo, &plan, title_manual, tags_manual, SuggestionSource::Bulk)?;
+    let counts = apply_plan(
+        repo,
+        &plan,
+        title_manual,
+        tags_manual,
+        SuggestionSource::Bulk,
+    )?;
 
     // Refresh the in-memory search metadata for the freshly written doc (the
     // same wiring the ingestion pipeline uses after auto-organization).
@@ -661,7 +678,11 @@ fn record_accept(repo: &DocumentRepository, kind: SuggestionKind, term: &str) {
     let _ = repo.record_feedback(SuggestionFeedback {
         id: new_uuid(),
         kind,
-        context: if kind == SuggestionKind::Tags { "tag".to_owned() } else { "title".to_owned() },
+        context: if kind == SuggestionKind::Tags {
+            "tag".to_owned()
+        } else {
+            "title".to_owned()
+        },
         term: term.to_owned(),
         action: "accepted".to_owned(),
         weight: 1.0,
@@ -673,7 +694,11 @@ fn record_reject(repo: &DocumentRepository, kind: SuggestionKind, term: &str) {
     let _ = repo.record_feedback(SuggestionFeedback {
         id: new_uuid(),
         kind,
-        context: if kind == SuggestionKind::Tags { "tag".to_owned() } else { "title".to_owned() },
+        context: if kind == SuggestionKind::Tags {
+            "tag".to_owned()
+        } else {
+            "title".to_owned()
+        },
         term: term.to_owned(),
         action: "rejected".to_owned(),
         weight: 1.0,
@@ -723,7 +748,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::api::storage::open_repository;
-    use crate::domain::{Content, Document, NodeKind};
+    use crate::domain::{Content, Document, NodeKind, SuggestionKind, SuggestionStatus};
     use crate::storage::DocumentStore;
 
     /// A temp root for a fresh on-disk repository.
@@ -1054,13 +1079,10 @@ mod tests {
             .expect("reorganize_one must succeed on the live handle");
 
         // A second, different bridge entry point on the *same* handle.
-        let plan = crate::api::auto_org::auto_org_organize(
-            &repo,
-            target.clone(),
-            Default::default(),
-        )
-        .await
-        .expect("auto_org_organize must succeed on the still-live handle");
+        let plan =
+            crate::api::auto_org::auto_org_organize(&repo, target.clone(), Default::default())
+                .await
+                .expect("auto_org_organize must succeed on the still-live handle");
         assert!(
             !plan.tags.is_empty() || plan.suggested_title.is_some(),
             "organize should produce a suggestion after a prior reorganize"
@@ -1203,6 +1225,192 @@ mod tests {
         assert!(
             repo.get("doc-a".to_owned()).is_ok(),
             "handle must still work"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// The core of the task: a manually-edited document must NOT be silently
+    /// skipped by a bulk/single reorganize. Instead the candidates are persisted
+    /// as pending suggestions so the user can review and adopt them.
+    #[test]
+    fn manual_document_gets_pending_alternatives_not_silent_skip() {
+        let root = temp_root("manual-review");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_sibling(&repo, "sib", "quarterly report for the finance team");
+        let target = seed_doc(
+            &repo,
+            "doc-a",
+            "User's custom title",
+            "quarterly invoice for acme",
+            HashMap::from([
+                ("title_manual".to_owned(), "true".to_owned()),
+                ("tags_manual".to_owned(), "true".to_owned()),
+            ]),
+        );
+
+        crate::api::auto_org::auto_org_reorganize_one(&repo, target.clone(), Default::default())
+            .unwrap();
+
+        // The manual value is preserved (auto-apply is still off for manual docs).
+        let doc = repo.get(target.clone()).unwrap();
+        assert_eq!(doc.title, "User's custom title");
+        assert_eq!(doc.tags, vec!["manual".to_owned(), "stale".to_owned()]);
+
+        // But alternatives ARE stored as pending suggestions for review.
+        let suggestions = repo.suggestions_of(target, None).unwrap();
+        let pending_titles = suggestions
+            .iter()
+            .filter(|s| s.kind == SuggestionKind::Title && s.status == SuggestionStatus::Pending)
+            .count();
+        let pending_tags = suggestions
+            .iter()
+            .filter(|s| s.kind == SuggestionKind::Tags && s.status == SuggestionStatus::Pending)
+            .count();
+        assert!(
+            pending_titles >= 1,
+            "manual doc should have pending title alternatives, got {pending_titles}"
+        );
+        assert!(
+            pending_tags >= 1,
+            "manual doc should have pending tag alternatives, got {pending_tags}"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Applying a pending alternative suggestion updates the document, dismisses
+    /// the other alternatives, and records accept/reject feedback.
+    #[tokio::test]
+    async fn apply_suggestion_updates_doc_and_records_feedback() {
+        let root = temp_root("apply-suggestion");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_sibling(&repo, "sib", "quarterly report for the finance team");
+        let target = seed_doc(
+            &repo,
+            "doc-a",
+            "Untagged draft",
+            "quarterly invoice for acme",
+            HashMap::new(),
+        );
+
+        crate::api::auto_org::auto_org_reorganize_one(&repo, target.clone(), Default::default())
+            .unwrap();
+
+        // Pick the first pending tags alternative.
+        let all = repo.suggestions_of(target.clone(), None).unwrap();
+        let alt = all
+            .iter()
+            .find(|s| s.kind == SuggestionKind::Tags && s.status == SuggestionStatus::Pending)
+            .cloned()
+            .expect("pending tags alternative expected");
+        let tags: Vec<String> = serde_json::from_str(&alt.payload).unwrap();
+
+        crate::api::auto_org::auto_org_apply_suggestion(&repo, target.clone(), alt.id.clone())
+            .await
+            .unwrap();
+
+        // The document now carries the chosen tags.
+        let doc = repo.get(target.clone()).unwrap();
+        assert_eq!(doc.tags, tags, "chosen alternative tags should be applied");
+
+        // All other tags suggestions of the same kind are dismissed.
+        let after = repo.suggestions_of(target, None).unwrap();
+        let pending_same_kind = after
+            .iter()
+            .filter(|s| s.kind == SuggestionKind::Tags && s.status == SuggestionStatus::Pending)
+            .count();
+        assert_eq!(
+            pending_same_kind, 0,
+            "alternatives of the chosen kind must disappear"
+        );
+
+        // Feedback was recorded for the accepted tags.
+        let stats = repo
+            .feedback_stats(Some(SuggestionKind::Tags), None)
+            .unwrap();
+        for t in &tags {
+            assert!(
+                stats.get(t).map(|s| s.accepts > 0.0).unwrap_or(false),
+                "accepted tag {t} should have positive feedback"
+            );
+        }
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// `confirm_current` keeps the applied value and dismisses pending
+    /// alternatives of that kind.
+    #[tokio::test]
+    async fn confirm_current_dismisses_pending() {
+        let root = temp_root("confirm");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_sibling(&repo, "sib", "quarterly report for the finance team");
+        let target = seed_doc(
+            &repo,
+            "doc-a",
+            "Untagged draft",
+            "quarterly invoice for acme",
+            HashMap::new(),
+        );
+
+        crate::api::auto_org::auto_org_reorganize_one(&repo, target.clone(), Default::default())
+            .unwrap();
+
+        let before = repo
+            .suggestions_of(target.clone(), Some(SuggestionKind::Tags))
+            .unwrap();
+        let pending_before = before
+            .iter()
+            .filter(|s| s.status == SuggestionStatus::Pending)
+            .count();
+        assert!(
+            pending_before >= 1,
+            "should have pending tags before confirm"
+        );
+
+        crate::api::auto_org::auto_org_confirm_current(&repo, target.clone(), SuggestionKind::Tags)
+            .await
+            .unwrap();
+
+        let after = repo
+            .suggestions_of(target, Some(SuggestionKind::Tags))
+            .unwrap();
+        let pending_after = after
+            .iter()
+            .filter(|s| s.status == SuggestionStatus::Pending)
+            .count();
+        assert_eq!(pending_after, 0, "confirm must dismiss all pending tags");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// `reset_learning` wipes all learned feedback.
+    #[tokio::test]
+    async fn reset_learning_wipes_feedback() {
+        let root = temp_root("reset-learning");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_doc(&repo, "d1", "Doc", "some text", HashMap::new());
+
+        // Record feedback directly.
+        repo.record_feedback(crate::domain::SuggestionFeedback {
+            id: "fb-1".to_owned(),
+            kind: SuggestionKind::Tags,
+            context: "tag".to_owned(),
+            term: "invoice".to_owned(),
+            action: "accepted".to_owned(),
+            weight: 1.0,
+            created_at_ms: 1,
+        })
+        .unwrap();
+        assert!(!repo.feedback_stats(None, None).unwrap().is_empty());
+
+        crate::api::auto_org::auto_org_reset_learning(&repo)
+            .await
+            .unwrap();
+        assert!(
+            repo.feedback_stats(None, None).unwrap().is_empty(),
+            "reset must clear all learned feedback"
         );
 
         let _ = fs::remove_dir_all(&root);

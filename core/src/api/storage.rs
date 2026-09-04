@@ -244,7 +244,9 @@ impl DocumentRepository {
         status: crate::domain::SuggestionStatus,
     ) -> Result<(), String> {
         let mut store = self.store()?;
-        store.mark_suggestion(&suggestion_id, status).map_err(|e| e.to_string())
+        store
+            .mark_suggestion(&suggestion_id, status)
+            .map_err(|e| e.to_string())
     }
 
     /// Remove all suggestion rows for a document.
@@ -282,7 +284,9 @@ impl DocumentRepository {
     /// Housekeeping: drop non-pending suggestions older than `older_than_ms`.
     pub fn prune_suggestions(&self, older_than_ms: i64) -> Result<(), String> {
         let mut store = self.store()?;
-        store.prune_suggestions(older_than_ms).map_err(|e| e.to_string())
+        store
+            .prune_suggestions(older_than_ms)
+            .map_err(|e| e.to_string())
     }
 }
 

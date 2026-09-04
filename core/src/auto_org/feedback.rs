@@ -30,9 +30,6 @@ use std::collections::HashMap;
 
 use crate::domain::{FeedbackStats, SuggestionKind};
 
-/// Recency half-life for the EWMA-style decay, in milliseconds (~90 days).
-const RECENCY_HALF_LIFE_MS: f64 = 90.0 * 24.0 * 3600.0 * 1000.0;
-
 /// How strongly an accepted/rejected event moves the score, per weighted unit.
 const ACCEPT_GAIN: f64 = 0.35;
 const REJECT_PENALTY: f64 = 0.30;
@@ -101,11 +98,27 @@ impl PreferenceModel {
         Self {
             tags: tag_stats
                 .into_iter()
-                .map(|(term, s)| (term, TermEvidence { accepts: s.accepts, rejects: s.rejects }))
+                .map(|(term, s)| {
+                    (
+                        term,
+                        TermEvidence {
+                            accepts: s.accepts,
+                            rejects: s.rejects,
+                        },
+                    )
+                })
                 .collect(),
             titles: title_stats
                 .into_iter()
-                .map(|(term, s)| (term, TermEvidence { accepts: s.accepts, rejects: s.rejects }))
+                .map(|(term, s)| {
+                    (
+                        term,
+                        TermEvidence {
+                            accepts: s.accepts,
+                            rejects: s.rejects,
+                        },
+                    )
+                })
                 .collect(),
         }
     }
@@ -245,5 +258,12 @@ mod tests {
         let model = PreferenceModel::new(true);
         assert!(model.is_empty());
         assert_eq!(model.score(SuggestionKind::Tags, "anything"), 1.0);
+    }
+
+    #[test]
+    fn learning_mode_defaults_to_basic_and_records() {
+        assert!(LearningMode::default().is_enabled());
+        assert!(LearningMode::default().records_feedback());
+        assert!(!LearningMode::Off.is_enabled());
     }
 }

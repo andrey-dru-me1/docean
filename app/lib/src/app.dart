@@ -17,6 +17,7 @@ import 'ui/documents_screen.dart' show DocumentsScreen;
 import 'ui/documents_upload_page.dart' show DocumentsUploadPage;
 import 'ui/ingest_panel.dart'
     show IngestPanelState, PathPicker, pickPathsWithFilePicker;
+import 'ui/learning_panel.dart' show LearningPanel;
 import 'ui/provider_screen.dart' show ProviderScreen;
 import 'ui/search_screen.dart' show DocumentOpener, SearchScreen;
 
@@ -338,7 +339,10 @@ class _MainShellState extends State<MainShell> {
       aiAvailable: _aiAvailable,
       onConfigureAi: () => setState(() => _index = 3),
     );
-    final providers = ProviderScreen(providerService: widget.providerService);
+    final providers = ProviderScreen(
+      providerService: widget.providerService,
+      extraPanel: LearningPanel(documentService: widget.documentService),
+    );
 
     final pages = <Widget>[documents, search, chat, providers];
 
