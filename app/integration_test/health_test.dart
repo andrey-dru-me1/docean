@@ -104,8 +104,10 @@ void main() {
         reason: 'deterministic pass yields the same suggestions twice',
       );
 
-      // A different auto-org entry point on the same handle also works.
-      final plan = autoOrgOrganize(
+      // A different auto-org entry point on the same handle also works. It is
+      // `async` now (FRB runs it on Rust's worker pool), so the returned plan
+      // must be awaited before inspecting.
+      final plan = await autoOrgOrganize(
         repo: repo,
         documentId: 'it-org-1',
         config: config,

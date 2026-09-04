@@ -566,20 +566,15 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                           child: SizedBox(
                             width: 16,
                             height: 16,
-                            child:
-                                CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         )
                       else
                         IconButton(
                           tooltip: 'Suggest tags',
                           visualDensity: VisualDensity.compact,
-                          onPressed:
-                              _loadingContent ? null : _suggestTags,
-                          icon: const Icon(
-                            Icons.sell_outlined,
-                            size: 20,
-                          ),
+                          onPressed: _loadingContent ? null : _suggestTags,
+                          icon: const Icon(Icons.sell_outlined, size: 20),
                         ),
                     ],
                   ),

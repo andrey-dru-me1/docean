@@ -588,11 +588,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   /// Run the split auto-suggest action across every selected document in the
   /// background ([suggestTitle] or [suggestTags] — the service honors the
   /// `title_manual`/`tags_manual` flags internally). Progress is surfaced via
-  /// [_suggestProgress] and the corner progress chip.
+  /// [_suggestProgress] and the corner progress chip, and per-document
+  /// failures are counted and reported instead of being silently swallowed.
   Future<void> _runBulkSuggest({required bool titles}) async {
     final ids = List.of(_selected);
     if (ids.isEmpty || _suggestProgress.active) return;
     var done = 0;
+    var failed = 0;
     // Publishing the pass metadata inside setState makes the corner notifier
     // visible immediately (a plain ValueNotifier write wouldn't rebuild the
     // surrounding Column's `build`, which gates the chip on `active`).
@@ -611,18 +613,31 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         }
       } catch (_) {
         // A single failure doesn't abort the remainder of the batch.
+        failed++;
       }
       if (!mounted) return;
       done++;
       setState(() => _suggestProgress.completed = done);
     }
     if (!mounted) return;
-    _showSnack(
-      context,
-      titles
-          ? 'Titles suggested for $done document${done == 1 ? '' : 's'}.'
-          : 'Tags suggested for $done document${done == 1 ? '' : 's'}.',
-    );
+    final succeeded = done - failed;
+    if (failed > 0) {
+      _showSnack(
+        context,
+        titles
+            ? 'Titles suggested for $succeeded of $done document'
+                  '${succeeded == 1 ? '' : 's'}; $failed failed.'
+            : 'Tags suggested for $succeeded of $done document'
+                  '${succeeded == 1 ? '' : 's'}; $failed failed.',
+      );
+    } else {
+      _showSnack(
+        context,
+        titles
+            ? 'Titles suggested for $done document${done == 1 ? '' : 's'}.'
+            : 'Tags suggested for $done document${done == 1 ? '' : 's'}.',
+      );
+    }
     await _load();
   }
 

@@ -253,7 +253,7 @@ abstract class RustLibApi extends BaseApi {
     required String model,
   });
 
-  OrgPlan crateApiAutoOrgAutoOrgOrganize({
+  Future<OrgPlan> crateApiAutoOrgAutoOrgOrganize({
     required DocumentRepository repo,
     required String documentId,
     required OrgConfig config,
@@ -1648,14 +1648,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  OrgPlan crateApiAutoOrgAutoOrgOrganize({
+  Future<OrgPlan> crateApiAutoOrgAutoOrgOrganize({
     required DocumentRepository repo,
     required String documentId,
     required OrgConfig config,
   }) {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDocumentRepository(
             repo,
@@ -1663,7 +1663,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
           sse_encode_String(documentId, serializer);
           sse_encode_box_autoadd_org_config(config, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 39,
+            port: port_,
+          );
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_org_plan,

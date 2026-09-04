@@ -371,11 +371,16 @@ void main() {
       'tapping a tile checkbox in browse mode enters selection mode',
       (tester) async {
         final opened = <DocumentSummary>[];
-        final service = FakeDocumentService(documents: [_doc('b-1', 'Browse one')]);
+        final service = FakeDocumentService(
+          documents: [_doc('b-1', 'Browse one')],
+        );
 
         await tester.pumpWidget(
           _wrap(
-            DocumentsScreen(documentService: service, onOpenDocument: opened.add),
+            DocumentsScreen(
+              documentService: service,
+              onOpenDocument: opened.add,
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -431,10 +436,7 @@ void main() {
 
     testWidgets('Clear deselects everything after Select all', (tester) async {
       final service = FakeDocumentService(
-        documents: [
-          _doc('c-1', 'Clear one'),
-          _doc('c-2', 'Clear two'),
-        ],
+        documents: [_doc('c-1', 'Clear one'), _doc('c-2', 'Clear two')],
       );
 
       await tester.pumpWidget(
@@ -691,67 +693,63 @@ void main() {
       expect(find.textContaining('0/2'), findsNothing);
     });
 
-    testWidgets(
-      'tapping a tag on a preview tile toggles the tag filter',
-      (tester) async {
-        final opened = <DocumentSummary>[];
-        final service = FakeDocumentService(
-          documents: [
-            _doc('doc-f', 'Finance report', tags: const ['finance']),
-            _doc('doc-p', 'Personal notes', tags: const ['personal']),
-            _doc('doc-b', 'Both tags', tags: const ['finance', 'personal']),
-          ],
-          tags: const ['finance', 'personal'],
-        );
+    testWidgets('tapping a tag on a preview tile toggles the tag filter', (
+      tester,
+    ) async {
+      final opened = <DocumentSummary>[];
+      final service = FakeDocumentService(
+        documents: [
+          _doc('doc-f', 'Finance report', tags: const ['finance']),
+          _doc('doc-p', 'Personal notes', tags: const ['personal']),
+          _doc('doc-b', 'Both tags', tags: const ['finance', 'personal']),
+        ],
+        tags: const ['finance', 'personal'],
+      );
 
-        await tester.pumpWidget(
-          _wrap(
-            DocumentsScreen(
-              documentService: service,
-              onOpenDocument: opened.add,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _wrap(
+          DocumentsScreen(documentService: service, onOpenDocument: opened.add),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // All three documents are visible initially.
-        expect(find.text('Finance report'), findsOneWidget);
-        expect(find.text('Personal notes'), findsOneWidget);
-        expect(find.text('Both tags'), findsOneWidget);
+      // All three documents are visible initially.
+      expect(find.text('Finance report'), findsOneWidget);
+      expect(find.text('Personal notes'), findsOneWidget);
+      expect(find.text('Both tags'), findsOneWidget);
 
-        // Tap the 'finance' tag on the first preview tile to filter.
-        await tester.tap(
-          find.byKey(const ValueKey('tile-tag-tap-finance')).first,
-        );
-        await tester.pumpAndSettle();
+      // Tap the 'finance' tag on the first preview tile to filter.
+      await tester.tap(
+        find.byKey(const ValueKey('tile-tag-tap-finance')).first,
+      );
+      await tester.pumpAndSettle();
 
-        // Only documents with the 'finance' tag remain visible.
-        expect(find.text('Finance report'), findsOneWidget);
-        expect(find.text('Personal notes'), findsNothing);
-        expect(find.text('Both tags'), findsOneWidget);
+      // Only documents with the 'finance' tag remain visible.
+      expect(find.text('Finance report'), findsOneWidget);
+      expect(find.text('Personal notes'), findsNothing);
+      expect(find.text('Both tags'), findsOneWidget);
 
-        // The filter bar tag chip for 'finance' is now selected (the keyed
-        // filter chip, not any grid-tile overlay with the same label).
-        final active = tester.widget<TagChip>(
-          find.byKey(const ValueKey('filter-finance')),
-        );
-        expect(active.selected, isTrue);
+      // The filter bar tag chip for 'finance' is now selected (the keyed
+      // filter chip, not any grid-tile overlay with the same label).
+      final active = tester.widget<TagChip>(
+        find.byKey(const ValueKey('filter-finance')),
+      );
+      expect(active.selected, isTrue);
 
-        // Tapping the same tag on a tile again should REMOVE the filter.
-        await tester.tap(
-          find.byKey(const ValueKey('tile-tag-tap-finance')).first,
-        );
-        await tester.pumpAndSettle();
+      // Tapping the same tag on a tile again should REMOVE the filter.
+      await tester.tap(
+        find.byKey(const ValueKey('tile-tag-tap-finance')).first,
+      );
+      await tester.pumpAndSettle();
 
-        // All documents are visible again.
-        expect(find.text('Finance report'), findsOneWidget);
-        expect(find.text('Personal notes'), findsOneWidget);
-        expect(find.text('Both tags'), findsOneWidget);
+      // All documents are visible again.
+      expect(find.text('Finance report'), findsOneWidget);
+      expect(find.text('Personal notes'), findsOneWidget);
+      expect(find.text('Both tags'), findsOneWidget);
 
-        // Tapping a tag on a tile does NOT open the document.
-        expect(opened, isEmpty);
-      },
-    );
+      // Tapping a tag on a tile does NOT open the document.
+      expect(opened, isEmpty);
+    });
   });
 }
 

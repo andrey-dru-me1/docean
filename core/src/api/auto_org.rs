@@ -199,12 +199,19 @@ pub(crate) fn organize_document(
 /// Run the deterministic (non-generative) organizer on `document_id`, returning
 /// the [`OrgPlan`] of suggested tags, placement, rename, and dedup.
 ///
+/// Declared `async` so FRB executes it on Rust's async worker pool instead of
+/// the Dart UI isolate. This is the primitive behind the per-file "Suggest
+/// title/tags" buttons, and the deterministic pass can be heavy (mmap the raw
+/// bytes, minhash, per-document FTS + KNN scans) — running it synchronously on
+/// the caller's thread would freeze the interface, exactly like the bulk
+/// `auto_org_reorganize_all` path discussed in [`auto_org_reorganize_selected`].
+///
 /// The repository is taken by *reference* (FRB `Auto_Ref` encoding), so the
 /// shared `Arc<Mutex<_>>` handle is borrowed rather than owned/disposed. Callers
 /// may reuse the same repository handle for later bridge calls (e.g. the ingest
 /// pipeline or a subsequent reorganize) without hitting a disposed opaque.
-#[flutter_rust_bridge::frb(sync)]
-pub fn auto_org_organize(
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_organize(
     repo: &DocumentRepository,
     document_id: String,
     config: OrgConfig,

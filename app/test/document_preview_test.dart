@@ -17,8 +17,10 @@ import 'package:docer/src/ui/document_preview_view.dart'
 import 'package:docer/src/ui/document_view.dart'
     show DocumentDetailView, DocumentSummary;
 
-Widget _wrap(Widget child) =>
-    MaterialApp(theme: _panelTheme(), home: Scaffold(body: child));
+Widget _wrap(Widget child) => MaterialApp(
+  theme: _panelTheme(),
+  home: Scaffold(body: child),
+);
 
 /// A large-frame theme so the panel's [Card] isn't squeezed by preview text
 /// (Material 3 Card heights behave correctly even when unconstrained).

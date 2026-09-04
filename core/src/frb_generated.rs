@@ -1741,15 +1741,16 @@ fn wire__crate__api__auto_org__auto_org_generate_filename_impl(
     )
 }
 fn wire__crate__api__auto_org__auto_org_organize_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "auto_org_organize",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let message = unsafe {
@@ -1767,28 +1768,37 @@ fn wire__crate__api__auto_org__auto_org_organize_impl(
             let api_document_id = <String>::sse_decode(&mut deserializer);
             let api_config = <crate::auto_org::config::OrgConfig>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, String>((move || {
-                let mut api_repo_guard = None;
-                let decode_indices_ =
-                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
-                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                            &api_repo, 0, false,
-                        ),
-                    ]);
-                for i in decode_indices_ {
-                    match i {
-                        0 => api_repo_guard = Some(api_repo.lockable_decode_sync_ref()),
-                        _ => unreachable!(),
-                    }
-                }
-                let api_repo_guard = api_repo_guard.unwrap();
-                let output_ok = crate::api::auto_org::auto_org_organize(
-                    &*api_repo_guard,
-                    api_document_id,
-                    api_config,
-                )?;
-                std::result::Result::Ok(output_ok)
-            })())
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let mut api_repo_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_repo, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => {
+                                    api_repo_guard =
+                                        Some(api_repo.lockable_decode_async_ref().await)
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_repo_guard = api_repo_guard.unwrap();
+                        let output_ok = crate::api::auto_org::auto_org_organize(
+                            &*api_repo_guard,
+                            api_document_id,
+                            api_config,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
         },
     )
 }
@@ -4203,6 +4213,7 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
+        39 => wire__crate__api__auto_org__auto_org_organize_impl(port, ptr, rust_vec_len, data_len),
         42 => wire__crate__api__auto_org__auto_org_reorganize_selected_impl(
             port,
             ptr,
@@ -4243,7 +4254,6 @@ fn pde_ffi_dispatcher_sync_impl(
         }
         36 => wire__crate__api__auto_org__auto_org_default_config_impl(ptr, rust_vec_len, data_len),
         37 => wire__crate__api__auto_org__auto_org_default_rules_impl(ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__auto_org__auto_org_organize_impl(ptr, rust_vec_len, data_len),
         40 => wire__crate__api__auto_org__auto_org_reorganize_all_impl(ptr, rust_vec_len, data_len),
         41 => wire__crate__api__auto_org__auto_org_reorganize_one_impl(ptr, rust_vec_len, data_len),
         43 => wire__crate__api__health__health_check_impl(ptr, rust_vec_len, data_len),

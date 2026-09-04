@@ -9,10 +9,6 @@
 /// native library.
 library;
 
-import 'dart:isolate';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
-
 import '../rust/api/auto_org.dart'
     show
         autoOrgDefaultConfig,
@@ -21,11 +17,11 @@ import '../rust/api/auto_org.dart'
         autoOrgReorganizeOne,
         autoOrgReorganizeSelected;
 import '../rust/api/search.dart' as search_bridge;
-import '../rust/api/storage.dart' show DocumentRepository, openRepository;
+import '../rust/api/storage.dart' show DocumentRepository;
 import '../rust/domain.dart' show Document, NodeKind;
 import '../rust/storage.dart' show DocumentQuery;
 import '../ui/document_view.dart' show DocumentSummary;
-import 'repository.dart' show defaultRepositoryRoot, openSharedRepository;
+import 'repository.dart' show openSharedRepository;
 
 /// The heavy-lifting bulk re-organization pipeline.
 ///
@@ -344,7 +340,7 @@ class BridgeDocumentService implements DocumentService {
   @override
   Future<SuggestionPlan> suggestMetadata(String id) async {
     final repo = await _repo();
-    final plan = autoOrgOrganize(
+    final plan = await autoOrgOrganize(
       repo: repo,
       documentId: id,
       config: autoOrgDefaultConfig(),
@@ -352,35 +348,50 @@ class BridgeDocumentService implements DocumentService {
     return SuggestionPlan(title: plan.suggestedTitle, tags: List.of(plan.tags));
   }
 
-  /// Resolve the on-disk repository root (main-isolate side of the round trip).
-  Future<String> _resolveRoot() async {
-    final resolve = _repositoryRoot ?? defaultRepositoryRoot;
-    return resolve();
-  }
-
-  /// Suggest a title in the background and apply it (unless the user manually
-  /// renamed the document). See [DocumentService.suggestTitle].
+  /// Suggest a title and apply it (unless the user manually renamed the
+  /// document). See [DocumentService.suggestTitle].
+  ///
+  /// Runs on the main isolate but never blocks the UI: `auto_org_organize` is
+  /// an `async` bridge function, so FRB executes the deterministic pass on
+  /// Rust's async worker pool and the Dart event loop stays free.
   @override
   Future<SuggestionPlan> suggestTitle(String id) async {
-    final root = await _resolveRoot();
-    if (kIsWeb) {
-      // The web bridge is single-isolate (WASM); there is no OS thread pool to
-      // offload to, so the direct (non-isolate) call is the only option. The
-      // async `Future` still prevents the caller from blocking synchronously.
-      return _suggestTitleOnCurrentIsolate(root, id);
+    final repo = await _repo();
+    final plan = await autoOrgOrganize(
+      repo: repo,
+      documentId: id,
+      config: autoOrgDefaultConfig(),
+    );
+    final suggested = plan.suggestedTitle?.trim();
+    if (suggested != null && suggested.isNotEmpty) {
+      final doc = await repo.get_(id: id);
+      if (doc.extra['title_manual'] != 'true') {
+        await repo.updateTitle(documentId: id, title: suggested);
+      }
     }
-    return Isolate.run(() => _suggestTitleIsolate(root, id));
+    return SuggestionPlan(title: plan.suggestedTitle, tags: const []);
   }
 
-  /// Suggest tags in the background and apply them (unless the user manually
-  /// tagged the document). See [DocumentService.suggestTags].
+  /// Suggest tags and apply them (unless the user manually tagged the
+  /// document). See [DocumentService.suggestTags].
+  ///
+  /// Runs on the main isolate; the deterministic pass executes on Rust's async
+  /// worker pool, so the UI is never blocked.
   @override
   Future<SuggestionPlan> suggestTags(String id) async {
-    final root = await _resolveRoot();
-    if (kIsWeb) {
-      return _suggestTagsOnCurrentIsolate(root, id);
+    final repo = await _repo();
+    final plan = await autoOrgOrganize(
+      repo: repo,
+      documentId: id,
+      config: autoOrgDefaultConfig(),
+    );
+    if (plan.tags.isNotEmpty) {
+      final doc = await repo.get_(id: id);
+      if (doc.extra['tags_manual'] != 'true') {
+        await repo.setTags(documentId: id, tags: List.of(plan.tags));
+      }
     }
-    return Isolate.run(() => _suggestTagsIsolate(root, id));
+    return SuggestionPlan(title: null, tags: List.of(plan.tags));
   }
 
   /// Permanently delete a document (blob + metadata) and drop it from the
@@ -498,83 +509,6 @@ class BridgeDocumentService implements DocumentService {
     final repo = await _repo();
     search_bridge.searchReindexFromRepository(repo: repo);
   }
-}
-
-/// Background-isolate runner for [DocumentService.suggestTitle].
-Future<SuggestionPlan> _suggestTitleIsolate(String root, String id) async {
-  final repo = await openRepository(root: root);
-  final plan = autoOrgOrganize(
-    repo: repo,
-    documentId: id,
-    config: autoOrgDefaultConfig(),
-  );
-  final suggested = plan.suggestedTitle?.trim();
-  if (suggested != null && suggested.isNotEmpty) {
-    final doc = await repo.get_(id: id);
-    if (doc.extra['title_manual'] != 'true') {
-      await repo.updateTitle(documentId: id, title: suggested);
-    }
-  }
-  return SuggestionPlan(title: plan.suggestedTitle, tags: const []);
-}
-
-/// Runs in a background isolate so the synchronous `auto_org_organize` bridge
-/// call plus the `set_tags` persist never block the UI isolate.
-Future<SuggestionPlan> _suggestTagsIsolate(String root, String id) async {
-  final repo = await openRepository(root: root);
-  final plan = autoOrgOrganize(
-    repo: repo,
-    documentId: id,
-    config: autoOrgDefaultConfig(),
-  );
-  if (plan.tags.isNotEmpty) {
-    final doc = await repo.get_(id: id);
-    if (doc.extra['tags_manual'] != 'true') {
-      await repo.setTags(documentId: id, tags: List.of(plan.tags));
-    }
-  }
-  return SuggestionPlan(title: null, tags: List.of(plan.tags));
-}
-
-/// Web (single-isolate) fallback for [DocumentService.suggestTitle].
-Future<SuggestionPlan> _suggestTitleOnCurrentIsolate(
-  String root,
-  String id,
-) async {
-  final repo = await openRepository(root: root);
-  final plan = autoOrgOrganize(
-    repo: repo,
-    documentId: id,
-    config: autoOrgDefaultConfig(),
-  );
-  final suggested = plan.suggestedTitle?.trim();
-  if (suggested != null && suggested.isNotEmpty) {
-    final doc = await repo.get_(id: id);
-    if (doc.extra['title_manual'] != 'true') {
-      await repo.updateTitle(documentId: id, title: suggested);
-    }
-  }
-  return SuggestionPlan(title: plan.suggestedTitle, tags: const []);
-}
-
-/// Web (single-isolate) fallback for [DocumentService.suggestTags].
-Future<SuggestionPlan> _suggestTagsOnCurrentIsolate(
-  String root,
-  String id,
-) async {
-  final repo = await openRepository(root: root);
-  final plan = autoOrgOrganize(
-    repo: repo,
-    documentId: id,
-    config: autoOrgDefaultConfig(),
-  );
-  if (plan.tags.isNotEmpty) {
-    final doc = await repo.get_(id: id);
-    if (doc.extra['tags_manual'] != 'true') {
-      await repo.setTags(documentId: id, tags: List.of(plan.tags));
-    }
-  }
-  return SuggestionPlan(title: null, tags: List.of(plan.tags));
 }
 
 /// A test double backed by in-memory data, used by widget tests.
