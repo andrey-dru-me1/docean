@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -840,7 +841,7 @@ class _BulkToolbarAction extends StatelessWidget {
 /// fills the whole tile. A bottom gradient scrim keeps the title readable
 /// regardless of the image; the document's tags are overlaid near the top as
 /// compact dark-translucent chips (readable over arbitrary preview content).
-class _DocumentPreviewTile extends StatelessWidget {
+class _DocumentPreviewTile extends StatefulWidget {
   const _DocumentPreviewTile({
     required this.document,
     required this.loader,
@@ -881,8 +882,37 @@ class _DocumentPreviewTile extends StatelessWidget {
   final ValueChanged<String>? onTagTap;
 
   @override
+  State<_DocumentPreviewTile> createState() => _DocumentPreviewTileState();
+}
+
+class _DocumentPreviewTileState extends State<_DocumentPreviewTile> {
+  bool _hovering = false;
+
+  /// Active expanding-circle ripples, one per tap. Each removes itself when
+  /// its animation completes (see [_TileRipple]).
+  final List<_TileRipple> _ripples = <_TileRipple>[];
+
+  void _spawnRipple(Offset position) {
+    setState(() {
+      _ripples
+        ..clear()
+        ..add(_TileRipple(position: position, color: _rippleColor));
+    });
+  }
+
+  void _removeRipple(_TileRipple ripple) {
+    if (!mounted) return;
+    setState(() => _ripples.remove(ripple));
+  }
+
+  Color get _rippleColor => Theme.of(context).colorScheme.primary;
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final document = widget.document;
+    final selectionMode = widget.selectionMode;
+    final selected = widget.selected;
     return Card(
       clipBehavior: Clip.antiAlias,
       shape: selected
@@ -892,20 +922,52 @@ class _DocumentPreviewTile extends StatelessWidget {
             )
           : null,
       child: InkWell(
-        onTap: onTapTile,
-        onLongPress: onLongPress,
+        onTap: widget.onTapTile,
+        onLongPress: widget.onLongPress,
+        // The ripple must originate where the user actually pressed. onTapUp's
+        // localPosition is relative to the InkWell itself (which fills the
+        // tile), so it maps 1:1 onto the Stack's coordinate space.
+        onTapUp: (details) => _spawnRipple(details.localPosition),
+        onHover: (hovering) => setState(() => _hovering = hovering),
+        highlightColor: Colors.transparent,
+        splashColor: Colors.transparent,
         child: Stack(
           fit: StackFit.expand,
           children: [
             DocumentTilePreview(
               key: ValueKey('tile-${document.id}'),
-              document: document,
-              loader: loader,
+              document: widget.document,
+              loader: widget.loader,
             ),
             // Gradient scrim anchored at the base: transparent at the top,
             // progressively darker toward the bottom so the title stays
             // readable over any preview content.
             const IgnorePointer(child: _TileScrim()),
+            // Decorative hover feedback. The InkWell paints its ink on the
+            // Card's Material behind the opaque preview image, so the usual
+            // hover highlight is invisible. This faint overlay paints on top
+            // instead; it is IgnorePointer so it never steals taps.
+            IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _hovering ? 1 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.07),
+                  ),
+                ),
+              ),
+            ),
+            // Expanding-circle click ripples (Material-style feedback).
+            // Each ripple is spawned by InkWell.onTapUp and removes itself
+            // when its animation finishes, so the list stays bounded.
+            IgnorePointer(
+              child: Stack(
+                clipBehavior: Clip.none,
+                fit: StackFit.expand,
+                children: [for (final ripple in _ripples) ripple],
+              ),
+            ),
             if (selectionMode)
               Positioned.fill(
                 child: DecoratedBox(
@@ -932,8 +994,8 @@ class _DocumentPreviewTile extends StatelessWidget {
                         // tile's open-document InkWell below.
                         key: ValueKey('tile-tag-tap-$tag'),
                         label: tag,
-                        onPressed: onTagTap != null
-                            ? () => onTagTap!(tag)
+                        onPressed: widget.onTagTap != null
+                            ? () => widget.onTagTap!(tag)
                             : null,
                       ),
                   ],
@@ -969,7 +1031,7 @@ class _DocumentPreviewTile extends StatelessWidget {
               child: Checkbox(
                 key: ValueKey('select-check-${document.id}'),
                 value: selectionMode ? selected : false,
-                onChanged: (_) => onCheckboxTap?.call(),
+                onChanged: (_) => widget.onCheckboxTap?.call(),
                 visualDensity: VisualDensity.compact,
               ),
             ),
@@ -1001,4 +1063,102 @@ class _TileScrim extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A single expanding-circle click ripple painted above the preview.
+///
+/// Spawned by [_DocumentPreviewTileState] on each tap and self-removes when
+/// its ~400 ms animation completes. The circle expands from the tap position
+/// and fades out, mirroring Material's built-in ripple — but on top of the
+/// opaque preview image where the Card's ink can never show.
+class _TileRipple extends StatefulWidget {
+  const _TileRipple({required this.position, required this.color});
+
+  /// The tap position, in the tile's local (Stack) coordinates.
+  final Offset position;
+
+  /// The ripple color (usually the theme's primary color).
+  final Color color;
+
+  @override
+  State<_TileRipple> createState() => _TileRippleState();
+}
+
+class _TileRippleState extends State<_TileRipple>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 400),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.forward().whenComplete(() {
+      // Let the parent remove this ripple from its list once the animation
+      // has fully played out.
+      final state = context
+          .findAncestorStateOfType<_DocumentPreviewTileState>();
+      state?._removeRipple(widget);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        key: const Key('tile-ripple-root'),
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            return CustomPaint(
+              painter: _RipplePainter(
+                position: widget.position,
+                color: widget.color,
+                progress: _controller.value,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Paints one expanding, fading circle for [_TileRipple].
+class _RipplePainter extends CustomPainter {
+  const _RipplePainter({
+    required this.position,
+    required this.color,
+    required this.progress,
+  });
+
+  final Offset position;
+  final Color color;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Radius grows to cover the tile's farthest corner from the tap point.
+    final dx = math.max(position.dx, size.width - position.dx);
+    final dy = math.max(position.dy, size.height - position.dy);
+    final maxRadius = math.sqrt(dx * dx + dy * dy);
+    final radius = 12 + (maxRadius - 12) * Curves.easeOut.transform(progress);
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.25 * (1 - progress))
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(position, radius, paint);
+  }
+
+  @override
+  bool shouldRepaint(_RipplePainter oldDelegate) =>
+      oldDelegate.position != position ||
+      oldDelegate.color != color ||
+      oldDelegate.progress != progress;
 }
