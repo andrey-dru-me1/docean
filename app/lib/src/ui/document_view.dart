@@ -251,6 +251,10 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   /// A monotonic [_tagsGeneration] guards against out-of-order completions, so
   /// a stale (older) persist completing later never overwrites a newer local
   /// state — only the failure of the *latest* persist reverts the UI.
+  ///
+  /// The parent's [DocumentDetailView.onMetaChanged] is fired **after**
+  /// persistence succeeds, not optimistically, so the Documents browse grid
+  /// reloads against committed repository state (avoiding a stale-read race).
   void _applyTagsOptimistically(List<String> nextTags) {
     if (nextTags.toSet().length != nextTags.length) return;
     final previous = List.of(_doc.tags);
@@ -258,7 +262,6 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     setState(() {
       _doc = _copyDoc(_doc, tags: List.of(nextTags));
     });
-    widget.onMetaChanged?.call();
     unawaited(_persistTags(previous, nextTags, generation));
   }
 
@@ -270,6 +273,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     try {
       await widget.documentService.setTags(widget.document.id, nextTags);
       if (!mounted || generation != _tagsGeneration) return;
+      widget.onMetaChanged?.call();
     } catch (e) {
       if (!mounted || generation != _tagsGeneration) return;
       setState(() {
@@ -840,11 +844,15 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   }
 
   /// Apply a pending alternative suggestion and refresh the review list.
+  ///
+  /// Notifies the parent (Documents grid) after the apply round-trip commits
+  /// so the browse list reloads against the applied metadata.
   Future<void> _chooseSuggestion(SuggestionEntry entry) async {
     try {
       await widget.documentService.applySuggestion(_doc.id, entry.id);
       await _loadSuggestions();
       await _load();
+      widget.onMetaChanged?.call();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

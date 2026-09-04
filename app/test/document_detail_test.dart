@@ -314,6 +314,141 @@ void main() {
       expect(find.textContaining('Could not update tags'), findsOneWidget);
     });
 
+    testWidgets(
+      'defers onMetaChanged until the tag persist round-trip completes',
+      (tester) async {
+        final doc = _doc(tags: const ['finance']);
+        final gate = Completer<void>();
+        final service = _GatedTagService(gate: gate, documents: [doc]);
+        var metaChangedCalls = 0;
+
+        await tester.pumpWidget(
+          _wrap(
+            DocumentDetailView(
+              document: doc,
+              documentService: service,
+              onMetaChanged: () => metaChangedCalls++,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Add a tag (optimistically shown) while the persist is gated.
+        await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).last, 'tax');
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byTooltip('Add tag'),
+          ),
+        );
+        // The optimistic chip appears, but the parent must NOT be told yet —
+        // the repository hasn't committed, so a reload would read stale data.
+        await tester.pump();
+        await tester.pump();
+        expect(service.setTagsCount, 1);
+        expect(metaChangedCalls, 0,
+            reason: 'onMetaChanged must not fire before persistence commits.');
+
+        // Release the gate; only after the persist resolves does the parent
+        // learn the metadata changed (so the Documents grid reloads fresh).
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(metaChangedCalls, 1);
+      },
+    );
+
+    testWidgets(
+      'onMetaChanged is NOT called when the tag persist fails',
+      (tester) async {
+        final doc = _doc(tags: const ['finance']);
+        final service = _FailingTagService(documents: [doc]);
+        var metaChangedCalls = 0;
+
+        await tester.pumpWidget(
+          _wrap(
+            DocumentDetailView(
+              document: doc,
+              documentService: service,
+              onMetaChanged: () => metaChangedCalls++,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).last, 'doomed');
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byTooltip('Add tag'),
+          ),
+        );
+        // Let the persist fail.
+        await tester.pumpAndSettle();
+        expect(metaChangedCalls, 0,
+            reason:
+                'onMetaChanged must not fire when the persist fails — the '
+                'grid should not reload stale data.');
+        expect(find.textContaining('Could not update tags'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'onMetaChanged fires after _chooseSuggestion commits',
+      (tester) async {
+        final doc = _doc(id: 'doc-1', tags: const ['a']);
+        final service = FakeDocumentService(
+          documents: [doc],
+          suggestionsByDocumentId: {
+            'doc-1': [
+              SuggestionEntry(
+                id: 'tags0',
+                documentId: 'doc-1',
+                kind: SuggestionKind.tags,
+                title: null,
+                tags: const ['a'],
+                rank: 0,
+                source: SuggestionSource.ingest,
+                status: SuggestionStatus.applied,
+              ),
+              SuggestionEntry(
+                id: 'tags1',
+                documentId: 'doc-1',
+                kind: SuggestionKind.tags,
+                title: null,
+                tags: const ['a', 'b'],
+                rank: 1,
+                source: SuggestionSource.ingest,
+                status: SuggestionStatus.pending,
+              ),
+            ],
+          },
+        );
+        var metaChangedCalls = 0;
+
+        await tester.pumpWidget(
+          _wrap(
+            DocumentDetailView(
+              document: _doc(id: 'doc-1'),
+              documentService: service,
+              onMetaChanged: () => metaChangedCalls++,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(metaChangedCalls, 0);
+        // Tap the pending alternative — after the apply round-trip the parent
+        // must learn the metadata changed.
+        await tester.tap(find.byKey(const ValueKey('suggestion-tags1')));
+        await tester.pumpAndSettle();
+        expect(metaChangedCalls, 1);
+      },
+    );
+
     testWidgets('removes a tag through the service', (tester) async {
       final doc = _doc(tags: const ['finance', 'tax']);
       final service = FakeDocumentService(
