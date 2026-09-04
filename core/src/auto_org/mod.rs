@@ -24,6 +24,7 @@
 
 pub mod cluster;
 pub mod config;
+pub mod feedback;
 pub mod generative;
 pub mod keywords;
 pub mod knn;
@@ -33,6 +34,7 @@ pub mod rules;
 pub mod text;
 
 pub use config::{FilenameSource, OrgConfig, OrgPlan};
+pub use feedback::{LearningMode, PreferenceModel};
 pub use generative::{apply_generated, generate_filename};
 pub use organizer::{Corpus, CorpusDoc, DeterministicOrganizer};
 pub use rules::{MatchKind, PlacementRule, RuleSet};

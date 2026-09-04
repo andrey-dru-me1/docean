@@ -9,16 +9,30 @@
 /// native library.
 library;
 
+import 'dart:convert';
+
 import '../rust/api/auto_org.dart'
     show
+        autoOrgApplySuggestion,
+        autoOrgConfirmCurrent,
         autoOrgDefaultConfig,
+        autoOrgDismissSuggestion,
+        autoOrgListSuggestions,
         autoOrgOrganize,
         autoOrgReorganizeAll,
         autoOrgReorganizeOne,
-        autoOrgReorganizeSelected;
+        autoOrgReorganizeSelected,
+        autoOrgResetLearning;
 import '../rust/api/search.dart' as search_bridge;
 import '../rust/api/storage.dart' show DocumentRepository;
-import '../rust/domain.dart' show Document, NodeKind;
+import '../rust/domain.dart'
+    show
+        Document,
+        DocumentSuggestion,
+        NodeKind,
+        SuggestionKind,
+        SuggestionSource,
+        SuggestionStatus;
 import '../rust/storage.dart' show DocumentQuery;
 import '../ui/document_view.dart' show DocumentSummary;
 import 'repository.dart' show openSharedRepository;
@@ -157,6 +171,27 @@ abstract interface class DocumentService {
   /// so suggestions are applied by the core without clobbering manual edits.
   Future<SuggestionPlan> reorganizeOne(String id);
 
+  /// Every suggestion row persisted for [id] (applied rank 0 + pending
+  /// alternatives), newest first per kind.
+  Future<List<SuggestionEntry>> listSuggestions(String id);
+
+  /// Apply one pending alternative suggestion by id: the core applies its
+  /// payload through the normal update paths, records accept/reject feedback
+  /// from the choice, and dismisses every other pending suggestion of the same
+  /// kind (the "alternatives disappear after choice" contract).
+  Future<void> applySuggestion(String id, String suggestionId);
+
+  /// Keep the currently applied value for a suggestion kind: records accepted
+  /// feedback for the applied terms, rejected for pending alternatives'
+  /// distinctive terms, and dismisses all pending of that kind.
+  Future<void> confirmCurrent(String id, SuggestionKind kind);
+
+  /// Dismiss one pending suggestion (records reject feedback for its terms).
+  Future<void> dismissSuggestion(String id, String suggestionId);
+
+  /// Wipe all learned feedback (settings "reset learning").
+  Future<void> resetSuggestionFeedback();
+
   /// Batch tag edit across many documents: for each id, compute a new tag set
   /// by adding every tag in [add] (honoring existing tags on the document —
   /// adding appends, never duplicates) and removing every tag in [remove]
@@ -213,6 +248,46 @@ class SuggestionPlan {
     if (t == null || t.isEmpty) return null;
     return t;
   }
+}
+
+/// A persisted suggestion row surfaced to the document info card.
+///
+/// Mirrors the bridge `DocumentSuggestion` but decoupled from the generated
+/// type so the UI and fakes don't depend on FRB types directly.
+class SuggestionEntry {
+  const SuggestionEntry({
+    required this.id,
+    required this.documentId,
+    required this.kind,
+    required this.title,
+    required this.tags,
+    required this.rank,
+    required this.source,
+    required this.status,
+  });
+
+  final String id;
+  final String documentId;
+
+  /// What this suggestion proposes: a title, or a tag set.
+  final SuggestionKind kind;
+
+  /// The suggested title (kind = Title), or `null` for tag sets.
+  final String? title;
+
+  /// The suggested tags (kind = Tags), or `const []` for titles.
+  final List<String> tags;
+
+  /// 0 = currently applied; higher = lower-priority alternative.
+  final int rank;
+
+  /// Where the suggestion came from (ingest / bulk / manual request / user).
+  final SuggestionSource source;
+
+  /// pending / applied / dismissed.
+  final SuggestionStatus status;
+
+  bool get isPending => status == SuggestionStatus.pending;
 }
 
 /// The aggregate outcome of a bulk re-organization pass (`org_bulk_stats`).
@@ -459,6 +534,63 @@ class BridgeDocumentService implements DocumentService {
     return SuggestionPlan(title: plan.suggestedTitle, tags: List.of(plan.tags));
   }
 
+  /// Every persisted suggestion row for a document, as UI-friendly entries.
+  @override
+  Future<List<SuggestionEntry>> listSuggestions(String id) async {
+    final repo = await _repo();
+    final rows = await autoOrgListSuggestions(repo: repo, documentId: id);
+    return [for (final r in rows) _entryOf(r)];
+  }
+
+  @override
+  Future<void> applySuggestion(String id, String suggestionId) async {
+    final repo = await _repo();
+    await autoOrgApplySuggestion(
+      repo: repo,
+      documentId: id,
+      suggestionId: suggestionId,
+    );
+  }
+
+  @override
+  Future<void> confirmCurrent(String id, SuggestionKind kind) async {
+    final repo = await _repo();
+    await autoOrgConfirmCurrent(repo: repo, documentId: id, kind: kind);
+  }
+
+  @override
+  Future<void> dismissSuggestion(String id, String suggestionId) async {
+    final repo = await _repo();
+    await autoOrgDismissSuggestion(
+      repo: repo,
+      documentId: id,
+      suggestionId: suggestionId,
+    );
+  }
+
+  @override
+  Future<void> resetSuggestionFeedback() async {
+    final repo = await _repo();
+    await autoOrgResetLearning(repo: repo);
+  }
+
+  SuggestionEntry _entryOf(DocumentSuggestion s) {
+    final tags =
+        s.kind == SuggestionKind.tags
+            ? (jsonDecode(s.payload) as List).cast<String>()
+            : const <String>[];
+    return SuggestionEntry(
+      id: s.id,
+      documentId: s.documentId,
+      kind: s.kind,
+      title: s.kind == SuggestionKind.title ? s.payload : null,
+      tags: tags,
+      rank: s.rank,
+      source: s.source,
+      status: s.status,
+    );
+  }
+
   /// A copy of [doc] with a new title and a refreshed `updated_at` timestamp.
   Document _withTitle(Document doc, String title) => Document(
     id: doc.id,
@@ -520,12 +652,17 @@ class FakeDocumentService implements DocumentService {
     Map<String, String> contentByDocumentId = const {},
     Map<String, List<int>> bytesByDocumentId = const {},
     this.suggestion,
+    Map<String, List<SuggestionEntry>> suggestionsByDocumentId = const {},
   }) : documents = List.of(documents),
        tags = List.of(tags),
        paths = List.of(paths),
        contentByDocumentId = Map.of(contentByDocumentId),
        bytesByDocumentId = {
          for (final e in bytesByDocumentId.entries) e.key: List.of(e.value),
+       },
+       _suggestionsByDocumentId = {
+         for (final e in suggestionsByDocumentId.entries)
+           e.key: List.of(e.value),
        };
 
   final List<DocumentSummary> documents;
@@ -540,6 +677,9 @@ class FakeDocumentService implements DocumentService {
 
   /// The suggestion returned by [suggestMetadata] (auto-suggest assertion).
   final SuggestionPlan? suggestion;
+
+  /// Pending/applied suggestion rows keyed by document id (review UI fake).
+  final Map<String, List<SuggestionEntry>> _suggestionsByDocumentId;
 
   /// How many times [reindex] has been requested (startup wiring assertion).
   int reindexCount = 0;
@@ -705,6 +845,105 @@ class FakeDocumentService implements DocumentService {
     documents.removeWhere((d) => d.id == id);
     bytesByDocumentId.remove(id);
     contentByDocumentId.remove(id);
+    _suggestionsByDocumentId.remove(id);
+  }
+
+  // --- suggestion review ------------------------------------------------
+
+  @override
+  Future<List<SuggestionEntry>> listSuggestions(String id) async {
+    _byId(id);
+    return List.of(_suggestionsByDocumentId[id] ?? const []);
+  }
+
+  @override
+  Future<void> applySuggestion(String id, String suggestionId) async {
+    final all = List.of(_suggestionsByDocumentId[id] ?? const []);
+    final chosen = all.firstWhere(
+      (s) => s.id == suggestionId,
+      orElse: () => throw StateError('suggestion $suggestionId not found'),
+    );
+    if (chosen.kind == SuggestionKind.tags) {
+      await setTags(id, chosen.tags);
+    } else if (chosen.title != null) {
+      await updateTitle(id, chosen.title!);
+    }
+    // Dismiss every other pending suggestion of the same kind.
+    final next = <SuggestionEntry>[
+      for (final s in all)
+        if (s.id == chosen.id)
+          SuggestionEntry(
+            id: s.id,
+            documentId: s.documentId,
+            kind: s.kind,
+            title: s.title,
+            tags: s.tags,
+            rank: s.rank,
+            source: s.source,
+            status: SuggestionStatus.applied,
+          )
+        else if (s.kind == chosen.kind)
+          SuggestionEntry(
+            id: s.id,
+            documentId: s.documentId,
+            kind: s.kind,
+            title: s.title,
+            tags: s.tags,
+            rank: s.rank,
+            source: s.source,
+            status: SuggestionStatus.dismissed,
+          )
+        else
+          s,
+    ];
+    _suggestionsByDocumentId[id] = next;
+  }
+
+  @override
+  Future<void> confirmCurrent(String id, SuggestionKind kind) async {
+    final all = List.of(_suggestionsByDocumentId[id] ?? const []);
+    _suggestionsByDocumentId[id] = [
+      for (final s in all)
+        if (s.kind == kind && s.status == SuggestionStatus.pending)
+          SuggestionEntry(
+            id: s.id,
+            documentId: s.documentId,
+            kind: s.kind,
+            title: s.title,
+            tags: s.tags,
+            rank: s.rank,
+            source: s.source,
+            status: SuggestionStatus.dismissed,
+          )
+        else
+          s,
+    ];
+  }
+
+  @override
+  Future<void> dismissSuggestion(String id, String suggestionId) async {
+    final all = List.of(_suggestionsByDocumentId[id] ?? const []);
+    _suggestionsByDocumentId[id] = [
+      for (final s in all)
+        if (s.id == suggestionId)
+          SuggestionEntry(
+            id: s.id,
+            documentId: s.documentId,
+            kind: s.kind,
+            title: s.title,
+            tags: s.tags,
+            rank: s.rank,
+            source: s.source,
+            status: SuggestionStatus.dismissed,
+          )
+        else
+          s,
+    ];
+  }
+
+  @override
+  Future<void> resetSuggestionFeedback() async {
+    _suggestionsByDocumentId.clear();
   }
 
   /// Batch tag edit: merge the `add`/`remove` sets into every listed document,

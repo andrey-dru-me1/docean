@@ -110,6 +110,86 @@ class Document {
           extra == other.extra;
 }
 
+/// A persisted title/tag-set suggestion for a document.
+///
+/// rank 0 is the currently applied suggestion; rank >= 1 are pending
+/// alternatives the user may review in the document info card. Choosing one
+/// alternative marks every other pending suggestion of the same kind dismissed.
+class DocumentSuggestion {
+  final String id;
+  final String documentId;
+  final SuggestionKind kind;
+
+  /// The suggested title text (kind = Title) or a JSON array of tag names
+  /// (kind = Tags).
+  final String payload;
+
+  /// 0 = currently applied; higher = lower priority alternative.
+  final int rank;
+  final SuggestionSource source;
+  final double confidence;
+  final SuggestionStatus status;
+  final PlatformInt64 createdAtMs;
+
+  const DocumentSuggestion({
+    required this.id,
+    required this.documentId,
+    required this.kind,
+    required this.payload,
+    required this.rank,
+    required this.source,
+    required this.confidence,
+    required this.status,
+    required this.createdAtMs,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      documentId.hashCode ^
+      kind.hashCode ^
+      payload.hashCode ^
+      rank.hashCode ^
+      source.hashCode ^
+      confidence.hashCode ^
+      status.hashCode ^
+      createdAtMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DocumentSuggestion &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          documentId == other.documentId &&
+          kind == other.kind &&
+          payload == other.payload &&
+          rank == other.rank &&
+          source == other.source &&
+          confidence == other.confidence &&
+          status == other.status &&
+          createdAtMs == other.createdAtMs;
+}
+
+/// Aggregated accept/reject evidence for one term (the feedback model input).
+class FeedbackStats {
+  final double accepts;
+  final double rejects;
+
+  const FeedbackStats({required this.accepts, required this.rejects});
+
+  @override
+  int get hashCode => accepts.hashCode ^ rejects.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FeedbackStats &&
+          runtimeType == other.runtimeType &&
+          accepts == other.accepts &&
+          rejects == other.rejects;
+}
+
 /// A directed parent/child edge used to assemble the folder hierarchy.
 class HierarchyLink {
   final String parentId;
@@ -190,6 +270,84 @@ class PathAssignment {
           documentId == other.documentId &&
           path == other.path &&
           position == other.position;
+}
+
+/// A single preference-evidence event recorded when the user reviews a
+/// suggestion (accepted/rejected term, how strongly it was weighted).
+///
+/// The feedback model aggregates these per (kind, context, term) and re-ranks
+/// future suggestions with an EWMA-decayed score. All data stays on-device.
+class SuggestionFeedback {
+  final String id;
+  final SuggestionKind kind;
+  final String context;
+  final String term;
+  final String action;
+  final double weight;
+  final PlatformInt64 createdAtMs;
+
+  const SuggestionFeedback({
+    required this.id,
+    required this.kind,
+    required this.context,
+    required this.term,
+    required this.action,
+    required this.weight,
+    required this.createdAtMs,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      kind.hashCode ^
+      context.hashCode ^
+      term.hashCode ^
+      action.hashCode ^
+      weight.hashCode ^
+      createdAtMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SuggestionFeedback &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          kind == other.kind &&
+          context == other.context &&
+          term == other.term &&
+          action == other.action &&
+          weight == other.weight &&
+          createdAtMs == other.createdAtMs;
+}
+
+/// What a suggestion proposes: a title, or a tag set.
+enum SuggestionKind { title, tags }
+
+/// How a suggestion was produced (surfaced in the UI for transparency).
+enum SuggestionSource {
+  /// The deterministic auto-organization pass run at ingestion time.
+  ingest,
+
+  /// A bulk "suggest titles/tags" pass.
+  bulk,
+
+  /// The per-document "Suggest" button (manual request).
+  manualRequest,
+
+  /// A user-typed contribution (own title/tag), recorded for learning.
+  user,
+}
+
+/// Review state of a stored suggestion.
+enum SuggestionStatus {
+  /// Still shown in the document info card for the user to confirm/switch to.
+  pending,
+
+  /// The user confirmed this (or it was auto-applied as rank 0).
+  applied,
+
+  /// The user chose another alternative (or explicitly dismissed it).
+  dismissed,
 }
 
 /// A user-defined tag. Tags may be nested (e.g. `receipts/2026`) via [`Tag::parent`].

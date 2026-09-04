@@ -2,10 +2,12 @@
 //!
 //! Auto-organization is opt-in per file and reversible. The [`OrgConfig`] holds
 //! the global toggles (whether the generative LLM tier is enabled, which
-//! requires an AI provider) while per-file enablement is a flag on each job.
+//! requires an AI provider, and how the feedback-learning model behaves) while
+//! per-file enablement is a flag on each job.
 
 use serde::{Deserialize, Serialize};
 
+use crate::auto_org::feedback::LearningMode;
 use crate::auto_org::rules::RuleSet;
 
 /// Global auto-organization settings.
@@ -25,6 +27,10 @@ pub struct OrgConfig {
     pub cluster_k: usize,
     /// Placement rules + filename template.
     pub rules: RuleSet,
+    /// On-device feedback learning: `Off` (no recording/re-ranking) or `Basic`
+    /// (per-term preference model). A future `Advanced` classifier plugs into
+    /// the same enum behind the settings surface.
+    pub learning_mode: LearningMode,
 }
 
 impl Default for OrgConfig {
@@ -40,6 +46,7 @@ impl Default for OrgConfig {
                 fallback_path: Some("/inbox".to_owned()),
                 filename_template: RuleSet::default_template(),
             },
+            learning_mode: LearningMode::Basic,
         }
     }
 }
@@ -50,12 +57,19 @@ impl Default for OrgConfig {
 #[serde(rename_all = "camelCase")]
 pub struct OrgPlan {
     pub document_id: String,
-    /// Predicted tags (emergent + reused), ordered by confidence.
+    /// Predicted tags (emergent + reused), ordered by confidence. This is the
+    /// rank-0 tag set: what auto-apply writes when the user has not manually
+    /// tagged the document.
     pub tags: Vec<String>,
+    /// Alternative tag sets (rank >= 1) the review UI can offer, ordered by
+    /// preference-model score when learning is on.
+    pub alt_tag_sets: Vec<Vec<String>>,
     /// Deterministically resolved hierarchy path, if any.
     pub suggested_path: Option<String>,
-    /// Renamed filename (title), if the pipeline produced one.
+    /// Renamed filename (title), if the pipeline produced one. Rank-0 title.
     pub suggested_title: Option<String>,
+    /// Alternative titles (rank >= 1).
+    pub alt_titles: Vec<String>,
     /// Id of an existing document this one is a duplicate of, if any.
     pub is_duplicate_of: Option<String>,
     /// Aggregate confidence in `[0, 1]`.

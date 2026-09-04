@@ -12,6 +12,13 @@
 //!    (The generative tier is a separate, opt-in module.)
 //! 4. **De-duplication** — MinHash/LSH against the existing corpus.
 //!
+//! Beyond the single best suggestion, [`DeterministicOrganizer::organize`]
+//! also produces ranked **alternatives** (`alt_tags` / `alt_titles`) so the
+//! review UI in the document detail view can offer the user a few choices
+//! instead of a single forced outcome. When the feedback-learning model is
+//! enabled, candidates are re-ranked toward terms the user has accepted
+//! before.
+//!
 //! The generative LLM filename tier lives in [`crate::auto_org::generative`] and
 //! is called by the caller only when a provider is enabled; this module never
 //! imports `crate::ai`.
@@ -20,11 +27,16 @@ use std::collections::HashMap;
 
 use crate::auto_org::cluster::{self, vectorize_dense};
 use crate::auto_org::config::{FilenameSource, OrgConfig, OrgPlan};
+use crate::auto_org::feedback::PreferenceModel;
 use crate::auto_org::keywords::{self, sanitize_filename};
 use crate::auto_org::knn::{self, TagVote};
 use crate::auto_org::minhash::{self, LshIndex, Signature};
 use crate::auto_org::rules::{self, DocSignals};
 use crate::auto_org::text::TfIdfModel;
+
+/// How many title / tag-set alternatives the organizer produces at most.
+const MAX_TITLE_ALTS: usize = 5;
+const MAX_TAG_SET_ALTS: usize = 5;
 
 /// One document in the corpus the organizer reasons over.
 #[derive(Debug, Clone)]
@@ -130,8 +142,21 @@ impl DeterministicOrganizer {
     /// Organize the document `doc_id` within `corpus`, producing an [`OrgPlan`].
     ///
     /// Purely deterministic and synchronous; never touches the AI layer or the
-    /// network.
+    /// network. When `model` is provided (doesn't matter whether `Off` or
+    /// `Basic` — the model itself is neutral when empty), alternative
+    /// candidates are re-ranked by learned preferences.
     pub fn organize(&self, corpus: &Corpus, doc_id: &str) -> OrgPlan {
+        self.organize_with_model(corpus, doc_id, &PreferenceModel::neutral())
+    }
+
+    /// [`Self::organize`] with an explicit preference model for re-ranking
+    /// alternative candidates.
+    pub fn organize_with_model(
+        &self,
+        corpus: &Corpus,
+        doc_id: &str,
+        prefs: &PreferenceModel,
+    ) -> OrgPlan {
         let Some(doc) = corpus.docs.iter().find(|d| d.id == doc_id) else {
             return OrgPlan {
                 document_id: doc_id.to_owned(),
@@ -150,7 +175,7 @@ impl DeterministicOrganizer {
         // Combine: reused (voted) tags first, then emergent cluster tags as
         // fallback, de-duplicated.
         let mut tags: Vec<String> = Vec::new();
-        for t in reused_tags.into_iter().chain(cluster_tags) {
+        for t in reused_tags.iter().chain(cluster_tags.iter()) {
             if tags.len() >= 8 {
                 break;
             }
@@ -176,6 +201,22 @@ impl DeterministicOrganizer {
             }
         }
 
+        // Re-rank the rank-0 tag set by preference model (only when learning).
+        let is_learning = self.config.learning_mode.is_enabled();
+        let mut ranked_tags = tags
+            .into_iter()
+            .map(|t| {
+                let score = if is_learning {
+                    prefs.score(crate::domain::SuggestionKind::Tags, &t)
+                } else {
+                    1.0
+                };
+                (t, score)
+            })
+            .collect::<Vec<_>>();
+        ranked_tags.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let tags: Vec<String> = ranked_tags.into_iter().map(|(t, _)| t).collect();
+
         // --- Step 3: deterministic rename via keywords ------------------
         let kw = keywords::extract_keywords(&doc.text, Some(&model), None, keywords::DEFAULT_TOP_K);
         let extension = extension_of(&doc.mime_type, &doc.title);
@@ -187,9 +228,21 @@ impl DeterministicOrganizer {
             date: String::new(),
         };
         let template = &self.config.rules.filename_template;
-        let suggested_title = Some(sanitize_filename(&rules::render_filename(
-            template, &signals,
-        )));
+        let suggested_title = sanitize_filename(&rules::render_filename(template, &signals));
+
+        // Build alternative titles (dedup, max MAX_TITLE_ALTS).
+        let alt_titles = self.alt_titles(doc, &model, &suggested_title, prefs, is_learning);
+
+        // Build alternative tag sets (dedup, max MAX_TAG_SET_ALTS).
+        let alt_tag_sets = self.alt_tag_sets(
+            corpus,
+            doc,
+            &model,
+            &cluster_tags,
+            &tags,
+            prefs,
+            is_learning,
+        );
 
         // --- Step 2: placement ------------------------------------------
         let suggested_path = rules::resolve_path(&self.config.rules, &signals);
@@ -212,12 +265,129 @@ impl DeterministicOrganizer {
         OrgPlan {
             document_id: doc_id.to_owned(),
             tags,
+            alt_tag_sets,
             suggested_path,
-            suggested_title,
+            suggested_title: Some(suggested_title),
+            alt_titles,
             is_duplicate_of,
             confidence: 1.0,
             filename_source: FilenameSource::Template,
         }
+    }
+
+    /// Build ranked title alternatives (besides the rank-0 template title).
+    ///
+    /// Variants: `{kw1}-{kw2}`, `{kw1}-{kw2}-{kw3}`, the raw-keyword-only
+    /// title, and (when learning is on) the same list re-ranked by the
+    /// preference model. Deterministic; dedup'd; capped at [`MAX_TITLE_ALTS`].
+    fn alt_titles(
+        &self,
+        doc: &CorpusDoc,
+        model: &TfIdfModel,
+        rank0: &str,
+        prefs: &PreferenceModel,
+        is_learning: bool,
+    ) -> Vec<String> {
+        let kw = keywords::extract_keywords(&doc.text, Some(model), None, keywords::DEFAULT_TOP_K);
+        let mut candidates = Vec::new();
+        if kw.len() >= 2 {
+            candidates.push(format!("{}-{}", kw[0], kw[1]));
+        }
+        if kw.len() >= 3 {
+            candidates.push(format!("{}-{}-{}", kw[0], kw[1], kw[2]));
+        }
+        if let Some(first) = kw.first() {
+            candidates.push(first.clone());
+        }
+        // The rank-0 template title itself is not an "alternative", but the
+        // raw cleanup of the original title is a useful fallback.
+        let cleaned = sanitize_filename(doc.title.trim());
+        if !cleaned.is_empty() && cleaned != rank0 && !candidates.contains(&cleaned) {
+            candidates.push(cleaned);
+        }
+
+        if is_learning {
+            candidates = prefs.rerank_titles(candidates);
+        }
+        // De-dup against rank0 and cap.
+        candidates
+            .into_iter()
+            .filter(|c| c != rank0)
+            .take(MAX_TITLE_ALTS)
+            .collect()
+    }
+
+    /// Build ranked alternative tag sets (besides the rank-0 `rank0_tags`).
+    fn alt_tag_sets(
+        &self,
+        corpus: &Corpus,
+        doc: &CorpusDoc,
+        model: &TfIdfModel,
+        cluster_tags: &[TopicTag],
+        rank0_tags: &[String],
+        prefs: &PreferenceModel,
+        is_learning: bool,
+    ) -> Vec<Vec<String>> {
+        let mut sets: Vec<Vec<String>> = Vec::new();
+
+        // The k-NN-only set (borrowed tags only).
+        let reused = self.reused_tags_and_term(corpus, doc, model);
+        if !reused.is_empty() && reused != rank0_tags {
+            sets.push(reused);
+        }
+
+        // The cluster-only set (emergent topics only).
+        let cluster = cluster_tags.iter().map(|t| t.tag()).collect::<Vec<_>>();
+        if !cluster.is_empty() && cluster != rank0_tags {
+            sets.push(cluster);
+        }
+
+        // The keyword set (top keywords as tags).
+        let kw = keywords::extract_keywords(&doc.text, Some(model), None, 4);
+        if !kw.is_empty() && kw != rank0_tags {
+            sets.push(kw);
+        }
+
+        // A conservative top-3 of the rank-0 set.
+        if rank0_tags.len() > 3 {
+            sets.push(rank0_tags.iter().take(3).cloned().collect::<Vec<_>>());
+        }
+
+        // De-dup exact-equal sets (order-insensitive).
+        let mut seen: HashMap<Vec<String>, ()> = HashMap::new();
+        sets.retain(|s| {
+            let mut key = s.clone();
+            key.sort();
+            let first = seen.insert(key, ());
+            first.is_none()
+        });
+
+        if is_learning {
+            // Re-rank sets by summed preference scores (descending).
+            let mut scored = sets
+                .into_iter()
+                .map(|s| {
+                    let sum: f64 = s
+                        .iter()
+                        .map(|t| prefs.score(crate::domain::SuggestionKind::Tags, t))
+                        .sum();
+                    (s, sum)
+                })
+                .collect::<Vec<_>>();
+            scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            sets = scored.into_iter().map(|(s, _)| s).collect();
+        }
+
+        sets.into_iter().take(MAX_TAG_SET_ALTS).collect()
+    }
+
+    /// Like [`Self::reused_tags`] but returns the actual tag strings (not
+    /// `TopicTag`s), so alternative sets stay comparable.
+    fn reused_tags_and_term(&self, corpus: &Corpus, doc: &CorpusDoc, model: &TfIdfModel) -> Vec<String> {
+        self.reused_tags(corpus, doc, model)
+            .into_iter()
+            .map(|t| t.tag())
+            .collect()
     }
 
     /// Emergent topic tags from k-means clustering of TF-IDF vectors.

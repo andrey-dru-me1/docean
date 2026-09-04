@@ -7,7 +7,8 @@ import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../features/document_preview.dart' show DocumentPreviewLoader;
-import '../features/document_service.dart' show DocumentService;
+import '../features/document_service.dart' show DocumentService, SuggestionEntry;
+import '../rust/domain.dart' show SuggestionKind;
 import 'document_preview_view.dart' show DocumentPreviewPanel;
 import 'widgets.dart' show TagChip;
 
@@ -144,6 +145,12 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   /// the add-tag composer can offer them as one-tap chips.
   List<String> _lastSuggestedTags = const [];
 
+  /// Pending/current suggestion rows for this document (review UI source).
+  List<SuggestionEntry> _suggestions = const [];
+
+  /// Whether the suggestions list failed to load (best-effort UI).
+  bool _suggestionsLoaded = false;
+
   late final TextEditingController _titleController;
 
   /// Shared preview loader backed by the document service; reuses the same LRU
@@ -162,12 +169,31 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     _doc = widget.document;
     _titleController = TextEditingController(text: widget.document.title);
     _load();
+    _loadSuggestions();
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     super.dispose();
+  }
+
+  /// Best-effort load of the document's suggestions for the review card.
+  /// Failures are silently tolerated (the section simply stays hidden).
+  Future<void> _loadSuggestions() async {
+    try {
+      final rows = await widget.documentService.listSuggestions(
+        widget.document.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _suggestions = rows;
+        _suggestionsLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _suggestionsLoaded = true);
+    }
   }
 
   Future<void> _load() async {
@@ -300,6 +326,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       final fresh = await widget.documentService.getDocument(
         widget.document.id,
       );
+      await _loadSuggestions();
       if (!mounted) return;
       final applied = fresh.title != previousTitle;
       setState(() {
@@ -314,14 +341,20 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Title suggested: $clean')));
-      } else if (alreadyManual) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Title unchanged (manually edited)')),
-        );
-      } else {
+      } else if (!alreadyManual && (clean == null || !applied)) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('No title suggestion')));
+      } else {
+        // Manual title: alternatives are now persisted for review in the
+        // suggestions card instead of being silently skipped.
+        final pendingAfter = _suggestions.where((s) => s.isPending).length;
+        if (pendingAfter > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('$pendingAfter alternative'
+                '${pendingAfter == 1 ? '' : 's'} available to review'),
+          ));
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -349,6 +382,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       final fresh = await widget.documentService.getDocument(
         widget.document.id,
       );
+      await _loadSuggestions();
       if (!mounted) return;
       setState(() {
         _doc = fresh;
@@ -361,9 +395,13 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
           SnackBar(content: Text('Tags suggested: ${plan.tags.join(', ')}')),
         );
       } else if (alreadyManual) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tags unchanged (manually edited)')),
-        );
+        final pendingAfter = _suggestions.where((s) => s.isPending).length;
+        if (pendingAfter > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('$pendingAfter alternative'
+                '${pendingAfter == 1 ? '' : 's'} available to review'),
+          ));
+        }
       } else {
         ScaffoldMessenger.of(
           context,
@@ -580,6 +618,8 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                   ),
                   const SizedBox(height: 6),
                   _buildTags(),
+                  const SizedBox(height: 8),
+                  _buildSuggestionsSection(),
                   if (_doc.paths.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     _buildPaths(),
@@ -677,11 +717,152 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     );
   }
 
-  /// Compact, deterministic-colored tag chips without the label icon. Editable
-  /// in the detail view (delete to remove).
+  /// The pending-suggestion review card: a compact "AI suggestions" affordance
+  /// showing rank-0 (applied) confirmation + the ranked alternatives, each with
+  /// a switch/dismiss action. Renders nothing when the document has no pending
+  /// suggestions (zero clutter for untouched documents).
   ///
-  /// Tag add/remove is optimistic: the chip disappears/appears instantly and
-  /// the service persist runs in the background (reverting on failure).
+  /// Choosing any action reloads the suggestion rows so the list reflects the
+  /// new statuses (pending alternatives collapse after a choice).
+  Widget _buildSuggestionsSection() {
+    if (!_suggestionsLoaded) return const SizedBox.shrink();
+    final pending = _suggestions.where((s) => s.isPending).toList();
+    final applied = _suggestions.where((s) => !s.isPending).toList();
+    final byKind = <SuggestionKind, List<SuggestionEntry>>{};
+    for (final s in pending) {
+      byKind.putIfAbsent(s.kind, () => <SuggestionEntry>[]).add(s);
+    }
+    if (byKind.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'AI suggestions',
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+          const SizedBox(height: 6),
+          for (final entry in byKind.entries) ...[
+            _buildSuggestionRow(entry.key, entry.value, applied),
+            const SizedBox(height: 4),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSuggestionRow(
+    SuggestionKind kind,
+    List<SuggestionEntry> pending,
+    List<SuggestionEntry> applied,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final isTags = kind == SuggestionKind.tags;
+    final current = applied.isNotEmpty
+        ? applied.firstWhere((s) => s.kind == kind, orElse: () => pending.first)
+        : pending.first;
+    final label = isTags
+        ? current.tags.join(', ')
+        : (current.title ?? 'Title');
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        for (final alt in pending) ...[
+          const SizedBox(width: 6),
+          // Tapping an alternative immediately applies it (the core records
+          // feedback + collapses the other alternatives).
+          ActionChip(
+            key: ValueKey('suggestion-${alt.id}'),
+            label: Text(
+              isTags ? alt.tags.take(3).join('+') : (alt.title ?? ''),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _chooseSuggestion(alt),
+          ),
+          Tooltip(
+            message: 'Not this one',
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _dismissSuggestion(alt),
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: Icon(
+                    Icons.close,
+                    size: 14,
+                    color: scheme.error,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+        if (pending.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          TextButton(
+            key: ValueKey('confirm-${kind.name}'),
+            onPressed: () => _confirmCurrent(kind),
+            child: const Text('Keep'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Apply a pending alternative suggestion and refresh the review list.
+  Future<void> _chooseSuggestion(SuggestionEntry entry) async {
+    try {
+      await widget.documentService.applySuggestion(_doc.id, entry.id);
+      await _loadSuggestions();
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not apply suggestion: $e'),
+      ));
+    }
+  }
+
+  /// Confirm the currently applied value; dismisses pending alternatives.
+  Future<void> _confirmCurrent(SuggestionKind kind) async {
+    try {
+      await widget.documentService.confirmCurrent(_doc.id, kind);
+      await _loadSuggestions();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not confirm: $e'),
+      ));
+    }
+  }
+
+  /// Dismiss one pending alternative.
+  Future<void> _dismissSuggestion(SuggestionEntry entry) async {
+    try {
+      await widget.documentService.dismissSuggestion(_doc.id, entry.id);
+      await _loadSuggestions();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not dismiss suggestion: $e'),
+      ));
+    }
+  }
+
   Widget _buildTags() {
     return Wrap(
       spacing: 6,

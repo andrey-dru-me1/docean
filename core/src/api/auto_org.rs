@@ -16,10 +16,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::storage::DocumentRepository;
 use crate::auto_org::config::{OrgConfig, OrgPlan};
+use crate::auto_org::feedback::PreferenceModel;
 use crate::auto_org::generative::generate_filename;
 use crate::auto_org::organizer::{Corpus, CorpusDoc, DeterministicOrganizer};
 use crate::auto_org::rules::RuleSet;
-use crate::domain::PathAssignment;
+use crate::domain::{
+    DocumentSuggestion, PathAssignment, SuggestionFeedback, SuggestionKind, SuggestionSource,
+    SuggestionStatus,
+};
 use crate::storage::DocumentQuery;
 
 /// Keys in `Document.extra` marking a user's manual metadata edits. A truthy
@@ -84,6 +88,7 @@ fn apply_plan(
     plan: &OrgPlan,
     title_manual: bool,
     tags_manual: bool,
+    source: SuggestionSource,
 ) -> Result<ApplyCounts, String> {
     let mut counts = ApplyCounts {
         changed_tags: false,
@@ -93,7 +98,9 @@ fn apply_plan(
 
     let doc = repo.get(plan.document_id.clone())?;
 
-    // Tags: apply only when the user has not manually assigned them.
+    // Tags: apply only when the user has not manually assigned them. Either
+    // way the full candidate list (incl. this set) is persisted as pending for
+    // review in the document info card.
     if !tags_manual && plan.tags != doc.tags {
         repo.set_tags(plan.document_id.clone(), plan.tags.clone())?;
         counts.changed_tags = true;
@@ -128,7 +135,100 @@ fn apply_plan(
         counts.changed_placement = true;
     }
 
+    // Persist every candidate as a pending suggestion for review — rank 0 is
+    // the (possibly just applied) current title/tags. This removes the old
+    // silent "skipped because manually edited" dead end: the user always has
+    // the alternatives available in the document info card.
+    store_plan_suggestions(repo, plan.clone(), source)?;
+
     Ok(counts)
+}
+
+/// Persist the complete candidate list of [`OrgPlan`] as pending/current
+/// suggestions rows. rank 0 = the applied (or current) value; rank >= 1 are
+/// the alternatives the review UI offers.
+///
+/// Overwrites the document's previously-pending rows of each kind so a re-run
+/// replaces stale alternatives instead of accumulating them.
+fn store_plan_suggestions(
+    repo: &DocumentRepository,
+    plan: OrgPlan,
+    source: SuggestionSource,
+) -> Result<(), String> {
+    let document_id = plan.document_id.clone();
+    let now = crate::api::storage::now_ms();
+
+    let mut rows: Vec<DocumentSuggestion> = Vec::new();
+
+    // Tags: rank 0 is the applied set. If the user manually tagged, the applied
+    // set is still the "current" one but we still store the *suggestion* list
+    // so they can review and switch.
+    let mut tag_sets: Vec<Vec<String>> = vec![plan.tags.clone()];
+    tag_sets.extend(plan.alt_tag_sets.clone());
+    for (rank, set) in tag_sets.iter().enumerate() {
+        rows.push(DocumentSuggestion {
+            id: format!("{document_id}-tags-{rank}"),
+            document_id: document_id.clone(),
+            kind: SuggestionKind::Tags,
+            payload: serde_json::to_string(set).unwrap_or_else(|_| "[]".to_owned()),
+            rank: rank as i32,
+            source,
+            confidence: 1.0,
+            status: if rank == 0 { SuggestionStatus::Applied } else { SuggestionStatus::Pending },
+            created_at_ms: now,
+        });
+    }
+
+    // Title: rank 0 is the applied suggestion (or the current title when the
+    // pipeline produced nothing / user manually renamed).
+    let mut titles: Vec<String> = Vec::new();
+    if let Some(t) = &plan.suggested_title {
+        if !t.trim().is_empty() {
+            titles.push(t.trim().to_owned());
+        }
+    }
+    titles.extend(plan.alt_titles.clone());
+    for (rank, title) in titles.iter().enumerate() {
+        rows.push(DocumentSuggestion {
+            id: format!("{document_id}-title-{rank}"),
+            document_id: document_id.clone(),
+            kind: SuggestionKind::Title,
+            payload: title.clone(),
+            rank: rank as i32,
+            source,
+            confidence: 1.0,
+            status: if rank == 0 { SuggestionStatus::Applied } else { SuggestionStatus::Pending },
+            created_at_ms: now,
+        });
+    }
+
+    // Replace any previously pending rows for this document & kind so a re-run
+    // does not accumulate stale alternatives.
+    for kind in [SuggestionKind::Title, SuggestionKind::Tags] {
+        for row in repo
+            .suggestions_of(document_id.clone(), Some(kind))?
+            .into_iter()
+            .filter(|s| s.status != SuggestionStatus::Applied)
+        {
+            repo.mark_suggestion(row.id, SuggestionStatus::Dismissed)?;
+        }
+    }
+
+    for row in rows {
+        repo.put_suggestion(row)?;
+    }
+
+    Ok(())
+}
+
+/// Build the preference model from the repository's learned feedback.
+fn preference_model(repo: &DocumentRepository, config: &OrgConfig) -> Result<PreferenceModel, String> {
+    if !config.learning_mode.is_enabled() {
+        return Ok(PreferenceModel::neutral());
+    }
+    let tag_stats = repo.feedback_stats(Some(SuggestionKind::Tags), None)?;
+    let title_stats = repo.feedback_stats(Some(SuggestionKind::Title), None)?;
+    Ok(PreferenceModel::from_stats(tag_stats, title_stats))
 }
 
 /// Run the deterministic (non-generative) organizer on `document_id` and apply
@@ -156,8 +256,9 @@ pub(crate) fn organize_document(
     config: OrgConfig,
 ) -> Result<OrgPlan, String> {
     let corpus = build_corpus(repo)?;
-    let organizer = DeterministicOrganizer::new(config);
-    let plan = organizer.organize(&corpus, document_id);
+    let organizer = DeterministicOrganizer::new(config.clone());
+    let prefs = preference_model(repo, &config)?;
+    let plan = organizer.organize_with_model(&corpus, document_id, &prefs);
 
     let mut doc = repo.get(document_id.to_owned())?;
     doc.tags = plan.tags.clone();
@@ -193,6 +294,9 @@ pub(crate) fn organize_document(
         })?;
     }
 
+    // Persist the candidate list (rank 0 + alternatives) for review.
+    store_plan_suggestions(repo, plan.clone(), SuggestionSource::Ingest)?;
+
     Ok(plan)
 }
 
@@ -219,8 +323,9 @@ pub async fn auto_org_organize(
     // Build a fresh corpus snapshot from the repository (borrowed) so the shared
     // handle is never moved/disposed across the FRB boundary.
     let corpus = build_corpus(repo)?;
-    let organizer = DeterministicOrganizer::new(config);
-    Ok(organizer.organize(&corpus, &document_id))
+    let organizer = DeterministicOrganizer::new(config.clone());
+    let prefs = preference_model(repo, &config)?;
+    Ok(organizer.organize_with_model(&corpus, &document_id, &prefs))
 }
 
 /// The aggregate outcome of a bulk re-organization pass over the whole library.
@@ -333,7 +438,8 @@ fn auto_org_reorganize_one_impl(
 ) -> Result<bool, String> {
     let corpus = build_corpus(repo)?;
     let organizer = DeterministicOrganizer::new(config.clone());
-    let plan = organizer.organize(&corpus, &document_id);
+    let prefs = preference_model(repo, config)?;
+    let plan = organizer.organize_with_model(&corpus, &document_id, &prefs);
 
     if plan.tags.is_empty() && plan.suggested_title.is_none() {
         return Ok(false);
@@ -342,7 +448,7 @@ fn auto_org_reorganize_one_impl(
     let doc = repo.get(document_id.clone())?;
     let title_manual = flag_is_set(&doc.extra, TITLE_MANUAL_KEY);
     let tags_manual = flag_is_set(&doc.extra, TAGS_MANUAL_KEY);
-    let counts = apply_plan(repo, &plan, title_manual, tags_manual)?;
+    let counts = apply_plan(repo, &plan, title_manual, tags_manual, SuggestionSource::Bulk)?;
 
     // Refresh the in-memory search metadata for the freshly written doc (the
     // same wiring the ingestion pipeline uses after auto-organization).
@@ -377,7 +483,8 @@ pub fn auto_org_reorganize_one(
     // was applied due to manual-edit flags), then apply honoring the flags.
     let corpus = build_corpus(repo)?;
     let organizer = DeterministicOrganizer::new(config.clone());
-    let plan = organizer.organize(&corpus, &document_id);
+    let prefs = preference_model(repo, &config)?;
+    let plan = organizer.organize_with_model(&corpus, &document_id, &prefs);
     let _ = auto_org_reorganize_one_impl(repo, document_id, &config)?;
     Ok(plan)
 }
@@ -416,6 +523,187 @@ pub async fn auto_org_generate_filename(
 #[flutter_rust_bridge::frb(sync)]
 pub fn auto_org_default_config() -> OrgConfig {
     OrgConfig::default()
+}
+
+/// List a document's suggestions (pending + applied), ranked per kind.
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_list_suggestions(
+    repo: &DocumentRepository,
+    document_id: String,
+) -> Result<Vec<DocumentSuggestion>, String> {
+    repo.suggestions_of(document_id, None)
+}
+
+/// Apply one pending alternative suggestion to the document: apply its payload
+/// through the normal update paths, record feedback (accepted terms of the
+/// chosen alternative + rejected terms of the previously-applied rank 0 that
+/// are not in the chosen set), and dismiss every other pending suggestion of
+/// the same kind (the "alternatives disappear after choice" contract).
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_apply_suggestion(
+    repo: &DocumentRepository,
+    document_id: String,
+    suggestion_id: String,
+) -> Result<(), String> {
+    let all = repo.suggestions_of(document_id.clone(), None)?;
+    let Some(chosen) = all.iter().find(|s| s.id == suggestion_id) else {
+        return Err(format!("suggestion {suggestion_id} not found"));
+    };
+
+    match chosen.kind {
+        SuggestionKind::Tags => {
+            let tags: Vec<String> =
+                serde_json::from_str(&chosen.payload).unwrap_or_else(|_| vec![]);
+            repo.set_tags(document_id.clone(), tags.clone())?;
+            // Accept the chosen tags; reject terms that were previously applied
+            // and are not part of the chosen set.
+            for term in &tags {
+                record_accept(repo, SuggestionKind::Tags, term);
+            }
+        }
+        SuggestionKind::Title => {
+            let title = chosen.payload.trim();
+            if !title.is_empty() {
+                repo.update_title(document_id.clone(), title.to_owned())?;
+                record_accept(repo, SuggestionKind::Title, title);
+                // Reject the previously applied rank-0 title when it differs.
+                if let Some(prev) = all
+                    .iter()
+                    .find(|s| s.kind == SuggestionKind::Title && s.rank == 0)
+                {
+                    if prev.id != chosen.id && prev.payload.trim() != title {
+                        record_reject(repo, SuggestionKind::Title, prev.payload.trim());
+                    }
+                }
+            }
+        }
+    }
+
+    // All suggestions of this kind (except the chosen one) -> dismissed, so
+    // the alternatives disappear after the user's choice.
+    for s in all.clone() {
+        if s.kind == chosen.kind && s.id != chosen.id {
+            repo.mark_suggestion(s.id, SuggestionStatus::Dismissed)?;
+        }
+    }
+    repo.mark_suggestion(suggestion_id, SuggestionStatus::Applied)?;
+    Ok(())
+}
+
+/// Keep the currently applied value (rank 0) for a suggestion kind: record
+/// accepted feedback for the applied terms + rejected for pending alternatives'
+/// distinctive terms, and dismiss all pending of that kind.
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_confirm_current(
+    repo: &DocumentRepository,
+    document_id: String,
+    kind: SuggestionKind,
+) -> Result<(), String> {
+    let all = repo.suggestions_of(document_id.clone(), Some(kind))?;
+    let pending: Vec<DocumentSuggestion> = all
+        .iter()
+        .filter(|s| s.status == SuggestionStatus::Pending)
+        .cloned()
+        .collect();
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let applied: Vec<DocumentSuggestion> = all
+        .iter()
+        .filter(|s| s.status == SuggestionStatus::Applied)
+        .cloned()
+        .collect();
+    for s in &applied {
+        for term in payload_terms(s) {
+            record_accept(repo, s.kind, &term);
+        }
+    }
+    // Reject every term in the pending alternatives that isn't in the applied.
+    if let Some(applied_set) = applied.first().map(|s| payload_terms(s)) {
+        for p in &pending {
+            for term in payload_terms(p) {
+                if !applied_set.contains(&term) {
+                    record_reject(repo, kind, &term);
+                }
+            }
+        }
+    }
+    for p in pending {
+        repo.mark_suggestion(p.id, SuggestionStatus::Dismissed)?;
+    }
+    Ok(())
+}
+
+/// Dismiss one pending suggestion (with reject feedback for its terms).
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_dismiss_suggestion(
+    repo: &DocumentRepository,
+    document_id: String,
+    suggestion_id: String,
+) -> Result<(), String> {
+    let all = repo.suggestions_of(document_id, None)?;
+    if let Some(s) = all.iter().find(|s| s.id == suggestion_id) {
+        for term in payload_terms(s) {
+            record_reject(repo, s.kind, &term);
+        }
+    }
+    repo.mark_suggestion(suggestion_id, SuggestionStatus::Dismissed)?;
+    Ok(())
+}
+
+/// Wipe all learned feedback (settings "reset learning").
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_reset_learning(repo: &DocumentRepository) -> Result<(), String> {
+    repo.clear_feedback()
+}
+
+fn record_accept(repo: &DocumentRepository, kind: SuggestionKind, term: &str) {
+    let _ = repo.record_feedback(SuggestionFeedback {
+        id: new_uuid(),
+        kind,
+        context: if kind == SuggestionKind::Tags { "tag".to_owned() } else { "title".to_owned() },
+        term: term.to_owned(),
+        action: "accepted".to_owned(),
+        weight: 1.0,
+        created_at_ms: crate::api::storage::now_ms(),
+    });
+}
+
+fn record_reject(repo: &DocumentRepository, kind: SuggestionKind, term: &str) {
+    let _ = repo.record_feedback(SuggestionFeedback {
+        id: new_uuid(),
+        kind,
+        context: if kind == SuggestionKind::Tags { "tag".to_owned() } else { "title".to_owned() },
+        term: term.to_owned(),
+        action: "rejected".to_owned(),
+        weight: 1.0,
+        created_at_ms: crate::api::storage::now_ms(),
+    });
+}
+
+/// The terms a suggestion's payload represents: the tag names, or the single
+/// title term.
+fn payload_terms(s: &DocumentSuggestion) -> Vec<String> {
+    match s.kind {
+        SuggestionKind::Tags => serde_json::from_str::<Vec<String>>(&s.payload).unwrap_or_default(),
+        SuggestionKind::Title => {
+            if s.payload.trim().is_empty() {
+                vec![]
+            } else {
+                vec![s.payload.trim().to_owned()]
+            }
+        }
+    }
+}
+
+fn new_uuid() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    format!(
+        "{}-{}",
+        crate::api::storage::now_ms(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 /// A convenience default [`RuleSet`] (empty placement rules + `/inbox` fallback).
@@ -749,8 +1037,8 @@ mod tests {
     /// owned/disposal hazard when it is called after a reorganize (or when the
     /// detail view's auto-suggest and reorganize buttons are both used on one
     /// repository). Assert the handle survives a mixed sequence too.
-    #[test]
-    fn same_repository_handle_survives_organize_after_reorganize() {
+    #[tokio::test]
+    async fn same_repository_handle_survives_organize_after_reorganize() {
         let root = temp_root("reuse-mixed");
         let repo = open_repository(root.display().to_string()).unwrap();
         seed_sibling(&repo, "sib", "quarterly report for the finance team");
@@ -766,9 +1054,13 @@ mod tests {
             .expect("reorganize_one must succeed on the live handle");
 
         // A second, different bridge entry point on the *same* handle.
-        let plan =
-            crate::api::auto_org::auto_org_organize(&repo, target.clone(), Default::default())
-                .expect("auto_org_organize must succeed on the still-live handle");
+        let plan = crate::api::auto_org::auto_org_organize(
+            &repo,
+            target.clone(),
+            Default::default(),
+        )
+        .await
+        .expect("auto_org_organize must succeed on the still-live handle");
         assert!(
             !plan.tags.is_empty() || plan.suggested_title.is_some(),
             "organize should produce a suggestion after a prior reorganize"

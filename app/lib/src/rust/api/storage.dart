@@ -21,14 +21,26 @@ abstract class DocumentRepository implements RustOpaqueInterface {
 
   Future<List<String>> children({required String parent});
 
+  /// Wipe all learning data.
+  Future<void> clearFeedback();
+
   /// Delete a document and (when unreferenced) its blob.
   Future<void> delete({required String id});
 
   Future<void> deleteContent({required String documentId});
 
+  /// Remove all suggestion rows for a document.
+  Future<void> deleteDocumentSuggestions({required String documentId});
+
   Future<void> deletePath({required String path});
 
   Future<List<String>> documentsAt({required String path});
+
+  /// Aggregated accept/reject evidence per term (feedback model input).
+  Future<Map<String, FeedbackStats>> feedbackStats({
+    SuggestionKind? kind,
+    String? context,
+  });
 
   /// Fetch a document's metadata.
   Future<Document> get_({required String id});
@@ -41,7 +53,16 @@ abstract class DocumentRepository implements RustOpaqueInterface {
 
   Future<List<Tag>> listTags();
 
+  /// Update the review status (pending/applied/dismissed) of one suggestion.
+  Future<void> markSuggestion({
+    required String suggestionId,
+    required SuggestionStatus status,
+  });
+
   Future<List<HierarchyPath>> pathsOf({required String documentId});
+
+  /// Housekeeping: drop non-pending suggestions older than `older_than_ms`.
+  Future<void> pruneSuggestions({required PlatformInt64 olderThanMs});
 
   /// Insert or replace a document and its raw bytes.
   Future<void> put({required Document doc, required List<int> bytes});
@@ -54,6 +75,9 @@ abstract class DocumentRepository implements RustOpaqueInterface {
 
   Future<void> putPath({required String path});
 
+  /// Persist (or update) one pending suggestion row.
+  Future<void> putSuggestion({required DocumentSuggestion suggestion});
+
   Future<void> putTag({required Tag tag});
 
   /// List documents matching a query.
@@ -61,6 +85,9 @@ abstract class DocumentRepository implements RustOpaqueInterface {
 
   /// Fetch a document's raw bytes.
   Future<Uint8List> readBytes({required String id});
+
+  /// Persist one feedback event.
+  Future<void> recordFeedback({required SuggestionFeedback feedback});
 
   /// Replace the full tag set on a document (creating tag-catalog entries as
   /// needed) so the UI can add/remove tags without re-putting raw bytes.
@@ -71,6 +98,13 @@ abstract class DocumentRepository implements RustOpaqueInterface {
   Future<void> setTags({
     required String documentId,
     required List<String> tags,
+  });
+
+  /// Fetch a document's suggestions (optionally filtered by kind), newest
+  /// alternatives first per kind.
+  Future<List<DocumentSuggestion>> suggestionsOf({
+    required String documentId,
+    SuggestionKind? kind,
   });
 
   Future<void> unassignPath({required String documentId, required String path});

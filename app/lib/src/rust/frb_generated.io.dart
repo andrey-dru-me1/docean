@@ -14,6 +14,7 @@ import 'api/search.dart';
 import 'api/storage.dart';
 import 'api/sync.dart';
 import 'auto_org/config.dart';
+import 'auto_org/feedback.dart';
 import 'auto_org/rules.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -53,6 +54,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Map<String, String> dco_decode_Map_String_String_None(dynamic raw);
+
+  @protected
+  Map<String, FeedbackStats> dco_decode_Map_String_feedback_stats_None(
+    dynamic raw,
+  );
 
   @protected
   DocumentRepository
@@ -108,6 +114,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DocumentQuery dco_decode_box_autoadd_document_query(dynamic raw);
 
   @protected
+  DocumentSuggestion dco_decode_box_autoadd_document_suggestion(dynamic raw);
+
+  @protected
   EmbedRequestDto dco_decode_box_autoadd_embed_request_dto(dynamic raw);
 
   @protected
@@ -133,6 +142,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SearchRequestDto dco_decode_box_autoadd_search_request_dto(dynamic raw);
+
+  @protected
+  SuggestionFeedback dco_decode_box_autoadd_suggestion_feedback(dynamic raw);
+
+  @protected
+  SuggestionKind dco_decode_box_autoadd_suggestion_kind(dynamic raw);
 
   @protected
   SyncConflictDto dco_decode_box_autoadd_sync_conflict_dto(dynamic raw);
@@ -176,6 +191,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DocumentRefDto dco_decode_document_ref_dto(dynamic raw);
 
   @protected
+  DocumentSuggestion dco_decode_document_suggestion(dynamic raw);
+
+  @protected
   DuplicatePairDto dco_decode_duplicate_pair_dto(dynamic raw);
 
   @protected
@@ -189,6 +207,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   double dco_decode_f_64(dynamic raw);
+
+  @protected
+  FeedbackStats dco_decode_feedback_stats(dynamic raw);
 
   @protected
   FilenameSource dco_decode_filename_source(dynamic raw);
@@ -227,6 +248,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LabelScore dco_decode_label_score(dynamic raw);
 
   @protected
+  LearningMode dco_decode_learning_mode(dynamic raw);
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
@@ -234,6 +258,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<DocumentRefDto> dco_decode_list_document_ref_dto(dynamic raw);
+
+  @protected
+  List<DocumentSuggestion> dco_decode_list_document_suggestion(dynamic raw);
 
   @protected
   List<DuplicatePairDto> dco_decode_list_duplicate_pair_dto(dynamic raw);
@@ -246,6 +273,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<LabelScore> dco_decode_list_label_score(dynamic raw);
+
+  @protected
+  List<List<String>> dco_decode_list_list_String(dynamic raw);
 
   @protected
   List<ModelInfo> dco_decode_list_model_info(dynamic raw);
@@ -267,6 +297,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<ProviderSettings> dco_decode_list_provider_settings(dynamic raw);
+
+  @protected
+  List<(String, FeedbackStats)> dco_decode_list_record_string_feedback_stats(
+    dynamic raw,
+  );
 
   @protected
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
@@ -303,6 +338,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   NodeKind? dco_decode_opt_box_autoadd_node_kind(dynamic raw);
+
+  @protected
+  SuggestionKind? dco_decode_opt_box_autoadd_suggestion_kind(dynamic raw);
 
   @protected
   SyncConflictDto? dco_decode_opt_box_autoadd_sync_conflict_dto(dynamic raw);
@@ -352,6 +390,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProviderSettings dco_decode_provider_settings(dynamic raw);
 
   @protected
+  (String, FeedbackStats) dco_decode_record_string_feedback_stats(dynamic raw);
+
+  @protected
   (String, String) dco_decode_record_string_string(dynamic raw);
 
   @protected
@@ -365,6 +406,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SearchRequestDto dco_decode_search_request_dto(dynamic raw);
+
+  @protected
+  SuggestionFeedback dco_decode_suggestion_feedback(dynamic raw);
+
+  @protected
+  SuggestionKind dco_decode_suggestion_kind(dynamic raw);
+
+  @protected
+  SuggestionSource dco_decode_suggestion_source(dynamic raw);
+
+  @protected
+  SuggestionStatus dco_decode_suggestion_status(dynamic raw);
 
   @protected
   SyncConflictDto dco_decode_sync_conflict_dto(dynamic raw);
@@ -422,6 +475,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Map<String, String> sse_decode_Map_String_String_None(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Map<String, FeedbackStats> sse_decode_Map_String_feedback_stats_None(
     SseDeserializer deserializer,
   );
 
@@ -495,6 +553,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  DocumentSuggestion sse_decode_box_autoadd_document_suggestion(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   EmbedRequestDto sse_decode_box_autoadd_embed_request_dto(
     SseDeserializer deserializer,
   );
@@ -530,6 +593,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SearchRequestDto sse_decode_box_autoadd_search_request_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SuggestionFeedback sse_decode_box_autoadd_suggestion_feedback(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SuggestionKind sse_decode_box_autoadd_suggestion_kind(
     SseDeserializer deserializer,
   );
 
@@ -583,6 +656,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   DocumentRefDto sse_decode_document_ref_dto(SseDeserializer deserializer);
 
   @protected
+  DocumentSuggestion sse_decode_document_suggestion(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   DuplicatePairDto sse_decode_duplicate_pair_dto(SseDeserializer deserializer);
 
   @protected
@@ -596,6 +674,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   double sse_decode_f_64(SseDeserializer deserializer);
+
+  @protected
+  FeedbackStats sse_decode_feedback_stats(SseDeserializer deserializer);
 
   @protected
   FilenameSource sse_decode_filename_source(SseDeserializer deserializer);
@@ -638,6 +719,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LabelScore sse_decode_label_score(SseDeserializer deserializer);
 
   @protected
+  LearningMode sse_decode_learning_mode(SseDeserializer deserializer);
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
@@ -645,6 +729,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<DocumentRefDto> sse_decode_list_document_ref_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<DocumentSuggestion> sse_decode_list_document_suggestion(
     SseDeserializer deserializer,
   );
 
@@ -665,6 +754,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<LabelScore> sse_decode_list_label_score(SseDeserializer deserializer);
+
+  @protected
+  List<List<String>> sse_decode_list_list_String(SseDeserializer deserializer);
 
   @protected
   List<ModelInfo> sse_decode_list_model_info(SseDeserializer deserializer);
@@ -688,6 +780,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<ProviderSettings> sse_decode_list_provider_settings(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<(String, FeedbackStats)> sse_decode_list_record_string_feedback_stats(
     SseDeserializer deserializer,
   );
 
@@ -734,6 +831,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   NodeKind? sse_decode_opt_box_autoadd_node_kind(SseDeserializer deserializer);
+
+  @protected
+  SuggestionKind? sse_decode_opt_box_autoadd_suggestion_kind(
+    SseDeserializer deserializer,
+  );
 
   @protected
   SyncConflictDto? sse_decode_opt_box_autoadd_sync_conflict_dto(
@@ -787,6 +889,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProviderSettings sse_decode_provider_settings(SseDeserializer deserializer);
 
   @protected
+  (String, FeedbackStats) sse_decode_record_string_feedback_stats(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   (String, String) sse_decode_record_string_string(
     SseDeserializer deserializer,
   );
@@ -802,6 +909,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SearchRequestDto sse_decode_search_request_dto(SseDeserializer deserializer);
+
+  @protected
+  SuggestionFeedback sse_decode_suggestion_feedback(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SuggestionKind sse_decode_suggestion_kind(SseDeserializer deserializer);
+
+  @protected
+  SuggestionSource sse_decode_suggestion_source(SseDeserializer deserializer);
+
+  @protected
+  SuggestionStatus sse_decode_suggestion_status(SseDeserializer deserializer);
 
   @protected
   SyncConflictDto sse_decode_sync_conflict_dto(SseDeserializer deserializer);
@@ -871,6 +992,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_Map_String_String_None(
     Map<String, String> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_Map_String_feedback_stats_None(
+    Map<String, FeedbackStats> self,
     SseSerializer serializer,
   );
 
@@ -954,6 +1081,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_document_suggestion(
+    DocumentSuggestion self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_embed_request_dto(
     EmbedRequestDto self,
     SseSerializer serializer,
@@ -1001,6 +1134,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_search_request_dto(
     SearchRequestDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_suggestion_feedback(
+    SuggestionFeedback self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_suggestion_kind(
+    SuggestionKind self,
     SseSerializer serializer,
   );
 
@@ -1065,6 +1210,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_document_suggestion(
+    DocumentSuggestion self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_duplicate_pair_dto(
     DuplicatePairDto self,
     SseSerializer serializer,
@@ -1087,6 +1238,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_feedback_stats(FeedbackStats self, SseSerializer serializer);
 
   @protected
   void sse_encode_filename_source(
@@ -1134,6 +1288,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_label_score(LabelScore self, SseSerializer serializer);
 
   @protected
+  void sse_encode_learning_mode(LearningMode self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
@@ -1142,6 +1299,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_document_ref_dto(
     List<DocumentRefDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_document_suggestion(
+    List<DocumentSuggestion> self,
     SseSerializer serializer,
   );
 
@@ -1166,6 +1329,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_label_score(
     List<LabelScore> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_list_String(
+    List<List<String>> self,
     SseSerializer serializer,
   );
 
@@ -1202,6 +1371,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_provider_settings(
     List<ProviderSettings> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_record_string_feedback_stats(
+    List<(String, FeedbackStats)> self,
     SseSerializer serializer,
   );
 
@@ -1256,6 +1431,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_node_kind(
     NodeKind? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_suggestion_kind(
+    SuggestionKind? self,
     SseSerializer serializer,
   );
 
@@ -1320,6 +1501,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_record_string_feedback_stats(
+    (String, FeedbackStats) self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_record_string_string(
     (String, String) self,
     SseSerializer serializer,
@@ -1337,6 +1524,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_search_request_dto(
     SearchRequestDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_suggestion_feedback(
+    SuggestionFeedback self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_suggestion_kind(
+    SuggestionKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_suggestion_source(
+    SuggestionSource self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_suggestion_status(
+    SuggestionStatus self,
     SseSerializer serializer,
   );
 

@@ -4,6 +4,7 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+import 'feedback.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'rules.dart';
 
@@ -37,6 +38,11 @@ class OrgConfig {
   /// Placement rules + filename template.
   final RuleSet rules;
 
+  /// On-device feedback learning: `Off` (no recording/re-ranking) or `Basic`
+  /// (per-term preference model). A future `Advanced` classifier plugs into
+  /// the same enum behind the settings surface.
+  final LearningMode learningMode;
+
   const OrgConfig({
     required this.enabled,
     required this.generativeEnabled,
@@ -44,6 +50,7 @@ class OrgConfig {
     required this.shingleK,
     required this.clusterK,
     required this.rules,
+    required this.learningMode,
   });
 
   @override
@@ -53,7 +60,8 @@ class OrgConfig {
       dedupThreshold.hashCode ^
       shingleK.hashCode ^
       clusterK.hashCode ^
-      rules.hashCode;
+      rules.hashCode ^
+      learningMode.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -65,7 +73,8 @@ class OrgConfig {
           dedupThreshold == other.dedupThreshold &&
           shingleK == other.shingleK &&
           clusterK == other.clusterK &&
-          rules == other.rules;
+          rules == other.rules &&
+          learningMode == other.learningMode;
 }
 
 /// The result of organizing a single document: everything the caller needs to
@@ -73,14 +82,23 @@ class OrgConfig {
 class OrgPlan {
   final String documentId;
 
-  /// Predicted tags (emergent + reused), ordered by confidence.
+  /// Predicted tags (emergent + reused), ordered by confidence. This is the
+  /// rank-0 tag set: what auto-apply writes when the user has not manually
+  /// tagged the document.
   final List<String> tags;
+
+  /// Alternative tag sets (rank >= 1) the review UI can offer, ordered by
+  /// preference-model score when learning is on.
+  final List<List<String>> altTagSets;
 
   /// Deterministically resolved hierarchy path, if any.
   final String? suggestedPath;
 
-  /// Renamed filename (title), if the pipeline produced one.
+  /// Renamed filename (title), if the pipeline produced one. Rank-0 title.
   final String? suggestedTitle;
+
+  /// Alternative titles (rank >= 1).
+  final List<String> altTitles;
 
   /// Id of an existing document this one is a duplicate of, if any.
   final String? isDuplicateOf;
@@ -94,8 +112,10 @@ class OrgPlan {
   const OrgPlan({
     required this.documentId,
     required this.tags,
+    required this.altTagSets,
     this.suggestedPath,
     this.suggestedTitle,
+    required this.altTitles,
     this.isDuplicateOf,
     required this.confidence,
     required this.filenameSource,
@@ -105,8 +125,10 @@ class OrgPlan {
   int get hashCode =>
       documentId.hashCode ^
       tags.hashCode ^
+      altTagSets.hashCode ^
       suggestedPath.hashCode ^
       suggestedTitle.hashCode ^
+      altTitles.hashCode ^
       isDuplicateOf.hashCode ^
       confidence.hashCode ^
       filenameSource.hashCode;
@@ -118,8 +140,10 @@ class OrgPlan {
           runtimeType == other.runtimeType &&
           documentId == other.documentId &&
           tags == other.tags &&
+          altTagSets == other.altTagSets &&
           suggestedPath == other.suggestedPath &&
           suggestedTitle == other.suggestedTitle &&
+          altTitles == other.altTitles &&
           isDuplicateOf == other.isDuplicateOf &&
           confidence == other.confidence &&
           filenameSource == other.filenameSource;

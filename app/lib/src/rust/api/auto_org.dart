@@ -4,12 +4,14 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../auto_org/config.dart';
+import '../auto_org/feedback.dart';
 import '../auto_org/rules.dart';
+import '../domain.dart';
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'storage.dart';
 
-// These functions are ignored because they are not marked as `pub`: `any`, `apply_plan`, `auto_org_reorganize_one_impl`, `build_corpus`, `flag_is_set`, `organize_document`
+// These functions are ignored because they are not marked as `pub`: `any`, `apply_plan`, `auto_org_reorganize_one_impl`, `build_corpus`, `flag_is_set`, `new_uuid`, `organize_document`, `payload_terms`, `preference_model`, `record_accept`, `record_reject`, `store_plan_suggestions`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ApplyCounts`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
 
@@ -121,6 +123,58 @@ Future<String> autoOrgGenerateFilename({
 /// set and templates.
 OrgConfig autoOrgDefaultConfig() =>
     RustLib.instance.api.crateApiAutoOrgAutoOrgDefaultConfig();
+
+/// List a document's suggestions (pending + applied), ranked per kind.
+Future<List<DocumentSuggestion>> autoOrgListSuggestions({
+  required DocumentRepository repo,
+  required String documentId,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgListSuggestions(
+  repo: repo,
+  documentId: documentId,
+);
+
+/// Apply one pending alternative suggestion to the document: apply its payload
+/// through the normal update paths, record feedback (accepted terms of the
+/// chosen alternative + rejected terms of the previously-applied rank 0 that
+/// are not in the chosen set), and dismiss every other pending suggestion of
+/// the same kind (the "alternatives disappear after choice" contract).
+Future<void> autoOrgApplySuggestion({
+  required DocumentRepository repo,
+  required String documentId,
+  required String suggestionId,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgApplySuggestion(
+  repo: repo,
+  documentId: documentId,
+  suggestionId: suggestionId,
+);
+
+/// Keep the currently applied value (rank 0) for a suggestion kind: record
+/// accepted feedback for the applied terms + rejected for pending alternatives'
+/// distinctive terms, and dismiss all pending of that kind.
+Future<void> autoOrgConfirmCurrent({
+  required DocumentRepository repo,
+  required String documentId,
+  required SuggestionKind kind,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgConfirmCurrent(
+  repo: repo,
+  documentId: documentId,
+  kind: kind,
+);
+
+/// Dismiss one pending suggestion (with reject feedback for its terms).
+Future<void> autoOrgDismissSuggestion({
+  required DocumentRepository repo,
+  required String documentId,
+  required String suggestionId,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgDismissSuggestion(
+  repo: repo,
+  documentId: documentId,
+  suggestionId: suggestionId,
+);
+
+/// Wipe all learned feedback (settings "reset learning").
+Future<void> autoOrgResetLearning({required DocumentRepository repo}) =>
+    RustLib.instance.api.crateApiAutoOrgAutoOrgResetLearning(repo: repo);
 
 /// A convenience default [`RuleSet`] (empty placement rules + `/inbox` fallback).
 RuleSet autoOrgDefaultRules() =>
