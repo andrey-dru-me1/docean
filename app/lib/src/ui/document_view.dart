@@ -636,7 +636,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
               ),
             ),
           ),
-          if (_isVisual(_doc)) ...[
+          if (_previewLoader.canPreview(_doc)) ...[
             const SizedBox(height: 16),
             Text('Preview', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
@@ -656,14 +656,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     );
   }
 
-  /// Whether [doc] should show the visual preview panel (image or PDF).
-  bool _isVisual(DocumentSummary doc) {
-    final mime = (doc.mimeType ?? '').toLowerCase();
-    if (mime.startsWith('image/')) return true;
-    return mime == 'application/pdf' ||
-        mime == 'application/x-pdf' ||
-        mime == 'application/acrobat';
-  }
+  // NOTE: _isVisual was replaced with _previewLoader.canPreview() in the
+  // build method, which checks the loader's own classification (image, pdf,
+  // docx) so UI gating and loader classification can never drift apart.
 
   Widget _buildTitleEditor() {
     final suggestingTitle = _suggestingTitle;

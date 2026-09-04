@@ -29,7 +29,8 @@ import '../features/document_preview.dart'
         DocumentPreviewFallback,
         DocumentPreviewImage,
         DocumentPreviewLoader,
-        DocumentPreviewPdf;
+        DocumentPreviewPdf,
+        DocumentPreviewTextPage;
 import 'document_view.dart' show DocumentSummary;
 
 /// A deterministic color for a document type, derived from its MIME type (or
@@ -84,6 +85,18 @@ IconData previewGlyphFor(DocumentSummary document) {
     return Icons.audiotrack_outlined;
   }
   if (mime.contains('video/')) return Icons.movie_outlined;
+  // OOXML Word documents (docx/docm/dotx/dotm) — the MIME produced by the
+  // Rust ingest pipeline. Show an article glyph so Word documents are
+  // distinguishable from generic files in the fallback tile.
+  final name = (document.originalName ?? '').toLowerCase();
+  if (mime.contains('wordprocessingml') ||
+      mime.contains('application/msword') ||
+      name.endsWith('.docx') ||
+      name.endsWith('.docm') ||
+      name.endsWith('.dotx') ||
+      name.endsWith('.dotm')) {
+    return Icons.article_outlined;
+  }
   return Icons.insert_drive_file_outlined;
 }
 
@@ -203,6 +216,12 @@ class _DocumentTilePreviewState extends State<DocumentTilePreview> {
         borderRadius: widget.borderRadius,
       );
     }
+    // A text-page doc (docx preview when no rasterizer is available) renders
+    // a white mini page with the opening lines — a document-looking tile
+    // instead of the generic placeholder glyph.
+    if (preview is DocumentPreviewTextPage) {
+      return _buildTextPageTile(context, preview.text);
+    }
     final bytes = switch (preview) {
       DocumentPreviewImage(:final bytes) => bytes,
       DocumentPreviewPdf(:final pdfThumbnail) => pdfThumbnail.bytes,
@@ -230,6 +249,32 @@ class _DocumentTilePreviewState extends State<DocumentTilePreview> {
       document: widget.document,
       iconSize: 36,
       borderRadius: widget.borderRadius,
+    );
+  }
+
+  /// A compact "document page" tile for [DocumentPreviewTextPage] previews:
+  /// white background, small top-left-aligned text, clipped to the tile.
+  Widget _buildTextPageTile(BuildContext context, String text) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.borderRadius),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(color: Colors.white),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Text(
+              text,
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.black87,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -336,6 +381,9 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
     if (preview is DocumentPreviewPdf) {
       return _buildStage(context, preview.pdfThumbnail.bytes);
     }
+    if (preview is DocumentPreviewTextPage) {
+      return _buildTextPageStage(context, preview.text);
+    }
     // Text/other docs (and failed previews) keep the content viewer.
     return const SizedBox.shrink();
   }
@@ -365,6 +413,36 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
                 document: widget.document,
                 iconSize: 48,
                 borderRadius: 8,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A bounded text-page stage for docx text fallback previews: white page on
+  /// the bounded-height card, top-left aligned, clipped to the stage.
+  Widget _buildTextPageStage(BuildContext context, String text) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: widget.maxHeight,
+        width: double.infinity,
+        child: ColoredBox(
+          color: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                text,
+                maxLines: 12,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.black87,
+                  height: 1.4,
+                ),
               ),
             ),
           ),

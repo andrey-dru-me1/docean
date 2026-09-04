@@ -66,6 +66,18 @@ dependencies:
   image: ^4.9.2
   pdfx: ^2.11.0
 
+  # Pure-Dart docx text extraction: unzip the OOXML archive and parse
+  # word/document.xml. Already a transitive dep of pdfx/image, promoted to
+  # direct so the preview loader can import and use it.
+  archive: ^4.2.0
+  xml: ^7.0.1
+  collection: ^1.18.0
+
+  # Windows Shell thumbnail (IShellItemImageFactory) for native docx preview
+  # rendering. Guarded behind Platform.isWindows in dart so it's never
+  # imported on other platforms; flutter analyze won't flag it.
+  win32: ^6.4.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

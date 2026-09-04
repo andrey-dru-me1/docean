@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart' show Archive, ArchiveFile, ZipEncoder;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -9,7 +11,9 @@ import 'package:docer/src/features/document_preview.dart'
         DocumentPreviewCache,
         DocumentPreviewFallback,
         DocumentPreviewImage,
-        DocumentPreviewLoader;
+        DocumentPreviewLoader,
+        DocumentPreviewTextPage,
+        computeIsolatedDocxText;
 import 'package:docer/src/features/document_service.dart'
     show FakeDocumentService;
 import 'package:docer/src/ui/document_preview_view.dart'
@@ -344,4 +348,86 @@ void main() {
       expect(find.byType(Ink), findsNothing);
     });
   });
+
+  group('docx previews', () {
+    test('docx text extraction yields paragraph text', () async {
+      final bytes = _docxBytes('Hello Docx\nSecond paragraph');
+
+      final text = computeIsolatedDocxText(bytes);
+
+      expect(text, isNotNull);
+      expect(text, contains('Hello Docx'));
+      expect(text, contains('Second paragraph'));
+    });
+
+    test('a corrupt docx archive yields null (fallback)', () {
+      final bytes = Uint8List.fromList([1, 2, 3, 4, 5]);
+      expect(computeIsolatedDocxText(bytes), isNull);
+    });
+
+    test('docx preview with no rasterizer yields a text page', () async {
+      final bytes = _docxBytes('Quarterly Report\nRevenue grew 20%.');
+      final service = FakeDocumentService(
+        documents: [_doc('docx-1', mimeType: _docxMime, title: 'Report')],
+        bytesByDocumentId: {'docx-1': bytes},
+      );
+      final loader = _loaderFor(service);
+
+      final preview = await loader.previewFor(
+        _doc('docx-1', mimeType: _docxMime, title: 'Report'),
+      );
+
+      expect(preview, isA<DocumentPreviewTextPage>());
+      final textPreview = preview as DocumentPreviewTextPage;
+      expect(textPreview.text, contains('Quarterly Report'));
+    });
+
+    test('docx preview with a rasterizer yields an image preview', () async {
+      final png = _pngBytes();
+      final service = FakeDocumentService(
+        documents: [_doc('docx-2', mimeType: _docxMime, title: 'Shot')],
+        bytesByDocumentId: {'docx-2': _docxBytes('Rasterized docx')},
+      );
+      final loader = DocumentPreviewLoader(
+        bytesSource: (id) => service.readBytes(id),
+        docxRasterizer: (bytes) async => png,
+        pdfSupport: () async => false,
+      );
+
+      final preview = await loader.previewFor(
+        _doc('docx-2', mimeType: _docxMime, title: 'Shot'),
+      );
+
+      expect(preview, isA<DocumentPreviewImage>());
+    });
+  });
+}
+
+/// The OOXML MIME type produced by the Rust ingest pipeline for `.docx`.
+const String _docxMime =
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+/// Build a minimal, valid `.docx`-shaped OOXML ZIP archive containing
+/// `word/document.xml` with the given paragraphs separated by `<w:p>`.
+Uint8List _docxBytes(String paragraphsText) {
+  final paragraphs = paragraphsText
+      .split('\n')
+      .map((p) => '<w:p><w:r><w:t xml:space="preserve">$p</w:t></w:r></w:p>')
+      .join();
+  final xml =
+      '''
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>$paragraphs</w:body>
+</w:document>''';
+  final archive = ZipEncoder().encode(
+    Archive()..addFile(
+      ArchiveFile(
+        'word/document.xml',
+        utf8.encode(xml).length,
+        utf8.encode(xml),
+      ),
+    ),
+  );
+  return Uint8List.fromList(archive);
 }
