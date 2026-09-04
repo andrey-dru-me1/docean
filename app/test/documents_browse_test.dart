@@ -238,14 +238,22 @@ void main() {
         // The image doc renders a real Image thumbnail; the text doc keeps the
         // deterministic color/glyph placeholder tile. Both are grid tiles now.
         expect(find.byType(DocumentTilePreview), findsNWidgets(2));
-        expect(find.byType(Image), findsOneWidget);
+        // Image bytes render via Ink (ink feature on the Material layer), not
+        // Image (which would hide InkWell splashes behind the opaque image).
+        expect(
+          find.descendant(
+            of: find.byType(DocumentTilePreview),
+            matching: find.byType(Ink),
+          ),
+          findsOneWidget,
+        );
         expect(find.byType(DocumentPlaceholder), findsOneWidget);
       },
     );
 
     testWidgets(
-      'ink overlay sits above the preview so hover/click feedback paints over '
-      'an opaque image',
+      'image preview is rendered as an Ink feature so hover/click feedback '
+      'paints over it',
       (tester) async {
         final service = FakeDocumentService(
           documents: [
@@ -275,20 +283,17 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // The hover/click feedback is a decorative overlay inside the tile's
-        // Stack that paints above the opaque preview image (so it stays
-        // visible over it). It is wrapped in IgnorePointer and must never
-        // intercept taps — the InkWell above the Stack remains the only
-        // interactive layer.
-        expect(find.byType(Image), findsOneWidget);
-
-        // The AnimatedOpacity overlay is initially invisible (opacity 0).
-        final overlayFinder = find.ancestor(
-          of: find.byType(DecoratedBox),
-          matching: find.byType(AnimatedOpacity),
+        // The image bytes are rendered as an Ink feature (DecorationImage on
+        // the Material ink layer), not as an opaque Image widget — so
+        // InkWell's highlight/splash paint on the same layer and appear
+        // above the preview image.
+        expect(
+          find.descendant(
+            of: find.byType(DocumentTilePreview),
+            matching: find.byType(Ink),
+          ),
+          findsOneWidget,
         );
-        expect(overlayFinder, findsOneWidget);
-        expect(tester.widget<AnimatedOpacity>(overlayFinder).opacity, 0);
       },
     );
 
@@ -335,7 +340,7 @@ void main() {
     });
 
     testWidgets(
-      'hovering an image tile still delivers taps through the ink overlay',
+      'hovering an image tile still delivers taps via the outer InkWell',
       (tester) async {
         final opened = <DocumentSummary>[];
         final service = FakeDocumentService(
@@ -366,22 +371,14 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Move a mouse pointer over the tile center (the opaque image). The
-        // decorative hover overlay is IgnorePointer, so it never interferes
-        // with taps — the outer InkWell still receives them.
+        // Move a mouse pointer over the tile center (over the Ink image
+        // feature). Ink's DecorationImage is on the Material ink layer, not
+        // an opaque Image render box, so hits still reach the outer InkWell.
         final tile = find.byType(DocumentTilePreview);
         final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer(location: tester.getCenter(tile));
         await tester.pump();
         await tester.pumpAndSettle();
-
-        // The hover overlay is now visible (AnimatedOpacity has animated in).
-        final overlay = find.byType(AnimatedOpacity).last;
-        expect(
-          (tester.widget<AnimatedOpacity>(overlay)).opacity,
-          1,
-          reason: 'hover feedback overlay must be visible while hovered',
-        );
 
         await tester.tap(tile);
         await tester.pumpAndSettle();
@@ -391,56 +388,47 @@ void main() {
       },
     );
 
-    testWidgets(
-      'clicking an image tile shows an expanding ripple that cleans itself up',
-      (tester) async {
-        final service = FakeDocumentService(
-          documents: [
-            const DocumentSummary(
-              id: 'doc-img',
-              title: 'Photo',
-              mimeType: 'image/png',
-            ),
-          ],
-          bytesByDocumentId: {'doc-img': _pngBytes()},
-        );
-        final loader = DocumentPreviewLoader(
-          bytesSource: (id) => service.readBytes(id),
-          imageThumbnailer: ({required bytes, required maxDim}) async =>
-              _thumbnailer(bytes, maxDim),
-          pdfSupport: () async => false,
-        );
-
-        await tester.pumpWidget(
-          _wrap(
-            DocumentsScreen(
-              documentService: service,
-              onOpenDocument: (_) {},
-              previewLoader: loader,
-            ),
+    testWidgets('clicking an image tile fires onTap via the outer InkWell', (
+      tester,
+    ) async {
+      final opened = <DocumentSummary>[];
+      final service = FakeDocumentService(
+        documents: [
+          const DocumentSummary(
+            id: 'doc-img',
+            title: 'Photo',
+            mimeType: 'image/png',
           ),
-        );
-        await tester.pumpAndSettle();
+        ],
+        bytesByDocumentId: {'doc-img': _pngBytes()},
+      );
+      final loader = DocumentPreviewLoader(
+        bytesSource: (id) => service.readBytes(id),
+        imageThumbnailer: ({required bytes, required maxDim}) async =>
+            _thumbnailer(bytes, maxDim),
+        pdfSupport: () async => false,
+      );
 
-        // No ripple before any tap.
-        expect(find.byKey(const Key('tile-ripple-root')), findsNothing);
+      await tester.pumpWidget(
+        _wrap(
+          DocumentsScreen(
+            documentService: service,
+            onOpenDocument: opened.add,
+            previewLoader: loader,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // A tap spawns the ripple; pump once so the animation starts.
-        await tester.tap(find.byType(DocumentTilePreview));
-        await tester.pump(const Duration(milliseconds: 10));
+      // The image is an Ink feature on the Material layer; the outer
+      // InkWell's splash/hover also paint on that same layer, so taps
+      // deliver correctly.
+      await tester.tap(find.byType(DocumentTilePreview));
+      await tester.pumpAndSettle();
 
-        // Mid-animation the ripple's IgnorePointer is present.
-        expect(
-          find.byKey(const Key('tile-ripple-root')),
-          findsOneWidget,
-          reason: 'the expanding ripple paints while animating',
-        );
-
-        // Let the ripple animation finish; it self-removes.
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('tile-ripple-root')), findsNothing);
-      },
-    );
+      expect(opened, hasLength(1));
+      expect(opened.single.id, 'doc-img');
+    });
 
     testWidgets('a broken image thumbnail never bricks the list', (
       tester,

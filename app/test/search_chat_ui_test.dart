@@ -247,7 +247,13 @@ void main() {
         // The search hit resolved the MIME via getDocument and now shows a
         // real image thumbnail rather than a placeholder tile.
         expect(find.byType(DocumentThumbnail), findsOneWidget);
-        expect(find.byType(Image), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(DocumentThumbnail),
+            matching: find.byType(Ink),
+          ),
+          findsOneWidget,
+        );
         expect(find.byType(DocumentPlaceholder), findsNothing);
       },
     );

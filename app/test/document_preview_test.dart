@@ -183,8 +183,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The thumbnail is a real Image widget decoding memory bytes.
-      expect(find.byType(Image), findsOneWidget);
+      // The thumbnail is an Ink feature painting the memory bytes (so
+      // InkWell splashes paint over it when inside a Card).
+      expect(find.byType(Ink), findsOneWidget);
       // No fallback placeholder tile with the insert-drive glyph.
       expect(find.byType(DocumentPlaceholder), findsNothing);
     });
@@ -289,7 +290,7 @@ void main() {
 
       // On an unsupported platform the panel renders nothing (keeps the text
       // viewer below) rather than a broken PDF frame.
-      expect(find.byType(Image), findsNothing);
+      expect(find.byType(Ink), findsNothing);
       expect(find.byType(DocumentPlaceholder), findsNothing);
     });
   });
@@ -340,7 +341,7 @@ void main() {
 
       expect(find.text('Preview'), findsNothing);
       expect(find.textContaining('A plain text body'), findsOneWidget);
-      expect(find.byType(Image), findsNothing);
+      expect(find.byType(Ink), findsNothing);
     });
   });
 }

@@ -209,13 +209,20 @@ class _DocumentTilePreviewState extends State<DocumentTilePreview> {
       _ => null,
     };
     if (bytes != null) {
+      // Render the image as an ink feature on the nearest Material ancestor
+      // (typically the Card in the Documents grid).  InkWell's highlight/
+      // ripple also paint on that same ink layer, so hover feedback and tap
+      // splashes appear *over* the image — unlike Image.memory, which sits
+      // as a regular render box and hides any ink behind it.
       return ClipRRect(
         borderRadius: BorderRadius.circular(widget.borderRadius),
-        child: Image.memory(
-          bytes,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => _FallbackTile(document: widget.document),
+        child: Ink(
+          decoration: BoxDecoration(
+            image: DecorationImage(
+              image: MemoryImage(bytes),
+              fit: BoxFit.cover,
+            ),
+          ),
         ),
       );
     }
@@ -259,17 +266,6 @@ class DocumentThumbnail extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The inner fallback tile used when an image/PDF preview bytes fail to decode
-/// inside [Image.memory] (belt-and-suspenders on top of the loader fallback).
-class _FallbackTile extends StatelessWidget {
-  const _FallbackTile({required this.document});
-
-  final DocumentSummary document;
-
-  @override
-  Widget build(BuildContext context) => DocumentPlaceholder(document: document);
 }
 
 /// A larger preview panel for the document detail view.
