@@ -4,9 +4,13 @@
 //! content-addressed store — plus the domain types it operates on. Everything
 //! here is reachable from Flutter via `flutter_rust_bridge`.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::domain::{Content, Document, HierarchyLink, HierarchyPath, PathAssignment, Tag};
+use crate::domain::{
+    Content, Document, DocumentSuggestion, FeedbackStats, HierarchyLink, HierarchyPath,
+    PathAssignment, SuggestionFeedback, SuggestionKind, Tag,
+};
 use crate::storage::{DocumentQuery, DocumentStore, SqliteDocumentStore};
 
 /// Opaque handle to an open document repository.
@@ -206,6 +210,79 @@ impl DocumentRepository {
             .collect();
         crate::api::search::search_set_metadata(document_id, tags, paths);
         Ok(())
+    }
+
+    // --- pending suggestions + feedback -----------------------------------
+    //
+    // These are the low-level CRUD surfaces for the review UI. The higher-level
+    // "suggest + apply + record feedback" flows live in `crate::api::auto_org`;
+    // this repository only persists and reads the rows.
+
+    /// Persist (or update) one pending suggestion row.
+    pub fn put_suggestion(&self, suggestion: DocumentSuggestion) -> Result<(), String> {
+        let mut store = self.store()?;
+        store.put_suggestion(&suggestion).map_err(|e| e.to_string())
+    }
+
+    /// Fetch a document's suggestions (optionally filtered by kind), newest
+    /// alternatives first per kind.
+    pub fn suggestions_of(
+        &self,
+        document_id: String,
+        kind: Option<SuggestionKind>,
+    ) -> Result<Vec<DocumentSuggestion>, String> {
+        let store = self.store()?;
+        store
+            .suggestions_for_document(&document_id.to_owned(), kind)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Update the review status (pending/applied/dismissed) of one suggestion.
+    pub fn mark_suggestion(
+        &self,
+        suggestion_id: String,
+        status: crate::domain::SuggestionStatus,
+    ) -> Result<(), String> {
+        let mut store = self.store()?;
+        store.mark_suggestion(&suggestion_id, status).map_err(|e| e.to_string())
+    }
+
+    /// Remove all suggestion rows for a document.
+    pub fn delete_document_suggestions(&self, document_id: String) -> Result<(), String> {
+        let mut store = self.store()?;
+        store
+            .delete_suggestions_for_document(&document_id.to_owned())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Persist one feedback event.
+    pub fn record_feedback(&self, feedback: SuggestionFeedback) -> Result<(), String> {
+        let mut store = self.store()?;
+        store.record_feedback(&feedback).map_err(|e| e.to_string())
+    }
+
+    /// Aggregated accept/reject evidence per term (feedback model input).
+    pub fn feedback_stats(
+        &self,
+        kind: Option<SuggestionKind>,
+        context: Option<String>,
+    ) -> Result<HashMap<String, FeedbackStats>, String> {
+        let store = self.store()?;
+        store
+            .feedback_stats(kind, context.as_deref())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Wipe all learning data.
+    pub fn clear_feedback(&self) -> Result<(), String> {
+        let mut store = self.store()?;
+        store.clear_feedback().map_err(|e| e.to_string())
+    }
+
+    /// Housekeeping: drop non-pending suggestions older than `older_than_ms`.
+    pub fn prune_suggestions(&self, older_than_ms: i64) -> Result<(), String> {
+        let mut store = self.store()?;
+        store.prune_suggestions(older_than_ms).map_err(|e| e.to_string())
     }
 }
 

@@ -71,6 +71,41 @@ const MIGRATIONS: &[&str] = &[
         source      TEXT NOT NULL
     );
     "#,
+    // v1 -> v2: pending metadata suggestions (for user review in the document
+    // detail view) and the on-device feedback table that powers the learning
+    // model.
+    r#"
+    -- One row per suggested title or tag-set candidate. rank 0 is the currently
+    -- applied suggestion (when the user has not replaced it with a manual edit);
+    -- rank >= 1 are pending alternatives the user may review in the document
+    -- info card. status transitions: pending -> applied|dismissed.
+    CREATE TABLE document_suggestions (
+        id            TEXT PRIMARY KEY,
+        document_id   TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        kind          TEXT NOT NULL,          -- 'title' | 'tags'
+        payload       TEXT NOT NULL,          -- title text / JSON array of tags
+        rank          INTEGER NOT NULL,
+        source        TEXT NOT NULL,          -- 'ingest' | 'bulk' | 'manual_request' | 'user'
+        confidence    REAL NOT NULL DEFAULT 1.0,
+        status        TEXT NOT NULL,          -- 'pending' | 'applied' | 'dismissed'
+        created_at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX idx_suggestions_doc ON document_suggestions(document_id, kind, status, rank);
+
+    -- Per-term preference evidence recorded when the user reviews a suggestion
+    -- (Keep/switch/dismiss/type-own). The feedback model aggregates accepts and
+    -- rejects per (kind, context, term) to re-rank future suggestions.
+    CREATE TABLE suggestion_feedback (
+        id            TEXT PRIMARY KEY,
+        kind          TEXT NOT NULL,          -- 'title' | 'tags'
+        context       TEXT NOT NULL,          -- 'title' | 'tag' (future: 'path', ...)
+        term          TEXT NOT NULL,          -- tag name or normalized title keyword
+        action        TEXT NOT NULL,          -- 'accepted' | 'rejected'
+        weight        REAL NOT NULL,          -- 1.0 model tap, 2.0 user-typed
+        created_at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX idx_feedback_term ON suggestion_feedback(kind, context, term);
+    "#,
 ];
 
 /// Apply all pending migrations to `conn`.
@@ -121,6 +156,8 @@ mod tests {
             "document_paths",
             "hierarchy_links",
             "content",
+            "document_suggestions",
+            "suggestion_feedback",
         ] {
             let count: i64 = conn
                 .query_row(

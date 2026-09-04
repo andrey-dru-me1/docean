@@ -96,3 +96,83 @@ pub struct Content {
     /// A short extractor identifier, e.g. `"pdf"`, `"ocr"`, `"markdown"`.
     pub source: String,
 }
+
+/// What a suggestion proposes: a title, or a tag set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SuggestionKind {
+    Title,
+    Tags,
+}
+
+/// How a suggestion was produced (surfaced in the UI for transparency).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SuggestionSource {
+    /// The deterministic auto-organization pass run at ingestion time.
+    Ingest,
+    /// A bulk "suggest titles/tags" pass.
+    Bulk,
+    /// The per-document "Suggest" button (manual request).
+    ManualRequest,
+    /// A user-typed contribution (own title/tag), recorded for learning.
+    User,
+}
+
+/// Review state of a stored suggestion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SuggestionStatus {
+    /// Still shown in the document info card for the user to confirm/switch to.
+    Pending,
+    /// The user confirmed this (or it was auto-applied as rank 0).
+    Applied,
+    /// The user chose another alternative (or explicitly dismissed it).
+    Dismissed,
+}
+
+/// A persisted title/tag-set suggestion for a document.
+///
+/// rank 0 is the currently applied suggestion; rank >= 1 are pending
+/// alternatives the user may review in the document info card. Choosing one
+/// alternative marks every other pending suggestion of the same kind dismissed.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentSuggestion {
+    pub id: String,
+    pub document_id: DocumentId,
+    pub kind: SuggestionKind,
+    /// The suggested title text (kind = Title) or a JSON array of tag names
+    /// (kind = Tags).
+    pub payload: String,
+    /// 0 = currently applied; higher = lower priority alternative.
+    pub rank: i32,
+    pub source: SuggestionSource,
+    pub confidence: f64,
+    pub status: SuggestionStatus,
+    pub created_at_ms: i64,
+}
+
+/// A single preference-evidence event recorded when the user reviews a
+/// suggestion (accepted/rejected term, how strongly it was weighted).
+///
+/// The feedback model aggregates these per (kind, context, term) and re-ranks
+/// future suggestions with an EWMA-decayed score. All data stays on-device.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestionFeedback {
+    pub id: String,
+    pub kind: SuggestionKind,
+    pub context: String,
+    pub term: String,
+    pub action: String, // "accepted" | "rejected"
+    pub weight: f64,
+    pub created_at_ms: i64,
+}
+
+/// Aggregated accept/reject evidence for one term (the feedback model input).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct FeedbackStats {
+    pub accepts: f64,
+    pub rejects: f64,
+}

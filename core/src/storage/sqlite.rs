@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::domain::{
-    Content, Document, DocumentId, HierarchyLink, HierarchyPath, NodeKind, PathAssignment, Tag,
+    Content, Document, DocumentId, DocumentSuggestion, FeedbackStats, HierarchyLink,
+    HierarchyPath, NodeKind, PathAssignment, SuggestionFeedback, SuggestionKind, Tag,
 };
 use crate::storage::blob::{hash_bytes, BlobStore};
 use crate::storage::schema;
@@ -542,5 +543,256 @@ impl DocumentStore for SqliteDocumentStore {
             tx.commit()?;
             Ok(())
         })
+    }
+
+}
+
+// --- pending suggestions + feedback ---------------------------------------
+//
+// These live on the concrete store (not the `DocumentStore` trait) because
+// they back the review UI, not the document index. `DocumentRepository` calls
+// them directly through the `Arc<Mutex<SqliteDocumentStore>>` handle.
+impl SqliteDocumentStore {
+    /// Insert or update one suggestion row.
+    pub fn put_suggestion(&mut self, s: &DocumentSuggestion) -> Result<(), StorageError> {
+        self.with_conn_mut(|conn| {
+            conn.execute(
+                r#"
+                INSERT INTO document_suggestions
+                    (id, document_id, kind, payload, rank, source, confidence, status, created_at_ms)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                ON CONFLICT(id) DO UPDATE SET
+                    rank = excluded.rank,
+                    status = excluded.status,
+                    payload = excluded.payload,
+                    source = excluded.source,
+                    confidence = excluded.confidence
+                "#,
+                params![
+                    s.id,
+                    s.document_id,
+                    kind_str(s.kind),
+                    s.payload,
+                    s.rank,
+                    source_str(s.source),
+                    s.confidence,
+                    status_str(s.status),
+                    s.created_at_ms,
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Fetch suggestions for a document, optionally filtered by kind.
+    pub fn suggestions_for_document(
+        &self,
+        document_id: &DocumentId,
+        kind: Option<SuggestionKind>,
+    ) -> Result<Vec<DocumentSuggestion>, StorageError> {
+        self.with_conn(|conn| {
+            let mut sql = String::from(
+                r#"
+                SELECT id, document_id, kind, payload, rank, source, confidence, status, created_at_ms
+                FROM document_suggestions
+                WHERE document_id = ?1
+                "#,
+            );
+            let mut args: Vec<String> = vec![document_id.clone()];
+            if let Some(kind) = kind {
+                sql.push_str(" AND kind = ?2");
+                args.push(kind_str(kind).to_owned());
+            }
+            sql.push_str(" ORDER BY kind, rank, created_at_ms");
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(
+                    rusqlite::params_from_iter(args.iter()),
+                    Self::row_to_suggestion,
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+    }
+
+    /// Update the review status of one suggestion.
+    pub fn mark_suggestion(
+        &mut self,
+        id: &str,
+        status: crate::domain::SuggestionStatus,
+    ) -> Result<(), StorageError> {
+        self.with_conn_mut(|conn| {
+            conn.execute(
+                "UPDATE document_suggestions SET status = ?2 WHERE id = ?1",
+                params![id, status_str(status)],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Remove every suggestion row for a document (used on replacement).
+    pub fn delete_suggestions_for_document(
+        &mut self,
+        document_id: &DocumentId,
+    ) -> Result<(), StorageError> {
+        self.with_conn_mut(|conn| {
+            conn.execute(
+                "DELETE FROM document_suggestions WHERE document_id = ?1",
+                [document_id],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Persist one feedback event (accepted/rejected term).
+    pub fn record_feedback(&mut self, f: &SuggestionFeedback) -> Result<(), StorageError> {
+        self.with_conn_mut(|conn| {
+            conn.execute(
+                r#"
+                INSERT INTO suggestion_feedback
+                    (id, kind, context, term, action, weight, created_at_ms)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "#,
+                params![
+                    f.id,
+                    kind_str(f.kind),
+                    f.context,
+                    f.term,
+                    f.action,
+                    f.weight,
+                    f.created_at_ms,
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Aggregate accept/reject evidence per term for the feedback model.
+    pub fn feedback_stats(
+        &self,
+        kind: Option<SuggestionKind>,
+        context: Option<&str>,
+    ) -> Result<HashMap<String, FeedbackStats>, StorageError> {
+        self.with_conn(|conn| {
+            let mut sql = String::from(
+                r#"
+                SELECT term,
+                       COALESCE(SUM(CASE WHEN action = 'accepted' THEN weight END), 0.0) AS accepts,
+                       COALESCE(SUM(CASE WHEN action = 'rejected' THEN weight END), 0.0) AS rejects
+                FROM suggestion_feedback
+                WHERE 1 = 1
+                "#,
+            );
+            let mut args: Vec<String> = Vec::new();
+            let mut idx = 0usize;
+            if let Some(kind) = kind {
+                idx += 1;
+                sql.push_str(&format!(" AND kind = ?{idx}"));
+                args.push(kind_str(kind).to_owned());
+            }
+            if let Some(context) = context {
+                idx += 1;
+                sql.push_str(&format!(" AND context = ?{idx}"));
+                args.push(context.to_owned());
+            }
+            sql.push_str(" GROUP BY term");
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(
+                    rusqlite::params_from_iter(args.iter()),
+                    |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            FeedbackStats {
+                                accepts: r.get::<_, f64>(1)?,
+                                rejects: r.get::<_, f64>(2)?,
+                            },
+                        ))
+                    },
+                )?
+                .collect::<Result<HashMap<_, _>, _>>()?;
+            Ok(rows)
+        })
+    }
+
+    /// Wipe all learning data (settings "reset learning").
+    pub fn clear_feedback(&mut self) -> Result<(), StorageError> {
+        self.with_conn_mut(|conn| {
+            conn.execute("DELETE FROM suggestion_feedback", [])?;
+            Ok(())
+        })
+    }
+
+    /// Delete non-pending suggestions older than `older_than_ms` (housekeeping).
+    pub fn prune_suggestions(&mut self, older_than_ms: i64) -> Result<(), StorageError> {
+        self.with_conn_mut(|conn| {
+            conn.execute(
+                "DELETE FROM document_suggestions WHERE status != 'pending' AND created_at_ms < ?1",
+                [older_than_ms],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn row_to_suggestion(row: &Row) -> rusqlite::Result<DocumentSuggestion> {
+        Ok(DocumentSuggestion {
+            id: row.get(0)?,
+            document_id: row.get(1)?,
+            kind: kind_from_str(&row.get::<_, String>(2)?),
+            payload: row.get(3)?,
+            rank: row.get(4)?,
+            source: source_from_str(&row.get::<_, String>(5)?),
+            confidence: row.get(6)?,
+            status: status_from_str(&row.get::<_, String>(7)?),
+            created_at_ms: row.get(8)?,
+        })
+    }
+}
+
+fn kind_str(k: SuggestionKind) -> &'static str {
+    match k {
+        SuggestionKind::Title => "title",
+        SuggestionKind::Tags => "tags",
+    }
+}
+
+fn kind_from_str(s: &str) -> SuggestionKind {
+    match s {
+        "tags" => SuggestionKind::Tags,
+        _ => SuggestionKind::Title,
+    }
+}
+
+fn source_str(s: crate::domain::SuggestionSource) -> &'static str {
+    match s {
+        crate::domain::SuggestionSource::Ingest => "ingest",
+        crate::domain::SuggestionSource::Bulk => "bulk",
+        crate::domain::SuggestionSource::ManualRequest => "manual_request",
+        crate::domain::SuggestionSource::User => "user",
+    }
+}
+
+fn source_from_str(s: &str) -> crate::domain::SuggestionSource {
+    match s {
+        "bulk" => crate::domain::SuggestionSource::Bulk,
+        "manual_request" => crate::domain::SuggestionSource::ManualRequest,
+        "user" => crate::domain::SuggestionSource::User,
+        _ => crate::domain::SuggestionSource::Ingest,
+    }
+}
+
+fn status_str(s: crate::domain::SuggestionStatus) -> &'static str {
+    match s {
+        crate::domain::SuggestionStatus::Applied => "applied",
+        crate::domain::SuggestionStatus::Dismissed => "dismissed",
+        _ => "pending",
+    }
+}
+
+fn status_from_str(s: &str) -> crate::domain::SuggestionStatus {
+    match s {
+        "applied" => crate::domain::SuggestionStatus::Applied,
+        "dismissed" => crate::domain::SuggestionStatus::Dismissed,
+        _ => crate::domain::SuggestionStatus::Pending,
     }
 }
