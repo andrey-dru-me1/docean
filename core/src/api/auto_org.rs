@@ -141,7 +141,14 @@ fn apply_plan(
     // the (possibly just applied) current value, and the pre-suggestion old
     // title/tags are included among the alternatives so the user can switch
     // back to them.
-    store_plan_suggestions(repo, plan.clone(), Some(&pre_title), Some(&pre_tags), source)?;
+    store_plan_suggestions(
+        repo,
+        plan.clone(),
+        Some(&pre_title),
+        Some(&pre_tags),
+        source,
+        None,
+    )?;
 
     Ok(counts)
 }
@@ -158,6 +165,7 @@ fn store_plan_suggestions(
     pre_title: Option<&str>,
     pre_tags: Option<&[String]>,
     source: SuggestionSource,
+    kind_filter: Option<SuggestionKind>,
 ) -> Result<(), String> {
     let document_id = plan.document_id.clone();
     let now = crate::api::storage::now_ms();
@@ -165,79 +173,85 @@ fn store_plan_suggestions(
     let mut rows: Vec<DocumentSuggestion> = Vec::new();
 
     // Tags: rank 0 is the applied set. The pre-suggestion old tag set is
-    // offered as the first alternative (the user may want it back).
-    let mut tag_sets: Vec<Vec<String>> = vec![plan.tags.clone()];
-    if let Some(pre) = pre_tags {
-        if !pre.is_empty() && pre != plan.tags {
-            // Push only if not already covered by an alternative.
-            let mut all: Vec<Vec<String>> =
-                vec![pre.to_vec()].into_iter().chain(plan.alt_tag_sets.clone()).collect();
-            all.dedup_by(|a, b| {
-                let mut a = a.clone();
-                let mut b = b.clone();
-                a.sort();
-                b.sort();
-                a == b
-            });
-            tag_sets.extend(all);
+    // offered as the first alternative (the user may want it back). Only store
+    // tag rows when a tags suggestion is being made (kind_filter allows both).
+    if kind_filter != Some(SuggestionKind::Title) {
+        let mut tag_sets: Vec<Vec<String>> = vec![plan.tags.clone()];
+        if let Some(pre) = pre_tags {
+            if !pre.is_empty() && pre != plan.tags {
+                // Push only if not already covered by an alternative.
+                let mut all: Vec<Vec<String>> =
+                    vec![pre.to_vec()].into_iter().chain(plan.alt_tag_sets.clone()).collect();
+                all.dedup_by(|a, b| {
+                    let mut a = a.clone();
+                    let mut b = b.clone();
+                    a.sort();
+                    b.sort();
+                    a == b
+                });
+                tag_sets.extend(all);
+            } else {
+                tag_sets.extend(plan.alt_tag_sets.clone());
+            }
         } else {
             tag_sets.extend(plan.alt_tag_sets.clone());
         }
-    } else {
-        tag_sets.extend(plan.alt_tag_sets.clone());
-    }
-    for (rank, set) in tag_sets.iter().enumerate() {
-        rows.push(DocumentSuggestion {
-            id: format!("{document_id}-tags-{rank}"),
-            document_id: document_id.clone(),
-            kind: SuggestionKind::Tags,
-            payload: serde_json::to_string(set).unwrap_or_else(|_| "[]".to_owned()),
-            rank: rank as i32,
-            source,
-            confidence: 1.0,
-            status: if rank == 0 {
-                SuggestionStatus::Applied
-            } else {
-                SuggestionStatus::Pending
-            },
-            created_at_ms: now,
-        });
+        for (rank, set) in tag_sets.iter().enumerate() {
+            rows.push(DocumentSuggestion {
+                id: format!("{document_id}-tags-{rank}"),
+                document_id: document_id.clone(),
+                kind: SuggestionKind::Tags,
+                payload: serde_json::to_string(set).unwrap_or_else(|_| "[]".to_owned()),
+                rank: rank as i32,
+                source,
+                confidence: 1.0,
+                status: if rank == 0 {
+                    SuggestionStatus::Applied
+                } else {
+                    SuggestionStatus::Pending
+                },
+                created_at_ms: now,
+            });
+        }
     }
 
     // Title: rank 0 is the applied suggestion. The pre-suggestion old title is
-    // offered as the first alternative (the user may want it back).
-    let mut titles: Vec<String> = Vec::new();
-    if let Some(t) = &plan.suggested_title {
-        if !t.trim().is_empty() {
-            titles.push(t.trim().to_owned());
+    // offered as the first alternative (the user may want it back). Only store
+    // title rows when a title suggestion is being made.
+    if kind_filter != Some(SuggestionKind::Tags) {
+        let mut titles: Vec<String> = Vec::new();
+        if let Some(t) = &plan.suggested_title {
+            if !t.trim().is_empty() {
+                titles.push(t.trim().to_owned());
+            }
         }
-    }
-    if let Some(pre) = pre_title {
-        let trimmed = pre.trim();
-        if !trimmed.is_empty() && trimmed != titles.first().map(String::as_str).unwrap_or("") {
-            // Insert the old title right after rank 0.
-            titles.splice(1..1, std::iter::once(trimmed.to_owned()));
+        if let Some(pre) = pre_title {
+            let trimmed = pre.trim();
+            if !trimmed.is_empty() && trimmed != titles.first().map(String::as_str).unwrap_or("") {
+                // Insert the old title right after rank 0.
+                titles.splice(1..1, std::iter::once(trimmed.to_owned()));
+            }
         }
-    }
-    // Append the remaining generated alternatives (dedup vs. old title below).
-    titles.extend(plan.alt_titles.clone());
-    titles.dedup();
-    for (rank, title) in titles.iter().enumerate() {
-        rows.push(DocumentSuggestion {
-            id: format!("{document_id}-title-{rank}"),
-            document_id: document_id.clone(),
-            kind: SuggestionKind::Title,
-            payload: title.clone(),
-            rank: rank as i32,
-            source,
-            confidence: 1.0,
-            status: if rank == 0 {
-                SuggestionStatus::Applied
-            } else {
-                SuggestionStatus::Pending
-            },
-            created_at_ms: now,
-        });
+        // Append the remaining generated alternatives (dedup vs. old title).
+        titles.extend(plan.alt_titles.clone());
+        titles.dedup();
+        for (rank, title) in titles.iter().enumerate() {
+            rows.push(DocumentSuggestion {
+                id: format!("{document_id}-title-{rank}"),
+                document_id: document_id.clone(),
+                kind: SuggestionKind::Title,
+                payload: title.clone(),
+                rank: rank as i32,
+                source,
+                confidence: 1.0,
+                status: if rank == 0 {
+                    SuggestionStatus::Applied
+                } else {
+                    SuggestionStatus::Pending
+                },
+                created_at_ms: now,
+            });
+        }
     }
 
     // Replace any previously pending rows for this document & kind so a re-run
@@ -301,6 +315,11 @@ pub(crate) fn organize_document(
     let prefs = preference_model(repo, &config)?;
     let plan = organizer.organize_with_model(&corpus, document_id, &prefs);
 
+    // Capture pre-suggestion values for the review card.
+    let pre_doc = repo.get(document_id.to_owned())?;
+    let pre_title = pre_doc.title.clone();
+    let pre_tags = pre_doc.tags.clone();
+
     let mut doc = repo.get(document_id.to_owned())?;
     doc.tags = plan.tags.clone();
     if let Some(title) = plan
@@ -337,13 +356,13 @@ pub(crate) fn organize_document(
 
     // Persist the candidate list (rank 0 + alternatives) for review, with the
     // pre-suggestion value offered first among alternatives.
-    let pre = repo.get(document_id.to_owned())?;
     store_plan_suggestions(
         repo,
         plan.clone(),
-        Some(&pre.title),
-        Some(&pre.tags),
+        Some(&pre_title),
+        Some(&pre_tags),
         SuggestionSource::Ingest,
+        None,
     )?;
 
     Ok(plan)
@@ -753,6 +772,7 @@ pub async fn auto_org_suggest_title(
         Some(&pre_title),
         Some(&doc.tags),
         SuggestionSource::ManualRequest,
+        Some(SuggestionKind::Title),
     )?;
 
     // Count pending alternatives (rank >= 1).
@@ -813,6 +833,7 @@ pub async fn auto_org_suggest_tags(
         Some(&doc.title),
         Some(&pre_tags),
         SuggestionSource::ManualRequest,
+        Some(SuggestionKind::Tags),
     )?;
 
     // Count pending alternatives.

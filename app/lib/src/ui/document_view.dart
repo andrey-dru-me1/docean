@@ -768,53 +768,71 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         ? applied.firstWhere((s) => s.kind == kind, orElse: () => pending.first)
         : pending.first;
     final label = isTags ? current.tags.join(', ') : (current.title ?? 'Title');
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+
+    // Overflow-safe layout: the label sits on its own line, the alternative
+    // chips wrap below it. Keeps the review card sane on narrow containers and
+    // prevents RenderFlex overflow when there are many alternatives.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-        for (final alt in pending) ...[
-          const SizedBox(width: 6),
-          // Tapping an alternative immediately applies it (the core records
-          // feedback + collapses the other alternatives).
-          ActionChip(
-            key: ValueKey('suggestion-${alt.id}'),
-            label: Text(
-              isTags ? alt.tags.take(3).join('+') : (alt.title ?? ''),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _chooseSuggestion(alt),
-          ),
-          Tooltip(
-            message: 'Not this one',
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _dismissSuggestion(alt),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: Icon(Icons.close, size: 14, color: scheme.error),
-                ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
-          ),
-        ],
+            if (pending.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              TextButton(
+                key: ValueKey('confirm-${kind.name}'),
+                onPressed: () => _confirmCurrent(kind),
+                child: const Text('Keep'),
+              ),
+            ],
+          ],
+        ),
         if (pending.isNotEmpty) ...[
-          const SizedBox(width: 6),
-          TextButton(
-            key: ValueKey('confirm-${kind.name}'),
-            onPressed: () => _confirmCurrent(kind),
-            child: const Text('Keep'),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final alt in pending) ...[
+                // Tapping an alternative immediately applies it (the core
+                // records feedback + collapses the other alternatives).
+                ActionChip(
+                  key: ValueKey('suggestion-${alt.id}'),
+                  label: Text(
+                    isTags ? alt.tags.take(3).join('+') : (alt.title ?? ''),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _chooseSuggestion(alt),
+                ),
+                Tooltip(
+                  message: 'Not this one',
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _dismissSuggestion(alt),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: Icon(Icons.close, size: 14, color: scheme.error),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ],
