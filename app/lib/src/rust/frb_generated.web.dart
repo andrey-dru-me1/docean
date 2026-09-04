@@ -410,6 +410,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SearchRequestDto dco_decode_search_request_dto(dynamic raw);
 
   @protected
+  SuggestOutcome dco_decode_suggest_outcome(dynamic raw);
+
+  @protected
   SuggestionFeedback dco_decode_suggestion_feedback(dynamic raw);
 
   @protected
@@ -911,6 +914,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SearchRequestDto sse_decode_search_request_dto(SseDeserializer deserializer);
+
+  @protected
+  SuggestOutcome sse_decode_suggest_outcome(SseDeserializer deserializer);
 
   @protected
   SuggestionFeedback sse_decode_suggestion_feedback(
@@ -1526,6 +1532,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_search_request_dto(
     SearchRequestDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_suggest_outcome(
+    SuggestOutcome self,
     SseSerializer serializer,
   );
 

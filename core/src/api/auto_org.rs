@@ -53,6 +53,7 @@ fn build_corpus(repo: &DocumentRepository) -> Result<Corpus, String> {
     Ok(corpus)
 }
 
+#[allow(dead_code)]
 /// A value is "manually set" when its `extra` key exists with a truthy value
 /// (the exact string `"true"`, matching what the UI writes and what the
 /// document detail view's `DocumentSummary` getters check).
@@ -86,8 +87,8 @@ impl ApplyCounts {
 fn apply_plan(
     repo: &DocumentRepository,
     plan: &OrgPlan,
-    title_manual: bool,
-    tags_manual: bool,
+    _title_manual: bool,
+    _tags_manual: bool,
     source: SuggestionSource,
 ) -> Result<ApplyCounts, String> {
     let mut counts = ApplyCounts {
@@ -97,28 +98,29 @@ fn apply_plan(
     };
 
     let doc = repo.get(plan.document_id.clone())?;
+    // Pre-suggestion value, captured so the old naming can be offered as an
+    // alternative ("I want my old title back").
+    let pre_title = doc.title.clone();
+    let pre_tags = doc.tags.clone();
 
-    // Tags: apply only when the user has not manually assigned them. Either
-    // way the full candidate list (incl. this set) is persisted as pending for
-    // review in the document info card.
-    if !tags_manual && plan.tags != doc.tags {
-        repo.set_tags(plan.document_id.clone(), plan.tags.clone())?;
+    // Tags: always apply the suggestion (manual-flag gating removed). The old
+    // tag set is offered as an alternative in store_plan_suggestions below.
+    if plan.tags != pre_tags {
+        repo.apply_suggested_tags(plan.document_id.clone(), plan.tags.clone())?;
         counts.changed_tags = true;
     }
 
-    // Title: apply only when the user has not manually renamed the document and
-    // the pipeline actually produced a (trimmed, non-empty) suggestion.
+    // Title: always apply when the pipeline produced a (trimmed, non-empty)
+    // suggestion. Old title is offered as an alternative.
     let suggested_title = plan
         .suggested_title
         .as_ref()
         .map(|t| t.trim().trim_end_matches(['-', '_', '.', ' ']).to_owned())
         .filter(|t| !t.is_empty());
-    if !title_manual {
-        if let Some(title) = suggested_title {
-            if title != doc.title {
-                repo.update_title(plan.document_id.clone(), title)?;
-                counts.changed_title = true;
-            }
+    if let Some(title) = suggested_title {
+        if title != pre_title {
+            repo.apply_suggested_title(plan.document_id.clone(), title)?;
+            counts.changed_title = true;
         }
     }
 
@@ -136,10 +138,10 @@ fn apply_plan(
     }
 
     // Persist every candidate as a pending suggestion for review — rank 0 is
-    // the (possibly just applied) current title/tags. This removes the old
-    // silent "skipped because manually edited" dead end: the user always has
-    // the alternatives available in the document info card.
-    store_plan_suggestions(repo, plan.clone(), source)?;
+    // the (possibly just applied) current value, and the pre-suggestion old
+    // title/tags are included among the alternatives so the user can switch
+    // back to them.
+    store_plan_suggestions(repo, plan.clone(), Some(&pre_title), Some(&pre_tags), source)?;
 
     Ok(counts)
 }
@@ -153,6 +155,8 @@ fn apply_plan(
 fn store_plan_suggestions(
     repo: &DocumentRepository,
     plan: OrgPlan,
+    pre_title: Option<&str>,
+    pre_tags: Option<&[String]>,
     source: SuggestionSource,
 ) -> Result<(), String> {
     let document_id = plan.document_id.clone();
@@ -160,11 +164,28 @@ fn store_plan_suggestions(
 
     let mut rows: Vec<DocumentSuggestion> = Vec::new();
 
-    // Tags: rank 0 is the applied set. If the user manually tagged, the applied
-    // set is still the "current" one but we still store the *suggestion* list
-    // so they can review and switch.
+    // Tags: rank 0 is the applied set. The pre-suggestion old tag set is
+    // offered as the first alternative (the user may want it back).
     let mut tag_sets: Vec<Vec<String>> = vec![plan.tags.clone()];
-    tag_sets.extend(plan.alt_tag_sets.clone());
+    if let Some(pre) = pre_tags {
+        if !pre.is_empty() && pre != plan.tags {
+            // Push only if not already covered by an alternative.
+            let mut all: Vec<Vec<String>> =
+                vec![pre.to_vec()].into_iter().chain(plan.alt_tag_sets.clone()).collect();
+            all.dedup_by(|a, b| {
+                let mut a = a.clone();
+                let mut b = b.clone();
+                a.sort();
+                b.sort();
+                a == b
+            });
+            tag_sets.extend(all);
+        } else {
+            tag_sets.extend(plan.alt_tag_sets.clone());
+        }
+    } else {
+        tag_sets.extend(plan.alt_tag_sets.clone());
+    }
     for (rank, set) in tag_sets.iter().enumerate() {
         rows.push(DocumentSuggestion {
             id: format!("{document_id}-tags-{rank}"),
@@ -183,15 +204,24 @@ fn store_plan_suggestions(
         });
     }
 
-    // Title: rank 0 is the applied suggestion (or the current title when the
-    // pipeline produced nothing / user manually renamed).
+    // Title: rank 0 is the applied suggestion. The pre-suggestion old title is
+    // offered as the first alternative (the user may want it back).
     let mut titles: Vec<String> = Vec::new();
     if let Some(t) = &plan.suggested_title {
         if !t.trim().is_empty() {
             titles.push(t.trim().to_owned());
         }
     }
+    if let Some(pre) = pre_title {
+        let trimmed = pre.trim();
+        if !trimmed.is_empty() && trimmed != titles.first().map(String::as_str).unwrap_or("") {
+            // Insert the old title right after rank 0.
+            titles.splice(1..1, std::iter::once(trimmed.to_owned()));
+        }
+    }
+    // Append the remaining generated alternatives (dedup vs. old title below).
     titles.extend(plan.alt_titles.clone());
+    titles.dedup();
     for (rank, title) in titles.iter().enumerate() {
         rows.push(DocumentSuggestion {
             id: format!("{document_id}-title-{rank}"),
@@ -305,8 +335,16 @@ pub(crate) fn organize_document(
         })?;
     }
 
-    // Persist the candidate list (rank 0 + alternatives) for review.
-    store_plan_suggestions(repo, plan.clone(), SuggestionSource::Ingest)?;
+    // Persist the candidate list (rank 0 + alternatives) for review, with the
+    // pre-suggestion value offered first among alternatives.
+    let pre = repo.get(document_id.to_owned())?;
+    store_plan_suggestions(
+        repo,
+        plan.clone(),
+        Some(&pre.title),
+        Some(&pre.tags),
+        SuggestionSource::Ingest,
+    )?;
 
     Ok(plan)
 }
@@ -436,6 +474,18 @@ pub async fn auto_org_reorganize_selected(
     })
 }
 
+/// The outcome of a per-document "Suggest title"/"Suggest tags" run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestOutcome {
+    /// Applied (value changed) | AlreadyCurrent (no change needed) |
+    /// NoSuggestion (pipeline produced nothing).
+    pub status: String,
+    /// How many pending alternatives were stored for the review card (0 when
+    /// nothing to review).
+    pub stored_pending: usize,
+}
+
 /// Re-run the deterministic auto-organization pass on a single document,
 /// honoring the `title_manual` / `tags_manual` flags exactly like the bulk
 /// pass. Returns `true` when the document's metadata changed.
@@ -456,16 +506,7 @@ fn auto_org_reorganize_one_impl(
         return Ok(false);
     }
 
-    let doc = repo.get(document_id.clone())?;
-    let title_manual = flag_is_set(&doc.extra, TITLE_MANUAL_KEY);
-    let tags_manual = flag_is_set(&doc.extra, TAGS_MANUAL_KEY);
-    let counts = apply_plan(
-        repo,
-        &plan,
-        title_manual,
-        tags_manual,
-        SuggestionSource::Bulk,
-    )?;
+    let counts = apply_plan(repo, &plan, false, false, SuggestionSource::Bulk)?;
 
     // Refresh the in-memory search metadata for the freshly written doc (the
     // same wiring the ingestion pipeline uses after auto-organization).
@@ -668,6 +709,133 @@ pub async fn auto_org_dismiss_suggestion(
     Ok(())
 }
 
+/// Suggest a title for a document: apply the top suggestion (if any), persist
+/// the full candidate list (including the pre-suggestion old title) as pending
+/// for review, and return the outcome.
+///
+/// The top suggestion is applied **without** stamping `title_manual` (it is a
+/// suggestion, not a user rename). The pre-suggestion value is always among the
+/// alternatives so the user can switch back to it.
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_suggest_title(
+    repo: &DocumentRepository,
+    document_id: String,
+    config: OrgConfig,
+) -> Result<SuggestOutcome, String> {
+    let corpus = build_corpus(repo)?;
+    let prefs = preference_model(repo, &config)?;
+    let organizer = DeterministicOrganizer::new(config.clone());
+    let plan = organizer.organize_with_model(&corpus, &document_id, &prefs);
+
+    let doc = repo.get(document_id.clone())?;
+    let pre_title = doc.title.clone();
+
+    // Apply the top suggestion if it's non-empty and different from the current
+    // value. Uses `apply_suggested_title` (no manual-flag stamp).
+    let applied = match plan.suggested_title.as_ref() {
+        Some(title) => {
+            let trimmed = title.trim().trim_end_matches(['-', '_', '.', ' ']).to_owned();
+            let title = if trimmed.is_empty() { title.clone() } else { trimmed };
+            if !title.is_empty() && title != pre_title {
+                repo.apply_suggested_title(document_id.clone(), title)?;
+                true
+            } else {
+                false
+            }
+        }
+        None => false,
+    };
+
+    // Always store the candidate list for review (including pre-title).
+    store_plan_suggestions(
+        repo,
+        plan.clone(),
+        Some(&pre_title),
+        Some(&doc.tags),
+        SuggestionSource::ManualRequest,
+    )?;
+
+    // Count pending alternatives (rank >= 1).
+    let stored = repo
+        .suggestions_of(document_id.clone(), Some(SuggestionKind::Title))?
+        .iter()
+        .filter(|s| s.status == SuggestionStatus::Pending)
+        .count();
+
+    let status = if applied {
+        "Applied".to_owned()
+    } else if plan.suggested_title.is_some() {
+        "AlreadyCurrent".to_owned()
+    } else {
+        "NoSuggestion".to_owned()
+    };
+
+    Ok(SuggestOutcome {
+        status,
+        stored_pending: stored,
+    })
+}
+
+/// Suggest tags for a document: apply the top tag set (if any), persist the
+/// full candidate list (including the pre-suggestion old tags) as pending for
+/// review, and return the outcome.
+///
+/// The top suggestion is applied **without** stamping `tags_manual`. The
+/// pre-suggestion value is always among the alternatives so the user can switch
+/// back to it.
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_suggest_tags(
+    repo: &DocumentRepository,
+    document_id: String,
+    config: OrgConfig,
+) -> Result<SuggestOutcome, String> {
+    let corpus = build_corpus(repo)?;
+    let prefs = preference_model(repo, &config)?;
+    let organizer = DeterministicOrganizer::new(config.clone());
+    let plan = organizer.organize_with_model(&corpus, &document_id, &prefs);
+
+    let doc = repo.get(document_id.clone())?;
+    let pre_tags = doc.tags.clone();
+
+    // Apply the top suggestion if non-empty and different from current.
+    // Uses `apply_suggested_tags` (no manual-flag stamp).
+    let applied = if !plan.tags.is_empty() && plan.tags != pre_tags {
+        repo.apply_suggested_tags(document_id.clone(), plan.tags.clone())?;
+        true
+    } else {
+        false
+    };
+
+    // Always store the candidate list for review (including pre-tags).
+    store_plan_suggestions(
+        repo,
+        plan.clone(),
+        Some(&doc.title),
+        Some(&pre_tags),
+        SuggestionSource::ManualRequest,
+    )?;
+
+    // Count pending alternatives.
+    let stored = repo
+        .suggestions_of(document_id.clone(), Some(SuggestionKind::Tags))?
+        .iter()
+        .filter(|s| s.status == SuggestionStatus::Pending)
+        .count();
+
+    let status = if applied {
+        "Applied".to_owned()
+    } else if !plan.tags.is_empty() {
+        "AlreadyCurrent".to_owned()
+    } else {
+        "NoSuggestion".to_owned()
+    };
+
+    Ok(SuggestOutcome {
+        status,
+        stored_pending: stored,
+    })
+}
+
 /// Wipe all learned feedback (settings "reset learning").
 #[flutter_rust_bridge::frb]
 pub async fn auto_org_reset_learning(repo: &DocumentRepository) -> Result<(), String> {
@@ -857,27 +1025,35 @@ mod tests {
         )
         .unwrap();
 
-        let doc = repo.get(target).unwrap();
-        assert_eq!(
+        let doc = repo.get(target.clone()).unwrap();
+        // Gating removed: suggestions ALWAYS apply, even to a previously
+        // manually-edited document (the old value becomes an alternative).
+        assert_ne!(
             doc.title, "User title",
-            "manual title must be preserved by a single reorganize"
+            "the suggestion now applies regardless of the manual flag"
         );
-        assert_eq!(
+        assert_ne!(
             doc.tags,
             vec!["manual".to_owned(), "stale".to_owned()],
-            "manual tags must be preserved by a single reorganize"
+            "tags now apply regardless of the manual flag"
         );
-        // The pipeline still produced a suggestion (placement is always taken)
-        // even though it was not applied.
+        // The pipeline produced a suggestion.
         assert!(plan.suggested_title.is_some() || !plan.tags.is_empty());
-        // Manual flags remain set after the pass.
+        // Manual flags REMAIN as stored metadata (no behavior gating, but they
+        // are not cleared by the pass).
         assert_eq!(
             doc.extra.get("title_manual").map(String::as_str),
             Some("true")
         );
-        assert_eq!(
-            doc.extra.get("tags_manual").map(String::as_str),
-            Some("true")
+        // The old (pre-suggestion) value is offered as a pending alternative so
+        // the user can switch back.
+        let suggestions = repo.suggestions_of(target.clone(), Some(SuggestionKind::Title)).unwrap();
+        assert!(
+            suggestions
+                .iter()
+                .any(|s| s.status == SuggestionStatus::Pending
+                    && s.payload.trim() == "User title"),
+            "old title must be among the pending alternatives"
         );
 
         let _ = fs::remove_dir_all(&root);
@@ -947,14 +1123,23 @@ mod tests {
         assert_eq!(stats.total, 3, "sib + manual + auto");
         assert_eq!(stats.updated + stats.skipped, stats.total);
 
-        // The manual doc is preserved in full.
-        let manual = repo.get(manual_id).unwrap();
-        assert_eq!(manual.title, "My custom title");
-        assert_eq!(
+        // Gating removed: the "manual" doc ALSO gets the suggestion applied
+        // (old value offered as an alternative).
+        let manual = repo.get(manual_id.clone()).unwrap();
+        assert_ne!(
+            manual.title, "My custom title",
+            "manual title is now updated by the pass (old value is an alternative)"
+        );
+        assert_ne!(
             manual.tags,
             vec!["manual".to_owned(), "stale".to_owned()],
-            "manual tags kept: {:?}",
-            manual.tags
+            "manual tags are now updated by the pass"
+        );
+        let manual_sug = repo.suggestions_of(manual_id, Some(SuggestionKind::Title)).unwrap();
+        assert!(
+            manual_sug.iter().any(|s| s.status == SuggestionStatus::Pending
+                && s.payload.trim() == "My custom title"),
+            "old manual title should be offered as a pending alternative"
         );
 
         // The non-manual doc was actually updated by the pass.
@@ -1252,10 +1437,13 @@ mod tests {
         crate::api::auto_org::auto_org_reorganize_one(&repo, target.clone(), Default::default())
             .unwrap();
 
-        // The manual value is preserved (auto-apply is still off for manual docs).
+        // Gating removed: the manual value is updated by the suggestion.
         let doc = repo.get(target.clone()).unwrap();
-        assert_eq!(doc.title, "User's custom title");
-        assert_eq!(doc.tags, vec!["manual".to_owned(), "stale".to_owned()]);
+        assert_ne!(
+            doc.title, "User's custom title",
+            "suggestions apply to previously-manual docs too"
+        );
+        assert_ne!(doc.tags, vec!["manual".to_owned(), "stale".to_owned()]);
 
         // But alternatives ARE stored as pending suggestions for review.
         let suggestions = repo.suggestions_of(target, None).unwrap();

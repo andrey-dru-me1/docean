@@ -550,82 +550,83 @@ void main() {
       expect(find.text('Keep me'), findsOneWidget);
     });
 
-    testWidgets('bulk suggest tags runs async and respects manual flags', (
-      tester,
-    ) async {
-      final service = FakeDocumentService(
-        documents: [
-          _doc('g-1', 'Auto doc'),
-          DocumentSummary(
-            id: 'g-2',
-            title: 'Manual doc',
-            tags: const ['mine'],
-            extra: const {'title_manual': 'true', 'tags_manual': 'true'},
+    testWidgets(
+      'bulk suggest tags applies to both auto and previously-manual docs',
+      (tester) async {
+        final service = FakeDocumentService(
+          documents: [
+            _doc('g-1', 'Auto doc'),
+            DocumentSummary(
+              id: 'g-2',
+              title: 'Manual doc',
+              tags: const ['mine'],
+              extra: const {'title_manual': 'true', 'tags_manual': 'true'},
+            ),
+          ],
+          suggestion: const SuggestionPlan(
+            title: 'Suggested title',
+            tags: ['suggested-a', 'suggested-b'],
           ),
-        ],
-        suggestion: const SuggestionPlan(
-          title: 'Suggested title',
-          tags: ['suggested-a', 'suggested-b'],
-        ),
-      );
+        );
 
-      await tester.pumpWidget(
-        _wrap(
-          DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const ValueKey('select-documents')));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const ValueKey('bulk-suggest-tags')));
-      await tester.pumpAndSettle();
-
-      // The service ran suggestTags once per selected document.
-      expect(service.suggestTagsCount, 2);
-      // The auto document received the suggested tags; the manually-tagged one
-      // was left alone (tags_manual was set), honoring the flag.
-      final auto = service.documents.firstWhere((d) => d.id == 'g-1');
-      final manual = service.documents.firstWhere((d) => d.id == 'g-2');
-      expect(auto.tags, containsAll(['suggested-a', 'suggested-b']));
-      expect(manual.tags, ['mine']);
-    });
-
-    testWidgets('bulk suggest title runs async and respects manual flags', (
-      tester,
-    ) async {
-      final service = FakeDocumentService(
-        documents: [
-          _doc('h-1', 'Auto title'),
-          DocumentSummary(
-            id: 'h-2',
-            title: 'Manual title',
-            extra: const {'title_manual': 'true', 'tags_manual': 'true'},
+        await tester.pumpWidget(
+          _wrap(
+            DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
           ),
-        ],
-        suggestion: const SuggestionPlan(title: 'Suggested title', tags: []),
-      );
+        );
+        await tester.pumpAndSettle();
 
-      await tester.pumpWidget(
-        _wrap(
-          DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
-        ),
-      );
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('select-documents')));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('select-documents')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('bulk-suggest-tags')));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('bulk-suggest-title')));
-      await tester.pumpAndSettle();
+        expect(service.suggestTagsCount, 2);
+        // Gating removed: both documents get the suggested tags applied.
+        final auto = service.documents.firstWhere((d) => d.id == 'g-1');
+        final manual = service.documents.firstWhere((d) => d.id == 'g-2');
+        expect(auto.tags, containsAll(['suggested-a', 'suggested-b']));
+        expect(manual.tags, containsAll(['suggested-a', 'suggested-b']));
+      },
+    );
 
-      expect(service.suggestTitleCount, 2);
-      final auto = service.documents.firstWhere((d) => d.id == 'h-1');
-      final manual = service.documents.firstWhere((d) => d.id == 'h-2');
-      expect(auto.title, 'Suggested title');
-      expect(manual.title, 'Manual title'); // title_manual honored.
-    });
+    testWidgets(
+      'bulk suggest title applies to both auto and previously-manual docs',
+      (tester) async {
+        final service = FakeDocumentService(
+          documents: [
+            _doc('h-1', 'Auto title'),
+            DocumentSummary(
+              id: 'h-2',
+              title: 'Manual title',
+              extra: const {'title_manual': 'true', 'tags_manual': 'true'},
+            ),
+          ],
+          suggestion: const SuggestionPlan(title: 'Suggested title', tags: []),
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const ValueKey('select-documents')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const ValueKey('bulk-suggest-title')));
+        await tester.pumpAndSettle();
+
+        expect(service.suggestTitleCount, 2);
+        final auto = service.documents.firstWhere((d) => d.id == 'h-1');
+        final manual = service.documents.firstWhere((d) => d.id == 'h-2');
+        // Gating removed: both documents get the suggested title applied.
+        expect(auto.title, 'Suggested title');
+        expect(manual.title, 'Suggested title');
+      },
+    );
 
     testWidgets('bulk reorganize appears in the toolbar and runs the pass', (
       tester,

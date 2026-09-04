@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 import '../storage.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `now_ms`, `store`
+// These functions are ignored because they are not marked as `pub`: `now_ms`, `record_user_feedback`, `set_tags_internal`, `store`, `update_title_internal`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
 
 /// Open (or create) a document repository rooted at `root` on disk.
@@ -17,6 +17,20 @@ Future<DocumentRepository> openRepository({required String root}) =>
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>>
 abstract class DocumentRepository implements RustOpaqueInterface {
+  /// Apply a tag set WITHOUT stamping `tags_manual` (used by suggestion
+  /// auto-apply: a suggestion is not a *user* manual edit, so we do not want
+  /// it to influence the "user-authored" learning weight).
+  Future<void> applySuggestedTags({
+    required String documentId,
+    required List<String> tags,
+  });
+
+  /// Apply a suggested title WITHOUT stamping `title_manual`.
+  Future<void> applySuggestedTitle({
+    required String documentId,
+    required String title,
+  });
+
   Future<void> assignPath({required PathAssignment assignment});
 
   Future<List<String>> children({required String parent});

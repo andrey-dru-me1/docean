@@ -166,10 +166,40 @@ impl DocumentRepository {
     /// `tags_manual = "true"`. Bulk auto-organization therefore preserves the
     /// user's assignment instead of clobbering it.
     pub fn set_tags(&self, document_id: String, tags: Vec<String>) -> Result<(), String> {
+        self.set_tags_internal(document_id.clone(), tags.clone(), true)?;
+        // A user tag edit strongly signals preference: record high-weight accept
+        // feedback for each authored tag term.
+        for t in &tags {
+            let _ = self.record_user_feedback(
+                crate::domain::SuggestionKind::Tags,
+                "tag",
+                t,
+                "accepted",
+                2.0,
+            );
+        }
+        Ok(())
+    }
+
+    /// Apply a tag set WITHOUT stamping `tags_manual` (used by suggestion
+    /// auto-apply: a suggestion is not a *user* manual edit, so we do not want
+    /// it to influence the "user-authored" learning weight).
+    pub fn apply_suggested_tags(&self, document_id: String, tags: Vec<String>) -> Result<(), String> {
+        self.set_tags_internal(document_id, tags, false)
+    }
+
+    fn set_tags_internal(
+        &self,
+        document_id: String,
+        tags: Vec<String>,
+        mark_manual: bool,
+    ) -> Result<(), String> {
         let mut doc = self.get(document_id.clone())?;
         doc.tags = tags.clone();
-        doc.extra
-            .insert("tags_manual".to_owned(), "true".to_owned());
+        if mark_manual {
+            doc.extra
+                .insert("tags_manual".to_owned(), "true".to_owned());
+        }
         doc.updated_at_ms = crate::api::storage::now_ms();
         let bytes = self.read_bytes(document_id.clone())?;
         self.put(doc, bytes)?;
@@ -192,10 +222,36 @@ impl DocumentRepository {
     /// `title_manual = "true"`. Bulk auto-organization therefore preserves the
     /// user's title instead of clobbering it.
     pub fn update_title(&self, document_id: String, title: String) -> Result<(), String> {
+        self.update_title_internal(document_id.clone(), title.clone(), true)?;
+        // A user rename strongly signals preference: record high-weight accept
+        // feedback for the authored title term.
+        let _ = self.record_user_feedback(
+            crate::domain::SuggestionKind::Title,
+            "title",
+            &title,
+            "accepted",
+            2.0,
+        );
+        Ok(())
+    }
+
+    /// Apply a suggested title WITHOUT stamping `title_manual`.
+    pub fn apply_suggested_title(&self, document_id: String, title: String) -> Result<(), String> {
+        self.update_title_internal(document_id, title, false)
+    }
+
+    fn update_title_internal(
+        &self,
+        document_id: String,
+        title: String,
+        mark_manual: bool,
+    ) -> Result<(), String> {
         let mut doc = self.get(document_id.clone())?;
         doc.title = title;
-        doc.extra
-            .insert("title_manual".to_owned(), "true".to_owned());
+        if mark_manual {
+            doc.extra
+                .insert("title_manual".to_owned(), "true".to_owned());
+        }
         doc.updated_at_ms = crate::api::storage::now_ms();
         let tags = doc.tags.clone();
         let bytes = self.read_bytes(document_id.clone())?;
@@ -222,6 +278,34 @@ impl DocumentRepository {
     pub fn put_suggestion(&self, suggestion: DocumentSuggestion) -> Result<(), String> {
         let mut store = self.store()?;
         store.put_suggestion(&suggestion).map_err(|e| e.to_string())
+    }
+
+    /// Record a user-authored accept/reject feedback event (weight 2.0 for
+    /// manual edits). The ML can't change behavior — it only learns more
+    /// strongly from what the user typed themselves.
+    fn record_user_feedback(
+        &self,
+        kind: crate::domain::SuggestionKind,
+        context: &str,
+        term: &str,
+        action: &str,
+        weight: f64,
+    ) -> Result<(), String> {
+        self.record_feedback(crate::domain::SuggestionFeedback {
+            id: format!(
+                "{}-{}-{}-{}",
+                crate::api::storage::now_ms(),
+                context,
+                term,
+                action
+            ),
+            kind,
+            context: context.to_owned(),
+            term: term.to_owned(),
+            action: action.to_owned(),
+            weight,
+            created_at_ms: crate::api::storage::now_ms(),
+        })
     }
 
     /// Fetch a document's suggestions (optionally filtered by kind), newest

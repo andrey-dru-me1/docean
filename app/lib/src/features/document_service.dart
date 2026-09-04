@@ -22,7 +22,9 @@ import '../rust/api/auto_org.dart'
         autoOrgReorganizeAll,
         autoOrgReorganizeOne,
         autoOrgReorganizeSelected,
-        autoOrgResetLearning;
+        autoOrgResetLearning,
+        autoOrgSuggestTags,
+        autoOrgSuggestTitle;
 import '../rust/api/search.dart' as search_bridge;
 import '../rust/api/storage.dart' show DocumentRepository;
 import '../rust/auto_org/config.dart' show OrgConfig;
@@ -35,6 +37,7 @@ import '../rust/domain.dart'
         SuggestionKind,
         SuggestionSource,
         SuggestionStatus;
+import '../rust/api/auto_org.dart' show SuggestOutcome;
 import '../rust/storage.dart' show DocumentQuery;
 import '../ui/document_view.dart' show DocumentSummary;
 import 'repository.dart' show openSharedRepository;
@@ -232,13 +235,17 @@ abstract interface class DocumentService {
 /// on the document's `extra` metadata), and return the plan so the caller can
 /// notify the user about what (if anything) was applied.
 class SuggestionPlan {
-  const SuggestionPlan({required this.title, required this.tags});
+  const SuggestionPlan({required this.title, required this.tags, this.outcome});
 
   /// The suggested title, or `null` when the pipeline produced none.
   final String? title;
 
   /// The suggested tags (ordered by confidence).
   final List<String> tags;
+
+  /// The outcome of a suggest run (applied / already current / no suggestion),
+  /// and how many pending alternatives were stored.
+  final SuggestOutcome? outcome;
 
   /// Whether anything meaningful was suggested at all (a non-blank title or at
   /// least one tag).
@@ -448,19 +455,22 @@ class BridgeDocumentService implements DocumentService {
   @override
   Future<SuggestionPlan> suggestTitle(String id) async {
     final repo = await _repo();
-    final plan = await autoOrgOrganize(
+    final outcome = await autoOrgSuggestTitle(
       repo: repo,
       documentId: id,
       config: _orgConfig(),
     );
-    final suggested = plan.suggestedTitle?.trim();
-    if (suggested != null && suggested.isNotEmpty) {
-      final doc = await repo.get_(id: id);
-      if (doc.extra['title_manual'] != 'true') {
-        await repo.updateTitle(documentId: id, title: suggested);
-      }
-    }
-    return SuggestionPlan(title: plan.suggestedTitle, tags: const []);
+    // The core applied a top suggestion + stored alternatives (incl. old
+    // title). Re-read to reflect the change so the caller can show it.
+    final fresh = await repo.get_(id: id);
+    return SuggestionPlan(
+      title: fresh.title,
+      tags: const [],
+      outcome: SuggestOutcome(
+        status: outcome.status,
+        storedPending: outcome.storedPending,
+      ),
+    );
   }
 
   /// Suggest tags and apply them (unless the user manually tagged the
@@ -471,18 +481,20 @@ class BridgeDocumentService implements DocumentService {
   @override
   Future<SuggestionPlan> suggestTags(String id) async {
     final repo = await _repo();
-    final plan = await autoOrgOrganize(
+    final outcome = await autoOrgSuggestTags(
       repo: repo,
       documentId: id,
       config: _orgConfig(),
     );
-    if (plan.tags.isNotEmpty) {
-      final doc = await repo.get_(id: id);
-      if (doc.extra['tags_manual'] != 'true') {
-        await repo.setTags(documentId: id, tags: List.of(plan.tags));
-      }
-    }
-    return SuggestionPlan(title: null, tags: List.of(plan.tags));
+    final fresh = await repo.get_(id: id);
+    return SuggestionPlan(
+      title: null,
+      tags: fresh.tags,
+      outcome: SuggestOutcome(
+        status: outcome.status,
+        storedPending: outcome.storedPending,
+      ),
+    );
   }
 
   /// Permanently delete a document (blob + metadata) and drop it from the
@@ -820,35 +832,61 @@ class FakeDocumentService implements DocumentService {
     return SuggestionPlan(title: plan.title, tags: List.of(plan.tags));
   }
 
-  /// The split "Suggest title" action. Applies the suggested title only when
-  /// the user has not manually renamed the document (the real core honors the
-  /// same `extra['title_manual']` flag), and returns only the title portion so
-  /// the caller can report what happened.
+  /// The split "Suggest title" action. Always applies the suggestion (manual-
+  /// flag gating removed), stores alternatives including the old title, and
+  /// returns the outcome so the caller can show the correct snackbar.
   @override
   Future<SuggestionPlan> suggestTitle(String id) async {
     suggestTitleCount++;
     final doc = _byId(id);
     final plan = suggestion ?? const SuggestionPlan(title: null, tags: []);
-    if (!doc.titleManuallyEdited &&
-        plan.title != null &&
-        plan.title!.trim().isNotEmpty) {
-      await updateTitle(id, plan.title!.trim());
+    final preTitle = doc.title;
+    // Always apply the suggestion (no manual-flag gating).
+    String? appliedTitle;
+    SuggestOutcome outcome;
+    if (plan.title != null && plan.title!.trim().isNotEmpty) {
+      final trimmed = plan.title!.trim();
+      if (trimmed == preTitle) {
+        appliedTitle = preTitle;
+        outcome = SuggestOutcome(
+          status: 'AlreadyCurrent',
+          storedPending: BigInt.zero,
+        );
+      } else {
+        appliedTitle = trimmed;
+        await updateTitle(id, trimmed);
+        outcome = SuggestOutcome(
+          status: 'Applied',
+          storedPending: BigInt.from(3),
+        );
+      }
+    } else {
+      outcome = SuggestOutcome(
+        status: 'NoSuggestion',
+        storedPending: BigInt.zero,
+      );
     }
-    return SuggestionPlan(title: plan.title, tags: const []);
+    return SuggestionPlan(title: appliedTitle, tags: [], outcome: outcome);
   }
 
-  /// The split "Suggest tags" action. Applies the suggested tags only when the
-  /// user has not manually tagged the document, and returns only the tags
-  /// portion so the caller can report what happened.
+  /// The split "Suggest tags" action. Always applies (no gating), stores
+  /// alternatives, and returns the outcome.
   @override
   Future<SuggestionPlan> suggestTags(String id) async {
     suggestTagsCount++;
     final doc = _byId(id);
     final plan = suggestion ?? const SuggestionPlan(title: null, tags: []);
-    if (!doc.tagsManuallyEdited && plan.tags.isNotEmpty) {
+    // Always apply the suggestion (no manual-flag gating).
+    if (plan.tags.isNotEmpty) {
       await setTags(id, List.of(plan.tags));
     }
-    return SuggestionPlan(title: null, tags: List.of(plan.tags));
+    final outcome = plan.tags.isNotEmpty
+        ? SuggestOutcome(
+            status: doc.tags == plan.tags ? 'AlreadyCurrent' : 'Applied',
+            storedPending: BigInt.from(2),
+          )
+        : SuggestOutcome(status: 'NoSuggestion', storedPending: BigInt.zero);
+    return SuggestionPlan(title: null, tags: plan.tags, outcome: outcome);
   }
 
   /// Permanently remove a document (metadata, raw bytes, extracted content)

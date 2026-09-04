@@ -314,11 +314,6 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   /// not manually renamed the document, and reports the outcome in a snackbar.
   Future<void> _suggestTitle() async {
     if (_suggestingTitle) return;
-    // Capture the pre-run flags: the store marks `title_manual` when it applies
-    // the suggestion, so we must remember whether the user had *already* edited
-    // before reporting "unchanged (manually edited)".
-    final alreadyManual = _doc.titleManuallyEdited;
-    final previousTitle = _doc.title;
     setState(() => _suggestingTitle = true);
     try {
       final plan = await widget.documentService.suggestTitle(
@@ -329,37 +324,36 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       );
       await _loadSuggestions();
       if (!mounted) return;
-      final applied = fresh.title != previousTitle;
       setState(() {
         _doc = fresh;
         _titleController.text = fresh.title;
         _suggestingTitle = false;
       });
       widget.onMetaChanged?.call();
-      final clean = plan.cleanTitle;
-      if (clean != null && applied) {
-        // Small confirmation: title was actually suggested & applied.
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Title suggested: $clean')));
-      } else if (!alreadyManual && (clean == null || !applied)) {
+      final outcome = plan.outcome;
+      final pendingAfter = _suggestions.where((s) => s.isPending).length;
+      if (outcome?.status == 'Applied') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Title suggested: ${fresh.title}')),
+        );
+      } else if (outcome?.status == 'AlreadyCurrent') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Title already matches the suggestion')),
+        );
+      } else {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('No title suggestion')));
-      } else {
-        // Manual title: alternatives are now persisted for review in the
-        // suggestions card instead of being silently skipped.
-        final pendingAfter = _suggestions.where((s) => s.isPending).length;
-        if (pendingAfter > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '$pendingAfter alternative'
-                '${pendingAfter == 1 ? '' : 's'} available to review',
-              ),
+      }
+      if (pendingAfter > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$pendingAfter alternative'
+              '${pendingAfter == 1 ? '' : 's'} available to review',
             ),
-          );
-        }
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -378,9 +372,6 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   /// cached so the add-tag composer can offer them as one-tap suggestions.
   Future<void> _suggestTags() async {
     if (_suggestingTags) return;
-    // Capture the pre-run flags (see [_suggestTitle]: the store marks
-    // `tags_manual` when it applies a suggestion).
-    final alreadyManual = _doc.tagsManuallyEdited;
     setState(() => _suggestingTags = true);
     try {
       final plan = await widget.documentService.suggestTags(widget.document.id);
@@ -395,26 +386,30 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         _lastSuggestedTags = List.of(plan.tags);
       });
       widget.onMetaChanged?.call();
-      if (plan.tags.isNotEmpty && !alreadyManual) {
+      final outcome = plan.outcome;
+      final pendingAfter = _suggestions.where((s) => s.isPending).length;
+      if (outcome?.status == 'Applied') {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Tags suggested: ${plan.tags.join(', ')}')),
+          SnackBar(content: Text('Tags suggested: ${fresh.tags.join(', ')}')),
         );
-      } else if (alreadyManual) {
-        final pendingAfter = _suggestions.where((s) => s.isPending).length;
-        if (pendingAfter > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '$pendingAfter alternative'
-                '${pendingAfter == 1 ? '' : 's'} available to review',
-              ),
-            ),
-          );
-        }
+      } else if (outcome?.status == 'AlreadyCurrent') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tags already match the suggestion')),
+        );
       } else {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('No tags suggested')));
+      }
+      if (pendingAfter > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$pendingAfter alternative'
+              '${pendingAfter == 1 ? '' : 's'} available to review',
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;

@@ -524,7 +524,7 @@ void main() {
     );
 
     testWidgets(
-      'suggest title respects the manual title flag and keeps the user title',
+      'suggest title applies to a previously-manual doc (no gating)',
       (tester) async {
         final doc = _doc(
           title: 'User title',
@@ -547,13 +547,12 @@ void main() {
         await tester.tap(find.byTooltip('Suggest title'));
         await tester.pumpAndSettle();
 
-        // The suggestion ran, but the title was NOT overwritten.
+        // Gating removed: suggestion applies even on a previously-manual doc.
         expect(service.suggestTitleCount, 1);
-        expect(service.updateTitleCount, 0);
-        expect(service.lastTitle, isNull);
-        expect(find.text('User title'), findsOneWidget);
-        expect(find.text('Suggested title'), findsNothing);
-        // The wand only touches title — tags are never touched.
+        expect(service.updateTitleCount, 1);
+        expect(service.lastTitle, 'Suggested title');
+        expect(find.text('Suggested title'), findsWidgets);
+        expect(find.text('User title'), findsNothing);
         expect(service.suggestTagsCount, 0);
         expect(service.setTagsCount, 0);
         // Manual title is preserved; alternatives (if any) are surfaced in the
@@ -640,7 +639,7 @@ void main() {
       },
     );
 
-    testWidgets('suggest tags respects the manual tags flag and keeps tags', (
+    testWidgets('suggest tags applies to a previously-manual doc (no gating)', (
       tester,
     ) async {
       final doc = _doc(
@@ -665,9 +664,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(service.suggestTagsCount, 1);
       expect(service.updateTitleCount, 0);
-      expect(service.setTagsCount, 0);
-      expect(find.text('keep-me'), findsOneWidget);
-      expect(find.text('auto'), findsNothing);
+      // Gating removed: suggestion applies even on a previously-manual doc.
+      expect(service.setTagsCount, 1);
+      expect(find.text('auto'), findsWidgets);
+      expect(find.text('keep-me'), findsNothing);
       // The manual-tag dead-end snackbar is gone; alternatives surface in the
       // review card instead.
       expect(

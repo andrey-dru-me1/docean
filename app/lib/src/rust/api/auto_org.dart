@@ -13,7 +13,7 @@ import 'storage.dart';
 
 // These functions are ignored because they are not marked as `pub`: `any`, `apply_plan`, `auto_org_reorganize_one_impl`, `build_corpus`, `flag_is_set`, `new_uuid`, `organize_document`, `payload_terms`, `preference_model`, `record_accept`, `record_reject`, `store_plan_suggestions`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ApplyCounts`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
 
 /// Run the deterministic (non-generative) organizer on `document_id`, returning
 /// the [`OrgPlan`] of suggested tags, placement, rename, and dedup.
@@ -172,6 +172,40 @@ Future<void> autoOrgDismissSuggestion({
   suggestionId: suggestionId,
 );
 
+/// Suggest a title for a document: apply the top suggestion (if any), persist
+/// the full candidate list (including the pre-suggestion old title) as pending
+/// for review, and return the outcome.
+///
+/// The top suggestion is applied **without** stamping `title_manual` (it is a
+/// suggestion, not a user rename). The pre-suggestion value is always among the
+/// alternatives so the user can switch back to it.
+Future<SuggestOutcome> autoOrgSuggestTitle({
+  required DocumentRepository repo,
+  required String documentId,
+  required OrgConfig config,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgSuggestTitle(
+  repo: repo,
+  documentId: documentId,
+  config: config,
+);
+
+/// Suggest tags for a document: apply the top tag set (if any), persist the
+/// full candidate list (including the pre-suggestion old tags) as pending for
+/// review, and return the outcome.
+///
+/// The top suggestion is applied **without** stamping `tags_manual`. The
+/// pre-suggestion value is always among the alternatives so the user can switch
+/// back to it.
+Future<SuggestOutcome> autoOrgSuggestTags({
+  required DocumentRepository repo,
+  required String documentId,
+  required OrgConfig config,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgSuggestTags(
+  repo: repo,
+  documentId: documentId,
+  config: config,
+);
+
 /// Wipe all learned feedback (settings "reset learning").
 Future<void> autoOrgResetLearning({required DocumentRepository repo}) =>
     RustLib.instance.api.crateApiAutoOrgAutoOrgResetLearning(repo: repo);
@@ -208,4 +242,28 @@ class OrgBulkStats {
           total == other.total &&
           updated == other.updated &&
           skipped == other.skipped;
+}
+
+/// The outcome of a per-document "Suggest title"/"Suggest tags" run.
+class SuggestOutcome {
+  /// Applied (value changed) | AlreadyCurrent (no change needed) |
+  /// NoSuggestion (pipeline produced nothing).
+  final String status;
+
+  /// How many pending alternatives were stored for the review card (0 when
+  /// nothing to review).
+  final BigInt storedPending;
+
+  const SuggestOutcome({required this.status, required this.storedPending});
+
+  @override
+  int get hashCode => status.hashCode ^ storedPending.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SuggestOutcome &&
+          runtimeType == other.runtimeType &&
+          status == other.status &&
+          storedPending == other.storedPending;
 }
