@@ -96,7 +96,15 @@ fn organize_reuses_tags_and_resolves_path() {
     );
     assert_eq!(plan.suggested_path.as_deref(), Some("/finance/invoices"));
     assert_eq!(plan.filename_source, FilenameSource::Template);
-    assert!(plan.suggested_title.as_deref().unwrap().ends_with(".pdf"));
+    let title = plan.suggested_title.as_deref().unwrap();
+    assert!(
+        title.contains("invoice") || title.contains("stark") || title.contains("office"),
+        "title should be content-derived, got {title:?}"
+    );
+    assert!(
+        !title.contains('-') && !title.contains('_'),
+        "title must be space-joined (no '-' or '_'), got {title:?}"
+    );
     assert!(plan.is_duplicate_of.is_none());
 }
 
@@ -217,4 +225,113 @@ fn generative_filename_tier_uses_provider_and_marks_source() {
         plan.suggested_title.as_deref(),
         Some("acme_supplier_invoice")
     );
+}
+
+#[test]
+fn suggested_title_uses_spaces_only() {
+    let organizer = DeterministicOrganizer::new(OrgConfig::default());
+    let mut corpus = fixture_corpus();
+    corpus.docs.push(CorpusDoc {
+        id: "doc-x".to_owned(),
+        title: "Some Title".to_owned(),
+        text: "invoice for acme corporation quarterly report".to_owned(),
+        mime_type: "text/plain".to_owned(),
+        tags: vec![],
+    });
+    let plan = organizer.organize(&corpus, "doc-x");
+    let title = plan.suggested_title.as_deref().unwrap();
+    assert!(
+        !title.contains('-') && !title.contains('_'),
+        "title must be space-joined, got {title:?}"
+    );
+    // Alt titles must also be space-joined.
+    for alt in &plan.alt_titles {
+        assert!(
+            !alt.contains('-') && !alt.contains('_'),
+            "alt title must be space-joined, got {alt:?}"
+        );
+    }
+}
+
+#[test]
+fn cyrillic_filename_latin_content_title_from_content() {
+    let organizer = DeterministicOrganizer::new(OrgConfig::default());
+    let mut corpus = fixture_corpus();
+    corpus.docs.push(CorpusDoc {
+        id: "doc-cyr".to_owned(),
+        title: "Привет Документ".to_owned(), // Cyrillic filename
+        text: "invoice report quarterly".to_owned(), // Latin content
+        mime_type: "text/plain".to_owned(),
+        tags: vec![],
+    });
+    let plan = organizer.organize(&corpus, "doc-cyr");
+    let title = plan.suggested_title.as_deref().unwrap();
+    // Rank-0 title must be built from content (Latin) tokens.
+    assert!(
+        title.contains("invoice") || title.contains("report") || title.contains("quarterly"),
+        "title should be built from Latin content tokens, got {title:?}"
+    );
+    // Cyrillic filename tokens must NOT appear at rank 0 when content tokens exist.
+    assert!(
+        !title.contains("привет") && !title.contains("документ"),
+        "Cyrillic filename tokens must not appear at rank 0, got {title:?}"
+    );
+}
+
+#[test]
+fn symmetric_latin_filename_cyrillic_content_title_from_content() {
+    let organizer = DeterministicOrganizer::new(OrgConfig::default());
+    let mut corpus = fixture_corpus();
+    corpus.docs.push(CorpusDoc {
+        id: "doc-lat".to_owned(),
+        title: "Invoice Document".to_owned(), // Latin filename
+        text: "Привет мир отчёт".to_owned(),  // Cyrillic content
+        mime_type: "text/plain".to_owned(),
+        tags: vec![],
+    });
+    let plan = organizer.organize(&corpus, "doc-lat");
+    let title = plan.suggested_title.as_deref().unwrap();
+    // Rank-0 title must be built from Cyrillic content tokens.
+    assert!(
+        title.contains("привет") || title.contains("мир") || title.contains("отчёт"),
+        "title should be built from Cyrillic content tokens, got {title:?}"
+    );
+}
+
+#[test]
+fn filename_template_behavior_unchanged() {
+    // The filename render (rules::render_filename) still uses `-`.
+    use crate::auto_org::rules::{self, DocSignals, RuleSet};
+    let signals = DocSignals {
+        tags: vec![],
+        keywords: vec!["invoice".to_owned(), "acme".to_owned()],
+        title: "Acme Invoice".to_owned(),
+        extension: "pdf".to_owned(),
+        date: "2026-09-01".to_owned(),
+    };
+    let template = RuleSet::default_template();
+    let filename = rules::render_filename(&template, &signals);
+    assert!(
+        filename.contains('-'),
+        "filename render still uses '-', got {filename:?}"
+    );
+}
+
+#[test]
+fn determinism_same_corpus_same_output() {
+    let organizer = DeterministicOrganizer::new(OrgConfig::default());
+    let mut corpus = fixture_corpus();
+    corpus.docs.push(CorpusDoc {
+        id: "det".to_owned(),
+        title: "Det".to_owned(),
+        text: "invoice for acme corporation".to_owned(),
+        mime_type: "text/plain".to_owned(),
+        tags: vec![],
+    });
+    let a = organizer.organize(&corpus, "det");
+    let b = organizer.organize(&corpus, "det");
+    assert_eq!(a.suggested_title, b.suggested_title);
+    assert_eq!(a.alt_titles, b.alt_titles);
+    assert_eq!(a.tags, b.tags);
+    assert_eq!(a.suggested_path, b.suggested_path);
 }

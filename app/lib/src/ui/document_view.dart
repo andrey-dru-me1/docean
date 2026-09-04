@@ -274,6 +274,29 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       await widget.documentService.setTags(widget.document.id, nextTags);
       if (!mounted || generation != _tagsGeneration) return;
       widget.onMetaChanged?.call();
+      // Best-effort: completing the poll (dismissing the stale tags
+      // suggestions) must never block the tag persist success.
+      var dismissed = 0;
+      try {
+        dismissed = await widget.documentService.completeSuggestionPoll(
+          widget.document.id,
+          SuggestionKind.tags,
+        );
+        await _loadSuggestions();
+      } catch (_) {
+        // The tags are persisted; a poll failure only leaves the review card
+        // visible until the next refresh.
+      }
+      if (!mounted || generation != _tagsGeneration) return;
+      if (dismissed > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$dismissed suggestion${dismissed == 1 ? '' : 's'} dismissed',
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted || generation != _tagsGeneration) return;
       setState(() {
@@ -299,9 +322,26 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         _titleController.text = fresh.title;
       });
       widget.onMetaChanged?.call();
+      // Best-effort: completing the poll (dismissing the stale title
+      // suggestions) must never block the rename success.
+      var dismissed = 0;
+      try {
+        dismissed = await widget.documentService.completeSuggestionPoll(
+          widget.document.id,
+          SuggestionKind.title,
+        );
+        await _loadSuggestions();
+      } catch (_) {
+        // The rename is persisted; a poll failure only leaves the review card
+        // visible until the next refresh.
+      }
+      if (!mounted) return;
+      final message = dismissed > 0
+          ? 'Title updated · $dismissed suggestion${dismissed == 1 ? '' : 's'} dismissed'
+          : 'Title updated';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Title updated')));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

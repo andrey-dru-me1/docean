@@ -4,11 +4,27 @@
 //! returns the top terms. Also provides the default keyword-rule fallback used
 //! when the statistical path produces nothing (e.g. empty / near-empty text).
 
-use crate::auto_org::text::{term_frequencies, TfIdfModel};
+use std::collections::HashMap;
+
+use crate::auto_org::text::{scripts_mismatch, term_frequencies, TfIdfModel};
 use crate::domain::Document;
 
 /// Default number of keywords to surface.
 pub const DEFAULT_TOP_K: usize = 5;
+
+/// Relative weight of content-derived (TF-IDF) terms in the title pool.
+pub const CONTENT_WEIGHT: f64 = 1.0;
+
+/// Relative weight of filename-derived terms when the filename and content
+/// share a script. Content terms always outrank filename terms because a
+/// content term's weight is `>= CONTENT_WEIGHT` per occurrence while a filename
+/// term is at most this value.
+pub const FILENAME_WEIGHT: f64 = 0.25;
+
+/// Extra-strong down-weight applied to filename-derived terms when the
+/// filename and content resolve to *different* concrete scripts. Kept strictly
+/// above zero so filename tokens are never dropped from the title pool.
+pub const FILENAME_SCRIPT_MISMATCH_WEIGHT: f64 = 0.01;
 
 /// Extract the top-scoring keywords from `text`.
 ///
@@ -84,6 +100,53 @@ pub fn sanitize_filename(input: &str) -> String {
     out
 }
 
+/// Build a weighted `(term, weight)` pool for TITLE candidates.
+///
+/// Content-derived (TF-IDF) terms are blended at [`CONTENT_WEIGHT`] and
+/// filename-derived terms (tokenized from `filename`) at [`FILENAME_WEIGHT`] —
+/// or [`FILENAME_SCRIPT_MISMATCH_WEIGHT`] when the filename and the content
+/// detect to *different* concrete scripts. Filename terms are **never dropped**
+/// from the pool; they are only down-weighted, so any content term (weight
+/// `>= CONTENT_WEIGHT` per occurrence) always outranks every filename term.
+///
+/// The result is deterministically sorted (weight desc, then term asc) and
+/// truncated to `top_k`.
+pub fn weighted_title_terms(
+    content_text: &str,
+    model: Option<&TfIdfModel>,
+    filename: &str,
+    top_k: usize,
+) -> Vec<(String, f64)> {
+    let mut out: HashMap<String, f64> = HashMap::new();
+
+    // Content: TF-IDF (or plain TF without a model).
+    if let Some(model) = model {
+        for (term, w) in model.vectorize(content_text) {
+            *out.entry(term).or_insert(0.0) += w * CONTENT_WEIGHT;
+        }
+    } else {
+        for (term, w) in term_frequencies(content_text) {
+            *out.entry(term).or_insert(0.0) += w * CONTENT_WEIGHT;
+        }
+    }
+
+    // Filename: never excluded, only down-weighted.
+    let fw = if scripts_mismatch(filename, content_text) {
+        FILENAME_SCRIPT_MISMATCH_WEIGHT
+    } else {
+        FILENAME_WEIGHT
+    };
+    for (term, w) in term_frequencies(filename) {
+        *out.entry(term).or_insert(0.0) += w * fw;
+    }
+
+    // Deterministic order: weight desc, then term asc.
+    let mut scored: Vec<(String, f64)> = out.into_iter().collect();
+    scored.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    scored.truncate(top_k);
+    scored
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +201,40 @@ mod tests {
             "a_b_c_d_e_f_g_h_i_j"
         );
         assert_eq!(sanitize_filename(""), "document");
+    }
+
+    #[test]
+    fn weighted_title_terms_content_dominates() {
+        // Content term "invoice" appears with weight >= 1.0, filename "doc" gets at most 0.25.
+        let terms = weighted_title_terms("invoice invoice invoice", None, "doc", 5);
+        // Content terms must come first.
+        let pos_invoice = terms.iter().position(|(t, _)| t == "invoice").unwrap();
+        let pos_doc = terms.iter().position(|(t, _)| t == "doc");
+        if let Some(p) = pos_doc {
+            assert!(pos_invoice < p, "content term must outrank filename term");
+        }
+    }
+
+    #[test]
+    fn weighted_title_terms_filename_never_dropped() {
+        // Empty content → filename terms should still appear.
+        let terms = weighted_title_terms("", None, "Привет документ", 5);
+        let has_filename = terms.iter().any(|(t, _)| t == "привет" || t == "документ");
+        assert!(has_filename, "filename tokens must not be dropped");
+    }
+
+    #[test]
+    fn weighted_title_terms_script_mismatch_penalizes() {
+        // Cyrillic filename + Latin content.
+        let terms = weighted_title_terms("invoice report", None, "Привет документ", 10);
+        // Latin content terms must outrank Cyrillic filename terms.
+        let pos_invoice = terms.iter().position(|(t, _)| t == "invoice").unwrap();
+        let pos_privet = terms.iter().position(|(t, _)| t == "привет");
+        if let Some(p) = pos_privet {
+            assert!(
+                pos_invoice < p,
+                "Latin content term must outrank Cyrillic filename term under mismatch"
+            );
+        }
     }
 }

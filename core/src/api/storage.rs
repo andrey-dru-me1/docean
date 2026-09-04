@@ -184,7 +184,11 @@ impl DocumentRepository {
     /// Apply a tag set WITHOUT stamping `tags_manual` (used by suggestion
     /// auto-apply: a suggestion is not a *user* manual edit, so we do not want
     /// it to influence the "user-authored" learning weight).
-    pub fn apply_suggested_tags(&self, document_id: String, tags: Vec<String>) -> Result<(), String> {
+    pub fn apply_suggested_tags(
+        &self,
+        document_id: String,
+        tags: Vec<String>,
+    ) -> Result<(), String> {
         self.set_tags_internal(document_id, tags, false)
     }
 

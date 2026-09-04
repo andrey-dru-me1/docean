@@ -152,6 +152,59 @@ fn norm(vec: &HashMap<String, f64>) -> f64 {
     vec.values().map(|v| v * v).sum::<f64>().sqrt()
 }
 
+/// A coarse writing-system classifier used to decide whether a filename and a
+/// document's content are likely in different scripts (which betrays a weak
+/// filename-to-content correspondence worth down-weighting).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Script {
+    /// Primarily Cyrillic (Cyrillic supplement/extension blocks included).
+    Cyrillic,
+    /// Primarily Latin / ASCII.
+    Latin,
+    /// No clear dominant script (mixed or neither).
+    Other,
+}
+
+/// Detect the dominant script of `sample` via coarse Unicode range checks.
+///
+/// Counts characters in the Basic Cyrillic block (U+0400–U+04FF) and ASCII
+/// letters (Latin). `Other` is returned when there is no clear dominance
+/// (e.g. no letters, or a near-even mix).
+pub fn detect_script(sample: &str) -> Script {
+    let mut cyr = 0usize;
+    let mut lat = 0usize;
+    for c in sample.chars() {
+        match c {
+            '\u{0400}'..='\u{04FF}' => cyr += 1,
+            'a'..='z' | 'A'..='Z' => lat += 1,
+            _ => {}
+        }
+    }
+    let total = cyr + lat;
+    if total == 0 {
+        return Script::Other;
+    }
+    // A clear majority of Cyrillic, or solely Cyrillic.
+    if cyr * 2 >= total && cyr > lat {
+        Script::Cyrillic
+    } else if cyr == 0 && lat > 0 {
+        Script::Latin
+    } else {
+        Script::Other
+    }
+}
+
+/// True when `filename` and `content` resolve to different concrete scripts.
+///
+/// A mismatch requires *both* to detect to a concrete script (Cyrillic or
+/// Latin) and for those to differ. If either side is [`Script::Other`] there
+/// is no signal, so no mismatch is reported.
+pub fn scripts_mismatch(filename: &str, content: &str) -> bool {
+    let a = detect_script(filename);
+    let b = detect_script(content);
+    a != Script::Other && b != Script::Other && a != b
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +250,34 @@ mod tests {
         let a: HashMap<String, f64> = HashMap::new();
         let b: HashMap<String, f64> = HashMap::new();
         assert!(approx(TfIdfModel::cosine(&a, &b), 0.0));
+    }
+
+    #[test]
+    fn detect_script_cyrillic() {
+        assert_eq!(detect_script("Привет мир"), Script::Cyrillic);
+        assert_eq!(detect_script("Документ"), Script::Cyrillic);
+    }
+
+    #[test]
+    fn detect_script_latin() {
+        assert_eq!(detect_script("Hello world"), Script::Latin);
+        assert_eq!(detect_script("Invoice 2026"), Script::Latin);
+    }
+
+    #[test]
+    fn detect_script_other() {
+        assert_eq!(detect_script("12345"), Script::Other);
+        assert_eq!(detect_script(""), Script::Other);
+        assert_eq!(detect_script("αβγ"), Script::Other); // Greek not handled
+    }
+
+    #[test]
+    fn scripts_mismatch_cyrillic_vs_latin() {
+        assert!(scripts_mismatch("Привет", "Hello"));
+        assert!(!scripts_mismatch("Привет", "Привет"));
+        assert!(!scripts_mismatch("Hello", "Hello"));
+        // Other does not trigger mismatch
+        assert!(!scripts_mismatch("Привет", "123"));
+        assert!(!scripts_mismatch("Hello", "123"));
     }
 }

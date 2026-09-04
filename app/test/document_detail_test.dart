@@ -1108,5 +1108,127 @@ void main() {
         reason: 'Keep dismisses pending alternatives',
       );
     });
+
+    testWidgets(
+      'editing the title inline dismisses title suggestions and shows snackbar',
+      (tester) async {
+        final s = FakeDocumentService(
+          documents: [
+            _doc(id: 'doc-1', title: 'My title', tags: const ['a']),
+          ],
+          suggestionsByDocumentId: {
+            'doc-1': [
+              SuggestionEntry(
+                id: 't0',
+                documentId: 'doc-1',
+                kind: SuggestionKind.title,
+                title: 'My title',
+                tags: const [],
+                rank: 0,
+                source: SuggestionSource.ingest,
+                status: SuggestionStatus.applied,
+              ),
+              SuggestionEntry(
+                id: 't1',
+                documentId: 'doc-1',
+                kind: SuggestionKind.title,
+                title: 'Alt title',
+                tags: const [],
+                rank: 1,
+                source: SuggestionSource.ingest,
+                status: SuggestionStatus.pending,
+              ),
+            ],
+          },
+        );
+        await tester.pumpWidget(
+          _wrap(
+            DocumentDetailView(
+              document: _doc(id: 'doc-1'),
+              documentService: s,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The title suggestion alternative is visible before editing.
+        expect(find.byKey(const ValueKey('suggestion-t1')), findsOneWidget);
+
+        // Edit the title and submit via Enter.
+        await tester.enterText(_titleField(), 'Renamed title');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+
+        // The suggestions should be gone.
+        expect(find.byKey(const ValueKey('suggestion-t1')), findsNothing);
+        // The fake recorded a completed poll for the title kind.
+        expect(s.completedPollCount, 1);
+        expect(s.completedPolls, [('doc-1', SuggestionKind.title)]);
+        // The snackbar includes the dismissal count.
+        expect(
+          find.text('Title updated · 2 suggestions dismissed'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('removing a tag dismisses tag suggestions and shows snackbar', (
+      tester,
+    ) async {
+      final s = FakeDocumentService(
+        documents: [
+          _doc(id: 'doc-1', title: 'My title', tags: const ['a', 'b']),
+        ],
+        suggestionsByDocumentId: {
+          'doc-1': [
+            SuggestionEntry(
+              id: 'tags0',
+              documentId: 'doc-1',
+              kind: SuggestionKind.tags,
+              title: null,
+              tags: const ['a', 'b'],
+              rank: 0,
+              source: SuggestionSource.ingest,
+              status: SuggestionStatus.applied,
+            ),
+            SuggestionEntry(
+              id: 'tags1',
+              documentId: 'doc-1',
+              kind: SuggestionKind.tags,
+              title: null,
+              tags: const ['a', 'b', 'c'],
+              rank: 1,
+              source: SuggestionSource.ingest,
+              status: SuggestionStatus.pending,
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        _wrap(
+          DocumentDetailView(
+            document: _doc(id: 'doc-1'),
+            documentService: s,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The tag suggestion alternative is visible before editing.
+      expect(find.byKey(const ValueKey('suggestion-tags1')), findsOneWidget);
+
+      // Remove the 'b' tag via its chip delete icon.
+      expect(_deleteIconFor('b'), findsOneWidget);
+      await tester.tap(_deleteIconFor('b'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      // The suggestions should be gone.
+      expect(find.byKey(const ValueKey('suggestion-tags1')), findsNothing);
+      // The fake recorded a completed poll for the tags kind.
+      expect(s.completedPollCount, 1);
+      expect(s.completedPolls, [('doc-1', SuggestionKind.tags)]);
+      // The snackbar includes the dismissal count.
+      expect(find.text('2 suggestions dismissed'), findsOneWidget);
+    });
   });
 }

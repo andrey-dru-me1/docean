@@ -180,8 +180,10 @@ fn store_plan_suggestions(
         if let Some(pre) = pre_tags {
             if !pre.is_empty() && pre != plan.tags {
                 // Push only if not already covered by an alternative.
-                let mut all: Vec<Vec<String>> =
-                    vec![pre.to_vec()].into_iter().chain(plan.alt_tag_sets.clone()).collect();
+                let mut all: Vec<Vec<String>> = vec![pre.to_vec()]
+                    .into_iter()
+                    .chain(plan.alt_tag_sets.clone())
+                    .collect();
                 all.dedup_by(|a, b| {
                     let mut a = a.clone();
                     let mut b = b.clone();
@@ -753,8 +755,15 @@ pub async fn auto_org_suggest_title(
     // value. Uses `apply_suggested_title` (no manual-flag stamp).
     let applied = match plan.suggested_title.as_ref() {
         Some(title) => {
-            let trimmed = title.trim().trim_end_matches(['-', '_', '.', ' ']).to_owned();
-            let title = if trimmed.is_empty() { title.clone() } else { trimmed };
+            let trimmed = title
+                .trim()
+                .trim_end_matches(['-', '_', '.', ' '])
+                .to_owned();
+            let title = if trimmed.is_empty() {
+                title.clone()
+            } else {
+                trimmed
+            };
             if !title.is_empty() && title != pre_title {
                 repo.apply_suggested_title(document_id.clone(), title)?;
                 true
@@ -861,6 +870,63 @@ pub async fn auto_org_suggest_tags(
 #[flutter_rust_bridge::frb]
 pub async fn auto_org_reset_learning(repo: &DocumentRepository) -> Result<(), String> {
     repo.clear_feedback()
+}
+
+/// Complete the suggestion review ("poll") for one kind after the user
+/// manually edited that kind's value: dismiss every suggestion row of the
+/// kind (pending alternatives AND the stale applied rank-0, whose value no
+/// longer matches the document), and — when `record_feedback` is true —
+/// record rejected feedback for every generated term the user did NOT keep.
+/// The kept values are read from the document's current state (the manual
+/// edit has already been persisted by the caller). Returns the number of
+/// rows marked dismissed.
+///
+/// Why the applied rank-0 row is dismissed: unlike [`auto_org_confirm_current`]
+/// (which keeps the applied value), a manual edit means the user changed the
+/// document to a value *not* in the suggestion list. The old rank-0 row is
+/// therefore stale — it no longer represents the document's current state and
+/// must be removed from the UI along with all pending alternatives.
+#[flutter_rust_bridge::frb]
+pub async fn auto_org_resolve_manual_edit(
+    repo: &DocumentRepository,
+    document_id: String,
+    kind: SuggestionKind,
+    record_feedback: bool,
+) -> Result<i32, String> {
+    // Build the "kept set" from the document's current state (the manual
+    // edit has already been persisted by the caller).
+    let kept_set: Vec<String> = match kind {
+        SuggestionKind::Tags => repo.get(document_id.clone())?.tags,
+        SuggestionKind::Title => {
+            let t = repo.get(document_id.clone())?.title.trim().to_owned();
+            if t.is_empty() {
+                vec![]
+            } else {
+                vec![t]
+            }
+        }
+    };
+
+    let rows = repo.suggestions_of(document_id, Some(kind))?;
+    let mut dismissed_count = 0i32;
+
+    for row in &rows {
+        if row.status != SuggestionStatus::Pending && row.status != SuggestionStatus::Applied {
+            continue;
+        }
+        // Record rejected feedback for generated terms the user did NOT keep.
+        if record_feedback {
+            for term in payload_terms(row) {
+                if !term.is_empty() && !kept_set.contains(&term) {
+                    record_reject(repo, kind, &term);
+                }
+            }
+        }
+        repo.mark_suggestion(row.id.clone(), SuggestionStatus::Dismissed)?;
+        dismissed_count += 1;
+    }
+
+    Ok(dismissed_count)
 }
 
 fn record_accept(repo: &DocumentRepository, kind: SuggestionKind, term: &str) {
@@ -1068,12 +1134,13 @@ mod tests {
         );
         // The old (pre-suggestion) value is offered as a pending alternative so
         // the user can switch back.
-        let suggestions = repo.suggestions_of(target.clone(), Some(SuggestionKind::Title)).unwrap();
+        let suggestions = repo
+            .suggestions_of(target.clone(), Some(SuggestionKind::Title))
+            .unwrap();
         assert!(
             suggestions
                 .iter()
-                .any(|s| s.status == SuggestionStatus::Pending
-                    && s.payload.trim() == "User title"),
+                .any(|s| s.status == SuggestionStatus::Pending && s.payload.trim() == "User title"),
             "old title must be among the pending alternatives"
         );
 
@@ -1156,10 +1223,14 @@ mod tests {
             vec!["manual".to_owned(), "stale".to_owned()],
             "manual tags are now updated by the pass"
         );
-        let manual_sug = repo.suggestions_of(manual_id, Some(SuggestionKind::Title)).unwrap();
+        let manual_sug = repo
+            .suggestions_of(manual_id, Some(SuggestionKind::Title))
+            .unwrap();
         assert!(
-            manual_sug.iter().any(|s| s.status == SuggestionStatus::Pending
-                && s.payload.trim() == "My custom title"),
+            manual_sug
+                .iter()
+                .any(|s| s.status == SuggestionStatus::Pending
+                    && s.payload.trim() == "My custom title"),
             "old manual title should be offered as a pending alternative"
         );
 
@@ -1257,7 +1328,7 @@ mod tests {
             .get(target.clone())
             .expect("repository must remain fully usable after two reorganize_one calls");
         assert_eq!(
-            doc.title, "acme-invoice-quarterly",
+            doc.title, "acme invoice quarterly",
             "reorganize_one applied the deterministic content-derived title"
         );
 
@@ -1620,6 +1691,365 @@ mod tests {
         assert!(
             repo.feedback_stats(None, None).unwrap().is_empty(),
             "reset must clear all learned feedback"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Seed one suggestion row the same way the suggestion pipeline stores it
+    /// (rank 0 = applied, rank >= 1 = pending alternatives).
+    fn put_suggestion_row(
+        repo: &crate::api::storage::DocumentRepository,
+        id: &str,
+        doc_id: &str,
+        kind: SuggestionKind,
+        payload: &str,
+        rank: i32,
+        status: SuggestionStatus,
+    ) {
+        repo.put_suggestion(crate::domain::DocumentSuggestion {
+            id: id.to_owned(),
+            document_id: doc_id.to_owned(),
+            kind,
+            payload: payload.to_owned(),
+            rank,
+            source: crate::domain::SuggestionSource::ManualRequest,
+            confidence: 1.0,
+            status,
+            created_at_ms: 1,
+        })
+        .unwrap();
+    }
+
+    /// Resolving a manual TAG edit dismisses every Tags row (the pending
+    /// alternatives AND the stale applied rank-0), leaves Title-kind rows
+    /// untouched, and returns the dismissed count.
+    ///
+    /// The applied rank-0 is dismissed too: the user's manual edit changed the
+    /// document to a value not in the suggestion list, so that row no longer
+    /// matches the document and must leave the review card with the poll.
+    #[tokio::test]
+    async fn resolve_manual_tag_edit_dismisses_all_tags_keeps_title() {
+        let root = temp_root("resolve-tags");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_doc(
+            &repo,
+            "d1",
+            "Acme invoice",
+            "some body text",
+            HashMap::new(),
+        );
+
+        put_suggestion_row(
+            &repo,
+            "t0",
+            "d1",
+            SuggestionKind::Tags,
+            r#"["acme","invoice"]"#,
+            0,
+            SuggestionStatus::Applied,
+        );
+        put_suggestion_row(
+            &repo,
+            "t1",
+            "d1",
+            SuggestionKind::Tags,
+            r#"["acme","finance"]"#,
+            1,
+            SuggestionStatus::Pending,
+        );
+        put_suggestion_row(
+            &repo,
+            "t2",
+            "d1",
+            SuggestionKind::Tags,
+            r#"["urgent"]"#,
+            2,
+            SuggestionStatus::Pending,
+        );
+        // Title-kind rows must survive the tags resolution untouched.
+        put_suggestion_row(
+            &repo,
+            "n0",
+            "d1",
+            SuggestionKind::Title,
+            "Acme Invoice",
+            0,
+            SuggestionStatus::Applied,
+        );
+        put_suggestion_row(
+            &repo,
+            "n1",
+            "d1",
+            SuggestionKind::Title,
+            "Acme Invoice Q3",
+            1,
+            SuggestionStatus::Pending,
+        );
+
+        // The user's manual tag edit is already persisted: kept tags = {acme, kept}.
+        repo.set_tags("d1".to_owned(), vec!["acme".to_owned(), "kept".to_owned()])
+            .unwrap();
+
+        let count = crate::api::auto_org::auto_org_resolve_manual_edit(
+            &repo,
+            "d1".to_owned(),
+            SuggestionKind::Tags,
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            count, 3,
+            "rank-0 applied + two pending Tags rows must be dismissed"
+        );
+
+        let after = repo.suggestions_of("d1".to_owned(), None).unwrap();
+        for s in after.iter().filter(|s| s.kind == SuggestionKind::Tags) {
+            assert_eq!(
+                s.status,
+                SuggestionStatus::Dismissed,
+                "Tags row {} must be dismissed",
+                s.id
+            );
+        }
+        let title_statuses: Vec<_> = after
+            .iter()
+            .filter(|s| s.kind == SuggestionKind::Title)
+            .map(|s| s.status)
+            .collect();
+        assert!(
+            title_statuses.contains(&SuggestionStatus::Applied),
+            "Title rank-0 must stay Applied, got {title_statuses:?}"
+        );
+        assert!(
+            title_statuses.contains(&SuggestionStatus::Pending),
+            "Title pending must stay Pending, got {title_statuses:?}"
+        );
+        assert!(
+            !title_statuses.contains(&SuggestionStatus::Dismissed),
+            "Title rows must be untouched, got {title_statuses:?}"
+        );
+
+        // Rejected feedback only for generated tags not in the kept set.
+        let stats = repo
+            .feedback_stats(Some(SuggestionKind::Tags), None)
+            .unwrap();
+        for t in ["invoice", "finance", "urgent"] {
+            assert!(
+                stats.get(t).map(|s| s.rejects > 0.0).unwrap_or(false),
+                "non-kept tag {t} must be rejected"
+            );
+        }
+        assert_eq!(
+            stats.get("acme").map(|s| s.rejects).unwrap_or(0.0),
+            0.0,
+            "kept tag acme must not be rejected"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A suggestion term equal to a kept tag must NOT be rejected even when
+    /// `record_feedback` is true: rejection is gated on "not in the kept set".
+    #[tokio::test]
+    async fn resolve_manual_edit_keeps_terms_in_kept_set_unrejected() {
+        let root = temp_root("resolve-kept");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_doc(&repo, "d1", "Doc", "some body text", HashMap::new());
+        put_suggestion_row(
+            &repo,
+            "t0",
+            "d1",
+            SuggestionKind::Tags,
+            r#"["acme","invoice"]"#,
+            0,
+            SuggestionStatus::Applied,
+        );
+        repo.set_tags("d1".to_owned(), vec!["acme".to_owned(), "kept".to_owned()])
+            .unwrap();
+
+        let count = crate::api::auto_org::auto_org_resolve_manual_edit(
+            &repo,
+            "d1".to_owned(),
+            SuggestionKind::Tags,
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
+
+        let stats = repo
+            .feedback_stats(Some(SuggestionKind::Tags), None)
+            .unwrap();
+        assert_eq!(
+            stats.get("acme").map(|s| s.rejects).unwrap_or(0.0),
+            0.0,
+            "kept tag term must NOT be rejected"
+        );
+        assert!(
+            stats
+                .get("invoice")
+                .map(|s| s.rejects > 0.0)
+                .unwrap_or(false),
+            "non-kept tag term must be rejected"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// `record_feedback = false` still dismisses the rows but records no
+    /// feedback for the generated terms.
+    #[tokio::test]
+    async fn resolve_manual_edit_without_feedback_dismisses_without_recording() {
+        let root = temp_root("resolve-no-fb");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_doc(&repo, "d1", "Doc", "some body text", HashMap::new());
+        put_suggestion_row(
+            &repo,
+            "t0",
+            "d1",
+            SuggestionKind::Tags,
+            r#"["acme","b"]"#,
+            0,
+            SuggestionStatus::Applied,
+        );
+        put_suggestion_row(
+            &repo,
+            "t1",
+            "d1",
+            SuggestionKind::Tags,
+            r#"["c"]"#,
+            1,
+            SuggestionStatus::Pending,
+        );
+        repo.set_tags("d1".to_owned(), vec!["acme".to_owned()])
+            .unwrap();
+
+        let count = crate::api::auto_org::auto_org_resolve_manual_edit(
+            &repo,
+            "d1".to_owned(),
+            SuggestionKind::Tags,
+            false,
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 2, "rows still dismissed without feedback gating");
+
+        let after = repo
+            .suggestions_of("d1".to_owned(), Some(SuggestionKind::Tags))
+            .unwrap();
+        assert_eq!(after.len(), 2);
+        for s in after {
+            assert_eq!(s.status, SuggestionStatus::Dismissed);
+        }
+
+        // set_tags recorded an *accept* for the kept tag only; no rejects at all.
+        let stats = repo
+            .feedback_stats(Some(SuggestionKind::Tags), None)
+            .unwrap();
+        assert_eq!(
+            stats.get("b").map(|s| s.rejects).unwrap_or(0.0),
+            0.0,
+            "no reject feedback recorded for non-kept b"
+        );
+        assert_eq!(
+            stats.get("c").map(|s| s.rejects).unwrap_or(0.0),
+            0.0,
+            "no reject feedback recorded for non-kept c"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Resolving when there are no suggestion rows returns Ok(0) and records
+    /// no feedback.
+    #[tokio::test]
+    async fn resolve_manual_edit_with_no_rows_returns_zero() {
+        let root = temp_root("resolve-empty");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_doc(&repo, "d1", "Doc", "some body text", HashMap::new());
+
+        let count = crate::api::auto_org::auto_org_resolve_manual_edit(
+            &repo,
+            "d1".to_owned(),
+            SuggestionKind::Tags,
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 0);
+
+        assert!(
+            repo.feedback_stats(Some(SuggestionKind::Tags), None)
+                .unwrap()
+                .is_empty(),
+            "no rows means no feedback"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A manual TITLE edit dismisses the title-kind rows and rejects the
+    /// generated title term when it differs from the kept (current) title.
+    #[tokio::test]
+    async fn resolve_manual_title_edit_dismisses_title_and_rejects_diff() {
+        let root = temp_root("resolve-title");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        seed_doc(&repo, "d1", "Old title", "some body text", HashMap::new());
+        put_suggestion_row(
+            &repo,
+            "n0",
+            "d1",
+            SuggestionKind::Title,
+            "Acme Invoice Q3",
+            0,
+            SuggestionStatus::Applied,
+        );
+        put_suggestion_row(
+            &repo,
+            "n1",
+            "d1",
+            SuggestionKind::Title,
+            "Acme Invoice",
+            1,
+            SuggestionStatus::Pending,
+        );
+        // User's manual rename is already persisted.
+        repo.update_title("d1".to_owned(), "My Kept Title".to_owned())
+            .unwrap();
+
+        let count = crate::api::auto_org::auto_org_resolve_manual_edit(
+            &repo,
+            "d1".to_owned(),
+            SuggestionKind::Title,
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 2);
+
+        let after = repo
+            .suggestions_of("d1".to_owned(), Some(SuggestionKind::Title))
+            .unwrap();
+        assert_eq!(after.len(), 2);
+        for s in after {
+            assert_eq!(s.status, SuggestionStatus::Dismissed);
+        }
+
+        let stats = repo
+            .feedback_stats(Some(SuggestionKind::Title), None)
+            .unwrap();
+        for t in ["Acme Invoice Q3", "Acme Invoice"] {
+            assert!(
+                stats.get(t).map(|s| s.rejects > 0.0).unwrap_or(false),
+                "generated title {t} differing from the kept title must be rejected"
+            );
+        }
+        assert_eq!(
+            stats.get("My Kept Title").map(|s| s.rejects).unwrap_or(0.0),
+            0.0,
+            "the user's kept title must not be rejected"
         );
 
         let _ = fs::remove_dir_all(&root);

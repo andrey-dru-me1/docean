@@ -1,0 +1,59 @@
+# Zoo context — docer
+
+Reusable session context for AI orchestration (Zoo). Last updated: 2026-09-04.
+Purpose: a fresh session can resume work without re-researching the codebase.
+
+## Project layout & tooling
+- `docer` = Flutter app (`app/`) + Rust core (`core/`), glued by flutter_rust_bridge (FRB).
+- justfile recipes: `codegen`, `build-core`, `test-core`, `fmt-core`, `lint-core`, `get`, `fmt-app`, `lint-app`, `test-app`, `check` (= fmt-check + lint + tests), `run-macos|linux|windows|android`, `build-*`.
+- RULE (repo instructions): use fvm for everything fvm supports — `cd app && fvm dart analyze`, `fvm flutter test`, `fvm dart format ...`. NEVER bare `flutter`/`dart`.
+- ENV GOTCHA: bare `dart`/`flutter` resolve to a broken `proto` shim here, so `just check` fails at fmt-app-check. Run the underlying commands with fvm directly (cargo commands are fine).
+- Generated files (never hand-edit): `core/src/frb_generated.rs`, `app/lib/src/rust/**`. Regenerate with `just codegen` after editing `core/src/api/**`.
+- Tests: core via `cargo test --manifest-path core/Cargo.toml` (161 passing as of this date); app via `cd app && fvm flutter test` (96 passing).
+
+## Architecture map (verified)
+### Rust core
+- `core/src/api/auto_org.rs` — FRB-exposed APIs: `auto_org_organize` (suggestion-only plan), `auto_org_reorganize_all/one/selected` (apply passes honoring `title_manual`/`tags_manual` only in the one/selected paths' doc; NOTE: as of 2026-09 the single reorganize test asserts suggestions ALWAYS apply, old value becomes an alternative), `auto_org_suggest_title` / `auto_org_suggest_tags` (apply rank-0 WITHOUT manual stamp + persist full candidate list incl. pre-value as pending; return `SuggestOutcome{status: Applied|AlreadyCurrent|NoSuggestion, stored_pending}`), `auto_org_list_suggestions`, `auto_org_apply_suggestion` (applies chosen payload via normal update paths + accept/reject feedback + dismisses siblings), `auto_org_confirm_current` (keep rank-0: accept applied terms, reject pending-only terms, dismiss pending), `auto_org_dismiss_suggestion` (reject terms + dismiss), `auto_org_resolve_manual_edit` (NEW 2026-09, see Completed), `auto_org_reset_learning`, `auto_org_default_config` (sync), `auto_org_default_rules` (sync). Helpers: `payload_terms` (Tags → JSON array of names; Title → single trimmed term), `record_accept`/`record_reject` (weight 1.0), `store_plan_suggestions`, `build_corpus`, `preference_model` (neutral when learning off).
+- `core/src/api/storage.rs` — `DocumentRepository`: `set_tags` (stamps `extra['tags_manual']='true'` + weight-2.0 accept feedback per tag), `apply_suggested_tags` (no stamp), `update_title` (stamps `extra['title_manual']='true'` + weight-2.0 accept feedback; reuses stored bytes; mirrors search metadata), `apply_suggested_title` (no stamp), `put`/`get`/`get_`/`read_bytes`/`delete`/`paths_of`/`list_tags`/`list_paths`, suggestion storage: `suggestions_of`, `mark_suggestion`, `put_suggestion`, `delete_document_suggestions`, `prune_suggestions`, feedback: `record_feedback`, `feedback_stats`, `clear_feedback`.
+- `core/src/auto_org/` —
+  - `config.rs`: `OrgConfig{enabled, generative_enabled, dedup_threshold=0.85, shingle_k=3, cluster_k=0, rules: RuleSet, learning_mode: LearningMode{Off, Basic}}`; `RuleSet{placement: Vec<PlacementRule>, fallback_path: Some("/inbox"), filename_template}`; `RuleSet::default_template() == "{keywords}-{date}.{ext}"`.
+  - `rules.rs`: RuleSet + PlacementRule + template rendering (NOT yet read in detail).
+  - `keywords.rs`: keyword extraction/weighting incl. `weighted_title_terms()` (~line 102: content TF-IDF tokens + filename tokens, down-weighted, never dropped) + weight consts `CONTENT_WEIGHT`=1.0, `FILENAME_WEIGHT`=0.25, `FILENAME_SCRIPT_MISMATCH_WEIGHT`=0.01.
+  - `organizer.rs`: `DeterministicOrganizer::organize_with_model(&corpus, &doc_id, &prefs) -> OrgPlan{document_id, tags (rank-0), alt_tag_sets, suggested_path, suggested_title (rank-0), alt_titles, is_duplicate_of, confidence, filename_source: FilenameSource{Template,Generative}}`; learning re-rank at ~line 204 (`is_learning = config.learning_mode.is_enabled()`); `render_title()` (~134, space-joined) + `clean_title_words()` (~145): `suggested_title`/`alt_titles` are space-joined from `weighted_title_terms()` (content-dominant, filename down-weighted), while path/filename keeps the `-` template via `render_filename`.
+  - `text.rs` (text utils: `Script` enum + `detect_script()` + `scripts_mismatch()`), `minhash.rs`, `cluster.rs`, `knn.rs`, `near-dup via search/near_dup.rs`, `feedback.rs`: `PreferenceModel`, `LearningMode::is_enabled()/records_feedback()`; `generative.rs`: LLM filename tier.
+- `core/src/domain/mod.rs` — `DocumentSuggestion{id, document_id, kind: Title|Tags, payload, rank (0 = applied, >=1 alternatives), source: Ingest|Bulk|ManualRequest|User, confidence, status: Pending|Applied|Dismissed, created_at_ms}`; `SuggestionFeedback{id, kind, context: "tag"|"title", term, action: "accepted"|"rejected", weight, created_at_ms}`.
+- Core unit tests live inline (`#[cfg(test)] mod tests` in api/auto_org.rs with `seed_doc`/`seed_sibling` helpers) and in `core/src/auto_org/tests.rs`, `core/src/storage/tests.rs`, etc.
+
+### Dart app
+- `app/lib/src/features/document_service.dart` — `DocumentService` interface + `BridgeDocumentService` (FRB-backed, shares repo via `openSharedRepository`) + `FakeDocumentService` (in-memory; tracks setTagsCount, updateTitleCount, completedPolls: list of (id, kind), completedPollCount, bulkAdds/bulkRemoves). `SuggestionPlan{title, tags, outcome: SuggestOutcome?}`; `SuggestionEntry` mirrors bridge `DocumentSuggestion` (title/tags decoded, `isPending`).
+- `app/lib/src/features/learning_prefs.dart` — in-memory `suggestionLearningMode()`/`setSuggestionLearningMode()` (Off/Basic), used by `BridgeDocumentService._orgConfig()` and poll feedback gating.
+- `app/lib/src/ui/document_view.dart` — `DocumentDetailView`: inline title editor (`_saveTitle` ~line 310), tag chips optimistic persist (`_applyTagsOptimistically`/`_persistTags` ~line 268 with `_tagsGeneration` guard), suggest flows (`_suggestTitle`/`_suggestTags` with outcome snackbars + "N alternatives available to review"), suggestion review card (`_buildSuggestionsSection` ~line 730 / `_buildSuggestionRow`: "Keep" button `confirm-<kind>` + pending alternative chips `suggestion-<id>` with × dismiss), `_chooseSuggestion`/`_confirmCurrent`/`_dismissSuggestion`. `DocumentSummary.extra` carries `title_manual`/`tags_manual` (getters `titleManuallyEdited`/`tagsManuallyEdited`).
+- `app/lib/src/ui/documents_screen.dart` — browse grid, selection mode + bulk toolbar (suggest title/tags, reorganize selected, bulk tags, delete), `_suggestProgress` corner chip + `CountProgress`.
+- `app/lib/src/ui/learning_panel.dart` (on Provider screen) — learning mode selector + "reset learning".
+- Tests: `app/test/document_detail_test.dart` (detail view; includes suggestion-card + poll tests), `documents_browse_test.dart`, `widget_test.dart`, `widgets_test.dart`, `ingest_ui_test.dart`, `search_chat_ui_test.dart`, `document_preview_test.dart`, `p2p_sync_screen_test.dart`.
+
+## Completed work (2026-09-04): poll completion on manual title/tag edits
+User term: "poll" = the pending suggestion review card ("AI suggestions") in the document detail view.
+1. Core: `auto_org_resolve_manual_edit(repo, document_id, kind, record_feedback) -> Result<i32, String>` in `core/src/api/auto_org.rs` (~line 881). Kept set = document's CURRENT title/tags (manual edit persisted first). Dismisses every Pending+Applied row of `kind` (returns count); if `record_feedback`, records weight-1.0 "rejected" for payload terms NOT in the kept set (non-blank). Already-dismissed rows untouched. Applied rank-0 is dismissed too — it is stale after a manual edit (unlike `auto_org_confirm_current` which keeps it).
+2. Five core tests added (`resolve_manual_*`); all pass.
+3. FRB codegen regenerated; Dart binding `autoOrgResolveManualEdit` in `app/lib/src/rust/api/auto_org.dart` (~line 227).
+4. Dart: `DocumentService.completeSuggestionPoll(String id, SuggestionKind kind) -> Future<int>` (interface ~line 199). `BridgeDocumentService` (~line 617) gates feedback on `suggestionLearningMode() != LearningMode.off`. `FakeDocumentService` (~line 1044) dismisses kind rows + records `completedPolls`/`completedPollCount`.
+5. `BridgeDocumentService.updateTitle` now delegates to core `repo.updateTitle` binding (stamps `title_manual` + accept feedback + best-effort search mirror) — previously did manual `repo.put(doc: _withTitle(...))` with NO stamp; `_withTitle`/`_nowMs` removed.
+6. `BridgeDocumentService.bulkTags` completes the Tags poll per document (best-effort try/catch, never aborts batch).
+7. UI `document_view.dart`: `_saveTitle` and `_persistTags` (success path, after `onMetaChanged`) call `completeSuggestionPoll` + `_loadSuggestions` (best-effort, mounted-guarded). Snackbars: title → `'Title updated · N suggestion(s) dismissed'` (pluralized); tags → `'N suggestion(s) dismissed'` ONLY when N>0 (tags flow otherwise silent).
+8. Widget tests added in `app/test/document_detail_test.dart`: title-edit dismissal (poll kind=title; snackbar `'Title updated · 2 suggestions dismissed'`) and tag-removal dismissal via `_deleteIconFor` (poll kind=tags; `'2 suggestions dismissed'`).
+9. Verification: cargo fmt + clippy -D warnings clean; core 149/149; `fvm dart analyze` 0 issues; `fvm flutter test` 96/96.
+
+## Completed work (2026-09-04): title suggestion tuning (spaces + content-over-filename weighting)
+Plan: `plans/title-suggestion-tuning.md`. Core-internal only — NO FRB codegen, NO API signature changes, NO OrgConfig changes, NO Dart changes.
+1. `core/src/auto_org/text.rs` — `Script` enum + `detect_script()` + `scripts_mismatch()` already existed; +4 unit tests; fixed `clippy::if_same_then_else` in `detect_script`.
+2. `core/src/auto_org/keywords.rs` — consts `CONTENT_WEIGHT`=1.0, `FILENAME_WEIGHT`=0.25, `FILENAME_SCRIPT_MISMATCH_WEIGHT`=0.01; new `weighted_title_terms()` (~line 102) blends content TF-IDF tokens + filename tokens (down-weighted, NEVER dropped — USER CONSTRAINT: reduce weight, don't exclude; strong penalty on script mismatch); +3 unit tests.
+3. `core/src/auto_org/organizer.rs` — new `render_title()` (~134, space-joined) + `clean_title_words()` (~145); `organize_with_model()` (~242) derives `suggested_title` from space-joined weighted title keywords instead of the filename-template render; filename/path still uses `render_filename` (keeps `-`); `alt_titles` (~314) joins with spaces.
+4. `core/src/api/auto_org.rs:1331` — inline test assertion updated `"acme-invoice-quarterly"` → `"acme invoice quarterly"`.
+5. `core/src/auto_org/tests.rs` — relaxed `organize_reuses_tags_and_resolves_path` (was `.ends_with(".pdf")` → content-derived space-joined check); +5 tests: `suggested_title_uses_spaces_only`, `cyrillic_filename_latin_content_title_from_content`, `symmetric_latin_filename_cyrillic_content_title_from_content`, `filename_template_behavior_unchanged`, `determinism_same_corpus_same_output`.
+6. Verification: `just fmt-core` / `fmt-core-check` / `lint-core` / `test-core` all green; core 161 passing (was ~149-150); `fvm dart analyze` 0 issues; `fvm flutter test` 96/96; Dart-side unchanged.
+
+## Session-management gotchas (for the orchestrator)
+- Do NOT spam `update_todo_list` — a repetition-limit loop (3×) interrupted work in the 2026-09-04 session; update todos only on real status transitions, or skip todos entirely and delegate via `new_task` early.
+- Delegate implementation to `code` mode with verified file/line facts in the message; run verification (fmt/lint/tests) as its own step.
+- User language: English. Platform: macOS, fish shell. Workspace root: /Users/andreymelnikov/programming/self/docer.

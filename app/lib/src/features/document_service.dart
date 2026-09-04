@@ -23,12 +23,14 @@ import '../rust/api/auto_org.dart'
         autoOrgReorganizeOne,
         autoOrgReorganizeSelected,
         autoOrgResetLearning,
+        autoOrgResolveManualEdit,
         autoOrgSuggestTags,
         autoOrgSuggestTitle;
 import '../rust/api/search.dart' as search_bridge;
 import '../rust/api/storage.dart' show DocumentRepository;
 import '../rust/auto_org/config.dart' show OrgConfig;
 import 'learning_prefs.dart' show suggestionLearningMode;
+import '../rust/auto_org/feedback.dart' show LearningMode;
 import '../rust/domain.dart'
     show
         Document,
@@ -193,6 +195,13 @@ abstract interface class DocumentService {
 
   /// Dismiss one pending suggestion (records reject feedback for its terms).
   Future<void> dismissSuggestion(String id, String suggestionId);
+
+  /// Complete the suggestion review ("poll") for a kind after a user manual
+  /// edit: dismisses every suggestion row of [kind] (pending alternatives and
+  /// the stale applied rank-0) and — when the user's learning mode is on —
+  /// records rejected feedback for generated terms the user did not keep.
+  /// Returns the number of rows dismissed.
+  Future<int> completeSuggestionPoll(String id, SuggestionKind kind);
 
   /// Wipe all learned feedback (settings "reset learning").
   Future<void> resetSuggestionFeedback();
@@ -399,15 +408,16 @@ class BridgeDocumentService implements DocumentService {
     }
   }
 
-  /// Persist a renamed title through `repo.put`, reusing the stored raw bytes
-  /// so the rename never depends on re-ingestion.
+  /// Persist a renamed title through the repository's `updateTitle` binding
+  /// (stamps `title_manual` and records accept feedback exactly like the tags
+  /// path) and mirror the new title into the search metadata.
   @override
   Future<void> updateTitle(String id, String title) async {
     final repo = await _repo();
-    final doc = await repo.get_(id: id);
-    final bytes = await repo.readBytes(id: id);
-    await repo.put(doc: _withTitle(doc, title), bytes: bytes);
+    await repo.updateTitle(documentId: id, title: title);
+    // Best-effort search-metadata mirror (mirrors the setTags pattern).
     try {
+      final doc = await repo.get_(id: id);
       final paths = await _pathsOf(repo, doc);
       search_bridge.searchSetMetadata(
         documentId: id,
@@ -531,6 +541,20 @@ class BridgeDocumentService implements DocumentService {
           ..addAll(adds.where((t) => !doc.tags.contains(t)))
           ..removeWhere(removes.contains);
         await repo.setTags(documentId: id, tags: ordered);
+        // Best-effort: complete the suggestion poll for tags so the review
+        // card disappears after a bulk manual edit (a failure must not abort
+        // the batch).
+        try {
+          final learningMode = suggestionLearningMode();
+          await autoOrgResolveManualEdit(
+            repo: repo,
+            documentId: id,
+            kind: SuggestionKind.tags,
+            recordFeedback: learningMode != LearningMode.off,
+          );
+        } catch (_) {
+          // Poll failure must not block the bulk tag edit.
+        }
       } catch (_) {
         // A document deleted mid-batch simply is skipped.
       }
@@ -597,6 +621,18 @@ class BridgeDocumentService implements DocumentService {
   }
 
   @override
+  Future<int> completeSuggestionPoll(String id, SuggestionKind kind) async {
+    final repo = await _repo();
+    final learningMode = suggestionLearningMode();
+    return await autoOrgResolveManualEdit(
+      repo: repo,
+      documentId: id,
+      kind: kind,
+      recordFeedback: learningMode != LearningMode.off,
+    );
+  }
+
+  @override
   Future<void> resetSuggestionFeedback() async {
     final repo = await _repo();
     await autoOrgResetLearning(repo: repo);
@@ -617,25 +653,6 @@ class BridgeDocumentService implements DocumentService {
       status: s.status,
     );
   }
-
-  /// A copy of [doc] with a new title and a refreshed `updated_at` timestamp.
-  Document _withTitle(Document doc, String title) => Document(
-    id: doc.id,
-    parentId: doc.parentId,
-    kind: doc.kind,
-    title: title,
-    mimeType: doc.mimeType,
-    sizeBytes: doc.sizeBytes,
-    checksumSha256: doc.checksumSha256,
-    tags: doc.tags,
-    createdAtMs: doc.createdAtMs,
-    updatedAtMs: _nowMs(),
-    extra: doc.extra,
-  );
-
-  /// Current wall-clock time in ms (the FRB `PlatformInt64` is a plain `int`
-  /// on IO platforms).
-  int _nowMs() => DateTime.now().millisecondsSinceEpoch;
 
   DocumentSummary _summaryOf(Document doc, List<String> paths) {
     return DocumentSummary(
@@ -725,6 +742,12 @@ class FakeDocumentService implements DocumentService {
 
   /// The most recent title passed to [updateTitle] (rename assertion).
   String? lastTitle;
+
+  /// How many times [completeSuggestionPoll] has been called (poll assertion).
+  int completedPollCount = 0;
+
+  /// The (id, kind) pairs passed to [completeSuggestionPoll] (poll assertion).
+  final List<(String, SuggestionKind)> completedPolls = [];
 
   /// How many times [suggestMetadata] has been called (auto-suggest assertion).
   int suggestCount = 0;
@@ -997,6 +1020,39 @@ class FakeDocumentService implements DocumentService {
   @override
   Future<void> resetSuggestionFeedback() async {
     _suggestionsByDocumentId.clear();
+  }
+
+  @override
+  Future<int> completeSuggestionPoll(String id, SuggestionKind kind) async {
+    _byId(id); // Throw if the id is unknown, mirroring the repository.
+    completedPollCount++;
+    completedPolls.add((id, kind));
+    final all = _suggestionsByDocumentId[id] ?? const [];
+    var dismissedCount = 0;
+    final next = <SuggestionEntry>[
+      for (final s in all)
+        if (s.kind == kind && s.status != SuggestionStatus.dismissed)
+          SuggestionEntry(
+            id: s.id,
+            documentId: s.documentId,
+            kind: s.kind,
+            title: s.title,
+            tags: s.tags,
+            rank: s.rank,
+            source: s.source,
+            status: SuggestionStatus.dismissed,
+          )
+        else
+          s,
+    ];
+    // Count dismissals (rows that were not already dismissed).
+    for (final s in all) {
+      if (s.kind == kind && s.status != SuggestionStatus.dismissed) {
+        dismissedCount++;
+      }
+    }
+    _suggestionsByDocumentId[id] = next;
+    return dismissedCount;
   }
 
   /// Batch tag edit: merge the `add`/`remove` sets into every listed document,

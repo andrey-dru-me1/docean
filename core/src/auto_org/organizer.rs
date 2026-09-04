@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use crate::auto_org::cluster::{self, vectorize_dense};
 use crate::auto_org::config::{FilenameSource, OrgConfig, OrgPlan};
 use crate::auto_org::feedback::PreferenceModel;
-use crate::auto_org::keywords::{self, sanitize_filename};
+use crate::auto_org::keywords;
 use crate::auto_org::knn::{self, TagVote};
 use crate::auto_org::minhash::{self, LshIndex, Signature};
 use crate::auto_org::rules::{self, DocSignals};
@@ -128,6 +128,35 @@ fn extension_of(mime: &str, title: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Render a title from keywords, joining with spaces (not `-` or `_`).
+///
+/// Returns "document" when no keywords are provided.
+fn render_title(keywords: &[String], max: usize) -> String {
+    let joined = keywords
+        .iter()
+        .take(max)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if joined.trim().is_empty() {
+        "document".to_owned()
+    } else {
+        joined
+    }
+}
+
+/// Clean a title string by splitting on whitespace and re-joining with spaces.
+///
+/// Used as a fallback alternative in [`DeterministicOrganizer::alt_titles`] so
+/// the original document title can be offered without `_`-joined filenames.
+fn clean_title_words(s: &str) -> String {
+    s.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_owned()
+}
+
 /// The deterministic, offline, non-generative organizer.
 #[derive(Debug, Clone)]
 pub struct DeterministicOrganizer {
@@ -218,17 +247,28 @@ impl DeterministicOrganizer {
         let tags: Vec<String> = ranked_tags.into_iter().map(|(t, _)| t).collect();
 
         // --- Step 3: deterministic rename via keywords ------------------
-        let kw = keywords::extract_keywords(&doc.text, Some(&model), None, keywords::DEFAULT_TOP_K);
+        // Build a blended (term, weight) pool: content TF-IDF + reduced-weight filename.
+        let title_terms = keywords::weighted_title_terms(
+            &doc.text,
+            Some(&model),
+            &doc.title,
+            keywords::DEFAULT_TOP_K,
+        );
+        let title_keywords: Vec<String> = title_terms.into_iter().map(|(t, _)| t).collect();
+
         let extension = extension_of(&doc.mime_type, &doc.title);
         let signals = DocSignals {
             tags: tags.clone(),
-            keywords: kw,
+            keywords: title_keywords.clone(),
             title: doc.title.clone(),
             extension,
             date: String::new(),
         };
+        // Filename path keeps the template policy (still sanitized, still uses `-`).
         let template = &self.config.rules.filename_template;
-        let suggested_title = sanitize_filename(&rules::render_filename(template, &signals));
+        let _filename = keywords::sanitize_filename(&rules::render_filename(template, &signals));
+        // Title path: space-joined keywords (no `-`/`_`).
+        let suggested_title = render_title(&title_keywords, 3);
 
         // Build alternative titles (dedup, max MAX_TITLE_ALTS).
         let alt_titles = self.alt_titles(doc, &model, &suggested_title, prefs, is_learning);
@@ -277,7 +317,7 @@ impl DeterministicOrganizer {
 
     /// Build ranked title alternatives (besides the rank-0 template title).
     ///
-    /// Variants: `{kw1}-{kw2}`, `{kw1}-{kw2}-{kw3}`, the raw-keyword-only
+    /// Variants: `{kw1} {kw2}`, `{kw1} {kw2} {kw3}`, the raw-keyword-only
     /// title, and (when learning is on) the same list re-ranked by the
     /// preference model. Deterministic; dedup'd; capped at [`MAX_TITLE_ALTS`].
     fn alt_titles(
@@ -288,20 +328,26 @@ impl DeterministicOrganizer {
         prefs: &PreferenceModel,
         is_learning: bool,
     ) -> Vec<String> {
-        let kw = keywords::extract_keywords(&doc.text, Some(model), None, keywords::DEFAULT_TOP_K);
+        let terms = keywords::weighted_title_terms(
+            &doc.text,
+            Some(model),
+            &doc.title,
+            keywords::DEFAULT_TOP_K,
+        );
+        let kw: Vec<String> = terms.into_iter().map(|(t, _)| t).collect();
         let mut candidates = Vec::new();
         if kw.len() >= 2 {
-            candidates.push(format!("{}-{}", kw[0], kw[1]));
+            candidates.push(format!("{} {}", kw[0], kw[1]));
         }
         if kw.len() >= 3 {
-            candidates.push(format!("{}-{}-{}", kw[0], kw[1], kw[2]));
+            candidates.push(format!("{} {} {}", kw[0], kw[1], kw[2]));
         }
         if let Some(first) = kw.first() {
             candidates.push(first.clone());
         }
         // The rank-0 template title itself is not an "alternative", but the
-        // raw cleanup of the original title is a useful fallback.
-        let cleaned = sanitize_filename(doc.title.trim());
+        // raw space-joined cleanup of the original title is a useful fallback.
+        let cleaned = clean_title_words(doc.title.trim());
         if !cleaned.is_empty() && cleaned != rank0 && !candidates.contains(&cleaned) {
             candidates.push(cleaned);
         }

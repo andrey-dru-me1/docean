@@ -210,6 +210,32 @@ Future<SuggestOutcome> autoOrgSuggestTags({
 Future<void> autoOrgResetLearning({required DocumentRepository repo}) =>
     RustLib.instance.api.crateApiAutoOrgAutoOrgResetLearning(repo: repo);
 
+/// Complete the suggestion review ("poll") for one kind after the user
+/// manually edited that kind's value: dismiss every suggestion row of the
+/// kind (pending alternatives AND the stale applied rank-0, whose value no
+/// longer matches the document), and — when `record_feedback` is true —
+/// record rejected feedback for every generated term the user did NOT keep.
+/// The kept values are read from the document's current state (the manual
+/// edit has already been persisted by the caller). Returns the number of
+/// rows marked dismissed.
+///
+/// Why the applied rank-0 row is dismissed: unlike [`auto_org_confirm_current`]
+/// (which keeps the applied value), a manual edit means the user changed the
+/// document to a value *not* in the suggestion list. The old rank-0 row is
+/// therefore stale — it no longer represents the document's current state and
+/// must be removed from the UI along with all pending alternatives.
+Future<int> autoOrgResolveManualEdit({
+  required DocumentRepository repo,
+  required String documentId,
+  required SuggestionKind kind,
+  required bool recordFeedback,
+}) => RustLib.instance.api.crateApiAutoOrgAutoOrgResolveManualEdit(
+  repo: repo,
+  documentId: documentId,
+  kind: kind,
+  recordFeedback: recordFeedback,
+);
+
 /// A convenience default [`RuleSet`] (empty placement rules + `/inbox` fallback).
 RuleSet autoOrgDefaultRules() =>
     RustLib.instance.api.crateApiAutoOrgAutoOrgDefaultRules();
