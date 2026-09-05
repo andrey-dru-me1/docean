@@ -4,6 +4,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::library_sync::{DirFile, LibraryDir};
+
 #[derive(Debug, Clone)]
 pub struct LibraryFile {
     pub name: String,
@@ -137,6 +139,43 @@ impl LibraryFs {
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(e),
         }
+    }
+}
+
+impl LibraryDir for LibraryFs {
+    /// The friendly, deterministic name — `file_name_for` with collision
+    /// handling left to the caller. This matches the [`LibraryDir`] contract:
+    /// the reconciliation pass stamps-without-writing when the name is taken
+    /// (assuming the existing file is the document's own content).
+    fn name_for(&self, original_name: Option<&str>, mime_type: &str, hash: &str) -> String {
+        Self::file_name_for(original_name, mime_type, hash)
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        LibraryFs::contains(self, name)
+    }
+
+    fn list_files(&self) -> io::Result<Vec<DirFile>> {
+        Ok(LibraryFs::list_files(self)?
+            .into_iter()
+            .map(|f| DirFile {
+                name: f.name,
+                size: f.size,
+                modified_ms: f.modified_ms,
+            })
+            .collect())
+    }
+
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+        LibraryFs::read_file(self, name)
+    }
+
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        LibraryFs::write_file(self, name, bytes).map(|_| ())
+    }
+
+    fn path_for(&self, name: &str) -> Option<PathBuf> {
+        Some(self.dir.join(name))
     }
 }
 
