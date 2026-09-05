@@ -14,6 +14,14 @@ pub struct LibraryFile {
 }
 
 #[derive(Debug, Clone)]
+pub struct TreeFile {
+    pub rel_dir: String,
+    pub name: String,
+    pub size: u64,
+    pub modified_ms: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct LibraryFs {
     dir: PathBuf,
 }
@@ -140,13 +148,147 @@ impl LibraryFs {
             Err(e) => Err(e),
         }
     }
+
+    fn validate_rel_dir(rel_dir: &str) -> io::Result<()> {
+        if rel_dir == ".."
+            || rel_dir.contains("/../")
+            || rel_dir.ends_with("/..")
+            || rel_dir.starts_with("../")
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "relative path may not contain '..' segments",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn ensure_dir(&self, rel_dir: &str) -> io::Result<()> {
+        if rel_dir.is_empty() {
+            return Ok(());
+        }
+        Self::validate_rel_dir(rel_dir)?;
+        fs::create_dir_all(self.dir.join(rel_dir))
+    }
+
+    pub fn rel_path(&self, rel_dir: &str, name: &str) -> PathBuf {
+        if rel_dir.is_empty() {
+            self.dir.join(name)
+        } else {
+            self.dir.join(rel_dir).join(name)
+        }
+    }
+
+    pub fn contains_tree(&self, rel_dir: &str, name: &str) -> bool {
+        self.rel_path(rel_dir, name).exists()
+    }
+
+    pub fn read_tree_file(&self, rel_dir: &str, name: &str) -> io::Result<Vec<u8>> {
+        fs::read(self.rel_path(rel_dir, name))
+    }
+
+    pub fn write_tree_file(&self, rel_dir: &str, name: &str, bytes: &[u8]) -> io::Result<PathBuf> {
+        self.ensure_dir(rel_dir)?;
+        let dest = self.rel_path(rel_dir, name);
+        let parent = dest.parent().unwrap_or(&self.dir);
+        let tmp = parent.join(format!(".{name}.tmp"));
+        {
+            let mut f = fs::File::create(&tmp)?;
+            f.write_all(bytes)?;
+            f.sync_all()?;
+        }
+        fs::rename(&tmp, &dest)?;
+        Ok(dest)
+    }
+
+    pub fn remove_tree_file(&self, rel_dir: &str, name: &str) -> io::Result<bool> {
+        let path = self.rel_path(rel_dir, name);
+        match fs::remove_file(&path) {
+            Ok(()) => {
+                if !rel_dir.is_empty() {
+                    self.prune_empty_dirs(rel_dir);
+                }
+                Ok(true)
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn prune_empty_dirs(&self, rel_dir: &str) {
+        let mut current = self.dir.join(rel_dir);
+        let root = &self.dir;
+        while current != *root {
+            match fs::read_dir(&current) {
+                Ok(mut entries) => {
+                    if entries.next().is_some() {
+                        break;
+                    }
+                    drop(entries);
+                    let _ = fs::remove_dir(&current);
+                }
+                Err(_) => break,
+            }
+            current = match current.parent() {
+                Some(p) if p != root => p.to_path_buf(),
+                _ => break,
+            };
+        }
+    }
+
+    pub fn walk_tree(&self) -> io::Result<Vec<TreeFile>> {
+        let mut result = Vec::new();
+        self.walk_tree_recursive(&self.dir, "", &mut result)?;
+        result.sort_by(|a, b| a.rel_dir.cmp(&b.rel_dir).then_with(|| a.name.cmp(&b.name)));
+        Ok(result)
+    }
+
+    fn walk_tree_recursive(
+        &self,
+        dir: &Path,
+        rel_dir: &str,
+        out: &mut Vec<TreeFile>,
+    ) -> io::Result<()> {
+        let mut entries: Vec<_> = fs::read_dir(dir)?.filter_map(|e| e.ok()).collect();
+        entries.sort_by_key(|e| e.file_name());
+
+        let mut has_children = false;
+        for entry in &entries {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || name.ends_with(".tmp") {
+                continue;
+            }
+            let md = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if md.is_file() {
+                has_children = true;
+                out.push(TreeFile {
+                    rel_dir: rel_dir.to_owned(),
+                    name,
+                    size: md.len(),
+                    modified_ms: system_time_to_ms(md.modified()),
+                });
+            } else if md.is_dir() {
+                let child_rel = if rel_dir.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{}/{}", rel_dir, name)
+                };
+                let before = out.len();
+                self.walk_tree_recursive(&entry.path(), &child_rel, out)?;
+                if out.len() > before {
+                    has_children = true;
+                }
+            }
+        }
+        let _ = has_children;
+        Ok(())
+    }
 }
 
 impl LibraryDir for LibraryFs {
-    /// The friendly, deterministic name — `file_name_for` with collision
-    /// handling left to the caller. This matches the [`LibraryDir`] contract:
-    /// the reconciliation pass stamps-without-writing when the name is taken
-    /// (assuming the existing file is the document's own content).
     fn name_for(&self, original_name: Option<&str>, mime_type: &str, hash: &str) -> String {
         Self::file_name_for(original_name, mime_type, hash)
     }
@@ -176,6 +318,30 @@ impl LibraryDir for LibraryFs {
 
     fn path_for(&self, name: &str) -> Option<PathBuf> {
         Some(self.dir.join(name))
+    }
+
+    fn walk_tree(&self) -> io::Result<Vec<TreeFile>> {
+        LibraryFs::walk_tree(self)
+    }
+
+    fn ensure_dir(&self, rel_dir: &str) -> io::Result<()> {
+        LibraryFs::ensure_dir(self, rel_dir)
+    }
+
+    fn read_tree_file(&self, rel_dir: &str, name: &str) -> io::Result<Vec<u8>> {
+        LibraryFs::read_tree_file(self, rel_dir, name)
+    }
+
+    fn write_tree_file(&self, rel_dir: &str, name: &str, bytes: &[u8]) -> io::Result<()> {
+        LibraryFs::write_tree_file(self, rel_dir, name, bytes).map(|_| ())
+    }
+
+    fn remove_tree_file(&self, rel_dir: &str, name: &str) -> io::Result<bool> {
+        LibraryFs::remove_tree_file(self, rel_dir, name)
+    }
+
+    fn contains_tree(&self, rel_dir: &str, name: &str) -> bool {
+        LibraryFs::contains_tree(self, rel_dir, name)
     }
 }
 
@@ -496,5 +662,119 @@ mod tests {
         let a = LibraryFs::file_name_for(Some("Alpha.pdf"), "application/pdf", "aaaa");
         let b = LibraryFs::file_name_for(Some("Beta.pdf"), "application/pdf", "bbbb");
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn walk_tree_nested_dirs() {
+        let root = temp_root("walk-nested");
+        let lib = LibraryFs::open(&root).unwrap();
+        fs::write(root.join("root.txt"), b"r").unwrap();
+        fs::create_dir_all(root.join("a")).unwrap();
+        fs::write(root.join("a/file1.txt"), b"1").unwrap();
+        fs::create_dir_all(root.join("a/b")).unwrap();
+        fs::write(root.join("a/b/file2.txt"), b"2").unwrap();
+        // Dotfiles and tmp should be skipped
+        fs::write(root.join(".dotfile"), b"d").unwrap();
+        fs::write(root.join("a/.hidden"), b"h").unwrap();
+        fs::write(root.join("a/temp.tmp"), b"t").unwrap();
+        // Empty dir should be skipped
+        fs::create_dir(root.join("a/b/empty")).unwrap();
+
+        let tree = lib.walk_tree().unwrap();
+        assert_eq!(tree.len(), 3);
+        assert_eq!(tree[0].rel_dir, "");
+        assert_eq!(tree[0].name, "root.txt");
+        assert_eq!(tree[1].rel_dir, "a");
+        assert_eq!(tree[1].name, "file1.txt");
+        assert_eq!(tree[2].rel_dir, "a/b");
+        assert_eq!(tree[2].name, "file2.txt");
+    }
+
+    #[test]
+    fn walk_tree_deep_nesting() {
+        let root = temp_root("walk-deep");
+        let lib = LibraryFs::open(&root).unwrap();
+        // 5-level deep path
+        fs::create_dir_all(root.join("teaching/diploma/2025-2026/Andrey")).unwrap();
+        fs::write(
+            root.join("teaching/diploma/2025-2026/Andrey/article.pdf"),
+            b"deep",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("a/b/c/d")).unwrap();
+        fs::write(root.join("a/b/c/d/deep.txt"), b"deepest").unwrap();
+
+        let tree = lib.walk_tree().unwrap();
+        assert_eq!(tree.len(), 2);
+        assert_eq!(tree[0].rel_dir, "a/b/c/d");
+        assert_eq!(tree[0].name, "deep.txt");
+        assert_eq!(tree[1].rel_dir, "teaching/diploma/2025-2026/Andrey");
+        assert_eq!(tree[1].name, "article.pdf");
+    }
+
+    #[test]
+    fn ensure_dir_rejects_dotdot() {
+        let root = temp_root("ensure-dotdot");
+        let lib = LibraryFs::open(&root).unwrap();
+        assert!(lib.ensure_dir("..").is_err());
+        assert!(lib.ensure_dir("a/../b").is_err());
+        assert!(lib.ensure_dir("a/..").is_err());
+        assert!(lib.ensure_dir("../a").is_err());
+        // Valid paths should work
+        assert!(lib.ensure_dir("a/b/c").is_ok());
+    }
+
+    #[test]
+    fn ensure_dir_creates_nested() {
+        let root = temp_root("ensure-nested");
+        let lib = LibraryFs::open(&root).unwrap();
+        lib.ensure_dir("x/y/z").unwrap();
+        assert!(root.join("x/y/z").is_dir());
+        // Empty string is a no-op
+        lib.ensure_dir("").unwrap();
+    }
+
+    #[test]
+    fn write_read_tree_round_trip() {
+        let root = temp_root("tree-rw");
+        let lib = LibraryFs::open(&root).unwrap();
+        let data = b"nested content";
+        lib.write_tree_file("a/b", "file.txt", data).unwrap();
+        let read = lib.read_tree_file("a/b", "file.txt").unwrap();
+        assert_eq!(read, data);
+        // Root file
+        lib.write_tree_file("", "root.txt", b"root").unwrap();
+        let read = lib.read_tree_file("", "root.txt").unwrap();
+        assert_eq!(read, b"root");
+    }
+
+    #[test]
+    fn remove_tree_file_prunes_empty_parents() {
+        let root = temp_root("tree-prune");
+        let lib = LibraryFs::open(&root).unwrap();
+        lib.write_tree_file("a/b/c", "file.txt", b"data").unwrap();
+        assert!(root.join("a/b/c/file.txt").exists());
+        assert!(root.join("a/b/c").is_dir());
+        assert!(root.join("a/b").is_dir());
+        assert!(root.join("a").is_dir());
+
+        lib.remove_tree_file("a/b/c", "file.txt").unwrap();
+        assert!(!root.join("a/b/c/file.txt").exists());
+        // Empty parent dirs should be pruned
+        assert!(!root.join("a/b/c").exists());
+        assert!(!root.join("a/b").exists());
+        assert!(!root.join("a").exists());
+    }
+
+    #[test]
+    fn contains_tree_checks_subdirectory() {
+        let root = temp_root("tree-contains");
+        let lib = LibraryFs::open(&root).unwrap();
+        assert!(!lib.contains_tree("a/b", "file.txt"));
+        lib.write_tree_file("a/b", "file.txt", b"x").unwrap();
+        assert!(lib.contains_tree("a/b", "file.txt"));
+        assert!(!lib.contains_tree("", "root.txt"));
+        lib.write_tree_file("", "root.txt", b"r").unwrap();
+        assert!(lib.contains_tree("", "root.txt"));
     }
 }

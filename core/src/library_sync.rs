@@ -32,6 +32,7 @@ use crate::api::storage::DocumentRepository;
 use crate::auto_org::config::OrgConfig;
 use crate::domain::{Content, Document, NodeKind};
 use crate::ingest::{FileInfo, IngestOption, IngestPipeline};
+use crate::library_fs::TreeFile;
 use crate::storage::{hash_bytes, DocumentQuery, DocumentStore};
 
 /// A file entry reported by [`LibraryDir::list_files`].
@@ -65,6 +66,22 @@ pub trait LibraryDir {
     /// files. `None` for virtual directories (ingest falls back to a manual
     /// byte-level path).
     fn path_for(&self, name: &str) -> Option<std::path::PathBuf>;
+
+    // --- tree surface ------------------------------------------------------
+
+    /// Recursively list every file in the directory tree. `rel_dir` is `""` for
+    /// files at the root, `"/a/b"` otherwise (no trailing slash).
+    fn walk_tree(&self) -> std::io::Result<Vec<TreeFile>>;
+    /// Create a nested directory (`rel_dir` like `"/a/b"`), if missing.
+    fn ensure_dir(&self, rel_dir: &str) -> std::io::Result<()>;
+    /// Read a file's raw bytes from a nested location.
+    fn read_tree_file(&self, rel_dir: &str, name: &str) -> std::io::Result<Vec<u8>>;
+    /// Write (overwrite) a file's raw bytes at a nested location.
+    fn write_tree_file(&self, rel_dir: &str, name: &str, bytes: &[u8]) -> std::io::Result<()>;
+    /// Remove a file from a nested location; prunes now-empty parent dirs.
+    fn remove_tree_file(&self, rel_dir: &str, name: &str) -> std::io::Result<bool>;
+    /// Whether a file exists at a nested location.
+    fn contains_tree(&self, rel_dir: &str, name: &str) -> bool;
 }
 
 /// The outcome of one reconciliation pass.
@@ -105,10 +122,36 @@ fn stamp_file_name(repo: &DocumentRepository, id: &str, name: &str) -> Result<()
     Ok(())
 }
 
+/// Stamp `extra["main_path"] = main_path` on a document. Guard-scoped.
+fn stamp_main_path(repo: &DocumentRepository, id: &str, main_path: &str) -> Result<(), String> {
+    let mut store = repo.store()?;
+    let id_owned = id.to_owned();
+    let mut doc = store.get(&id_owned).map_err(|e| e.to_string())?;
+    doc.extra
+        .insert("main_path".to_owned(), main_path.to_owned());
+    let bytes = store.read_bytes(&id_owned).map_err(|e| e.to_string())?;
+    store.put(doc, &bytes).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Reconcile the document store with a library directory.
 ///
-/// Idempotent: a second run immediately after a successful first run produces
-/// an empty report (all three phases no-op).
+/// The directory is the source of truth for file bytes. A document's expected
+/// location is `<dir>/<extra["main_path"]>/<extra["file_name"]>` (root when
+/// `main_path` is absent or empty). The pass reconciles in three phases:
+///
+/// 1. **Backfill** — documents without a `file_name` get a friendly file
+///    written at their `main_path` location and the name stamped onto `extra`.
+/// 2. **Adoption / Removals** — for each stamped doc the expected location is
+///    checked. When the file exists there, nothing happens. When the file was
+///    moved (same name elsewhere), the move is *adopted*: `main_path` is
+///    re-stamped and a soft path assigned. When the file is gone entirely, the
+///    document is deleted.
+/// 3. **Additions** — unclaimed tree files become new documents via the ingest
+///    pipeline; their `main_path` is set to `rel_dir`.
+///
+/// Adoptions are folded into `report.linked` (the `LibrarySyncReportDto` is
+/// frozen for this wave — no new fields).
 pub fn sync_library(
     repo: &DocumentRepository,
     dir: &dyn LibraryDir,
@@ -128,14 +171,13 @@ pub fn sync_library(
                 &doc.mime_type,
                 &id,
             );
-            if dir.contains(&name) {
-                // Assumption: the existing file is this document's own content —
-                // a file of identical bytes would have been linked by the
-                // additions phase below, so stamping without writing is the
-                // simplest correct behavior (per spec, accepted limitation).
+            let main_path = doc.extra.get("main_path").map(|s| s.as_str()).unwrap_or("");
+            if dir.contains_tree(main_path, &name) {
+                // Existing file at expected location — stamp only.
             } else {
                 let bytes = repo.read_bytes(id.clone()).map_err(|e| e.to_string())?;
-                dir.write_file(&name, &bytes).map_err(|e| e.to_string())?;
+                dir.write_tree_file(main_path, &name, &bytes)
+                    .map_err(|e| e.to_string())?;
             }
             stamp_file_name(repo, &id, &name)?;
             Ok(())
@@ -151,47 +193,91 @@ pub fn sync_library(
         }
     }
 
-    // ---- Phase REMOVALS: delete docs whose file left the directory. -------
+    // ---- Phase ADOPTION + REMOVALS: reconcile stamped docs. ----------------
+    let all_tree = dir.walk_tree().map_err(|e| e.to_string())?;
     let docs = all_documents(repo)?;
+
     for doc in &docs {
         let Some(file_name) = doc.extra.get("file_name") else {
             continue;
         };
-        if dir.contains(file_name) {
+        let id = doc.id.clone();
+        let main_path = doc.extra.get("main_path").map(|s| s.as_str()).unwrap_or("");
+
+        if dir.contains_tree(main_path, file_name) {
             continue;
         }
-        let id = doc.id.clone();
-        let result = (|| -> Result<(), String> {
-            {
-                let mut store = repo.store()?;
-                store.delete(&id).map_err(|e| e.to_string())?;
+
+        // File not at expected location — search the tree for moves.
+        let matching: Vec<&TreeFile> = all_tree.iter().filter(|e| e.name == *file_name).collect();
+
+        let adopt_target: Option<String> = match matching.len() {
+            0 => None,
+            1 => Some(matching[0].rel_dir.clone()),
+            _ => {
+                // Ambiguous: prefer the match whose rel_dir equals a soft path.
+                let paths = repo.paths_of(id.clone()).unwrap_or_default();
+                let soft: std::collections::HashSet<String> =
+                    paths.into_iter().map(|p| p.path).collect();
+                matching
+                    .iter()
+                    .find(|e| soft.contains(&e.rel_dir))
+                    .map(|e| e.rel_dir.clone())
             }
-            // Best-effort: drop the document from the in-memory search index.
-            let _ = search_remove_document(id.clone());
-            Ok(())
-        })();
-        match result {
-            Ok(()) => report.removed.push(id),
-            Err(e) => report.failed.push((file_name.clone(), e)),
+        };
+
+        match adopt_target {
+            // Single (or soft-path-preferred) match → adopt the move.
+            Some(new_main) => {
+                let result = (|| -> Result<(), String> {
+                    stamp_main_path(repo, &id, &new_main)?;
+                    if !new_main.is_empty() {
+                        repo.assign_path(crate::domain::PathAssignment {
+                            document_id: id.clone(),
+                            path: new_main.clone(),
+                            position: 0,
+                        })?;
+                    }
+                    Ok(())
+                })();
+                match result {
+                    Ok(()) => report.linked.push(id),
+                    Err(e) => report.failed.push((file_name.clone(), e)),
+                }
+            }
+            // No match (or ambiguous with no soft-path tiebreak) → removal.
+            None => {
+                let result = (|| -> Result<(), String> {
+                    {
+                        let mut store = repo.store()?;
+                        store.delete(&id).map_err(|e| e.to_string())?;
+                    }
+                    let _ = search_remove_document(id.clone());
+                    Ok(())
+                })();
+                match result {
+                    Ok(()) => report.removed.push(id),
+                    Err(e) => report.failed.push((file_name.clone(), e)),
+                }
+            }
         }
     }
 
-    // ---- Phase ADDITIONS: claim unclaimed files as documents. -------------
-    let files = dir.list_files().map_err(|e| e.to_string())?;
+    // ---- Phase ADDITIONS: claim unclaimed tree files as documents. ----------
     let docs = all_documents(repo)?;
-    let mut claimed: HashSet<String> = HashSet::new();
+    let mut claimed_names: HashSet<String> = HashSet::new();
     for doc in &docs {
         if let Some(name) = doc.extra.get("file_name") {
-            claimed.insert(name.clone());
+            claimed_names.insert(name.clone());
         }
     }
 
-    for file in files {
-        if claimed.contains(&file.name) {
+    for entry in &all_tree {
+        if claimed_names.contains(&entry.name) {
             continue;
         }
-        let name = file.name.clone();
-        let bytes = match dir.read_file(&name) {
+        let name = entry.name.clone();
+        let bytes = match dir.read_tree_file(&entry.rel_dir, &name) {
             Ok(b) => b,
             Err(e) => {
                 report.failed.push((name, e.to_string()));
@@ -209,33 +295,38 @@ pub fn sync_library(
                             report.failed.push((name, e));
                             continue;
                         }
+                        if let Err(e) = stamp_main_path(repo, &id, &entry.rel_dir) {
+                            report.failed.push((name, e));
+                            continue;
+                        }
+                        if !entry.rel_dir.is_empty() {
+                            if let Err(e) = repo.assign_path(crate::domain::PathAssignment {
+                                document_id: id.clone(),
+                                path: entry.rel_dir.clone(),
+                                position: 0,
+                            }) {
+                                report.failed.push((name, e));
+                                continue;
+                            }
+                        }
                         report.linked.push(id);
                     }
                     Some(current) if current != &name => {
-                        // Edge case: identical bytes already claimed under a
-                        // different name. Do NOT restamp — that would orphan
-                        // the other file's name and flip-flop on every run.
-                        // The directory file is left untouched as an extra
-                        // mirror; the link is reported (state stays stable).
+                        // Identical bytes already claimed under a different name.
                         report.linked.push(id);
                     }
-                    Some(_) => {
-                        // Same name already claimed for this document: cannot
-                        // occur here (the name would be in `claimed`).
-                    }
+                    _ => {}
                 }
             }
             Err(_) => {
-                // Not stored yet: full ingest. Prefer the real-filesystem
-                // pipeline when a path exists; otherwise fall back to a
-                // manual bytes-level ingest matching `IngestPipeline`'s shape.
+                // Not stored yet: full ingest.
                 let result = (|| -> Result<(), String> {
                     match dir.path_for(&name) {
                         Some(path) if path.is_file() => {
                             let info = FileInfo {
                                 path,
-                                size: file.size,
-                                modified_ms: file.modified_ms,
+                                size: entry.size,
+                                modified_ms: entry.modified_ms,
                                 created_ms: 0,
                             };
                             let mut store = repo.store()?;
@@ -275,7 +366,7 @@ pub fn sync_library(
                                 checksum_sha256: id.clone(),
                                 tags: Vec::new(),
                                 created_at_ms: now,
-                                updated_at_ms: file.modified_ms.max(now),
+                                updated_at_ms: entry.modified_ms.max(now),
                                 extra,
                             };
                             let mut store = repo.store()?;
@@ -294,11 +385,23 @@ pub fn sync_library(
 
                 match result {
                     Ok(()) => {
-                        // The store guard is dropped above; the re-locking
-                        // post-steps (auto-org + search wiring) cannot deadlock.
                         if let Err(e) = stamp_file_name(repo, &id, &name) {
                             report.failed.push((name, e));
                             continue;
+                        }
+                        if let Err(e) = stamp_main_path(repo, &id, &entry.rel_dir) {
+                            report.failed.push((name, e));
+                            continue;
+                        }
+                        if !entry.rel_dir.is_empty() {
+                            if let Err(e) = repo.assign_path(crate::domain::PathAssignment {
+                                document_id: id.clone(),
+                                path: entry.rel_dir.clone(),
+                                position: 0,
+                            }) {
+                                report.failed.push((name, e));
+                                continue;
+                            }
                         }
                         if let Err(e) = organize_document(repo, &id, OrgConfig::default()) {
                             eprintln!(
@@ -330,15 +433,16 @@ mod tests {
         index_document_from_repository, search_query, SearchMode, SearchRequestDto,
     };
     use crate::api::storage::{open_repository, DocumentRepository};
-    use crate::domain::{Content, Document, NodeKind};
-    use crate::storage::{hash_bytes, DocumentStore};
+    use crate::domain::{Content, Document, NodeKind, PathAssignment};
+    use crate::storage::{hash_bytes, DocumentQuery, DocumentStore};
+
+    use crate::library_fs::TreeFile;
 
     use super::{sync_library, DirFile, LibraryDir, LibrarySyncReport};
 
-    /// A fake [`LibraryDir`] backed by an in-memory map. `write_file` needs
-    /// interior mutability because the trait takes `&self`.
     struct FakeDir {
         files: RefCell<HashMap<String, Vec<u8>>>,
+        tree_files: RefCell<HashMap<String, Vec<u8>>>,
         fail_reads: Vec<String>,
     }
 
@@ -346,6 +450,7 @@ mod tests {
         fn new() -> Self {
             Self {
                 files: RefCell::new(HashMap::new()),
+                tree_files: RefCell::new(HashMap::new()),
                 fail_reads: Vec::new(),
             }
         }
@@ -356,8 +461,25 @@ mod tests {
                 .insert(name.to_owned(), bytes.to_vec());
         }
 
+        fn add_tree(&self, rel_dir: &str, name: &str, bytes: &[u8]) {
+            let key = if rel_dir.is_empty() {
+                name.to_owned()
+            } else {
+                format!("{}/{}", rel_dir, name)
+            };
+            self.tree_files.borrow_mut().insert(key, bytes.to_vec());
+        }
+
         fn fail_read(&mut self, name: &str) {
             self.fail_reads.push(name.to_owned());
+        }
+
+        fn tree_key(rel_dir: &str, name: &str) -> String {
+            if rel_dir.is_empty() {
+                name.to_owned()
+            } else {
+                format!("{}/{}", rel_dir, name)
+            }
         }
     }
 
@@ -369,7 +491,7 @@ mod tests {
         }
 
         fn contains(&self, name: &str) -> bool {
-            self.files.borrow().contains_key(name)
+            self.files.borrow().contains_key(name) || self.tree_files.borrow().contains_key(name)
         }
 
         fn list_files(&self) -> std::io::Result<Vec<DirFile>> {
@@ -405,6 +527,78 @@ mod tests {
 
         fn path_for(&self, _name: &str) -> Option<std::path::PathBuf> {
             None
+        }
+
+        fn walk_tree(&self) -> std::io::Result<Vec<TreeFile>> {
+            let mut result = Vec::new();
+            for (key, bytes) in self.tree_files.borrow().iter() {
+                let (rel_dir, name) = match key.rfind('/') {
+                    Some(pos) => (key[..pos].to_owned(), key[pos + 1..].to_owned()),
+                    None => (String::new(), key.clone()),
+                };
+                result.push(TreeFile {
+                    rel_dir,
+                    name,
+                    size: bytes.len() as u64,
+                    modified_ms: 0,
+                });
+            }
+            for (name, bytes) in self.files.borrow().iter() {
+                if !result
+                    .iter()
+                    .any(|e| e.name == *name && e.rel_dir.is_empty())
+                {
+                    result.push(TreeFile {
+                        rel_dir: String::new(),
+                        name: name.clone(),
+                        size: bytes.len() as u64,
+                        modified_ms: 0,
+                    });
+                }
+            }
+            result.sort_by(|a, b| a.rel_dir.cmp(&b.rel_dir).then_with(|| a.name.cmp(&b.name)));
+            Ok(result)
+        }
+
+        fn ensure_dir(&self, _rel_dir: &str) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn read_tree_file(&self, rel_dir: &str, name: &str) -> std::io::Result<Vec<u8>> {
+            if self.fail_reads.iter().any(|f| f == name) {
+                return Err(std::io::Error::other(format!("read failed for {name}")));
+            }
+            let key = Self::tree_key(rel_dir, name);
+            if let Some(bytes) = self.tree_files.borrow().get(&key) {
+                return Ok(bytes.clone());
+            }
+            if rel_dir.is_empty() {
+                if let Some(bytes) = self.files.borrow().get(name) {
+                    return Ok(bytes.clone());
+                }
+            }
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no such file",
+            ))
+        }
+
+        fn write_tree_file(&self, rel_dir: &str, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+            self.add_tree(rel_dir, name, bytes);
+            Ok(())
+        }
+
+        fn remove_tree_file(&self, rel_dir: &str, name: &str) -> std::io::Result<bool> {
+            let key = Self::tree_key(rel_dir, name);
+            Ok(self.tree_files.borrow_mut().remove(&key).is_some())
+        }
+
+        fn contains_tree(&self, rel_dir: &str, name: &str) -> bool {
+            let key = Self::tree_key(rel_dir, name);
+            if self.tree_files.borrow().contains_key(&key) {
+                return true;
+            }
+            rel_dir.is_empty() && self.files.borrow().contains_key(name)
         }
     }
 
@@ -486,7 +680,7 @@ mod tests {
             "backfill must not fail: {:?}",
             report
         );
-        assert_eq!(dir.files.borrow().get("note.txt").unwrap(), &bytes);
+        assert_eq!(dir.read_tree_file("", "note.txt").unwrap(), bytes);
         let doc = repo.get(id.clone()).unwrap();
         assert_eq!(
             doc.extra.get("file_name").map(String::as_str),
@@ -721,6 +915,307 @@ mod tests {
         assert_eq!(report.ingested, vec![new_id.clone()]);
         assert!(report.linked.is_empty());
         assert!(report.failed.is_empty());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn backfill_writes_under_main_path() {
+        let root = temp_root("backfill-path");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let dir = FakeDir::new();
+        let bytes = b"backfill under a folder".to_vec();
+
+        // Doc without file_name, but with a main_path stamped (from props.rs).
+        seed_doc(
+            &repo,
+            "Draft",
+            &bytes,
+            HashMap::from([
+                ("original_name".to_owned(), "note.txt".to_owned()),
+                ("main_path".to_owned(), "/diploma/2025-2026".to_owned()),
+            ]),
+            None,
+        );
+
+        let report = sync_library(&repo, &dir).unwrap();
+        assert!(report.failed.is_empty(), "backfill: {:?}", report);
+        assert!(dir.contains_tree("/diploma/2025-2026", "note.txt"));
+        assert!(!dir.contains("note.txt"), "file must not be at root");
+        let docs = repo.query(DocumentQuery::default()).unwrap();
+        assert_eq!(docs.len(), 1);
+        let doc = &docs[0];
+        assert_eq!(
+            doc.extra.get("file_name").map(String::as_str),
+            Some("note.txt")
+        );
+        assert_eq!(
+            doc.extra.get("main_path").map(String::as_str),
+            Some("/diploma/2025-2026")
+        );
+
+        // Idempotent second run.
+        let second = sync_library(&repo, &dir).unwrap();
+        assert_eq!(second, LibrarySyncReport::default());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn backfill_root_when_no_main_path() {
+        let root = temp_root("backfill-root");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let dir = FakeDir::new();
+        let bytes = b"backfill at root".to_vec();
+
+        seed_doc(
+            &repo,
+            "Draft",
+            &bytes,
+            HashMap::from([("original_name".to_owned(), "root.txt".to_owned())]),
+            None,
+        );
+
+        let report = sync_library(&repo, &dir).unwrap();
+        assert!(report.failed.is_empty());
+        assert!(dir.contains_tree("", "root.txt"));
+        assert!(dir.contains("root.txt"));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn adoption_on_move_restamps_main_path_and_assigns_soft_path() {
+        let root = temp_root("adopt-move");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let dir = FakeDir::new();
+        let bytes = b"moved to a new folder".to_vec();
+        let id = hash_bytes(&bytes);
+
+        // Doc claims the file at /old/, but the file was moved to /new/.
+        seed_doc(
+            &repo,
+            "Moved",
+            &bytes,
+            HashMap::from([
+                ("file_name".to_owned(), "doc.txt".to_owned()),
+                ("main_path".to_owned(), "/old".to_owned()),
+            ]),
+            None,
+        );
+        dir.add_tree("/new", "doc.txt", &bytes);
+
+        let report = sync_library(&repo, &dir).unwrap();
+        // Adoptions are folded into `linked`.
+        assert_eq!(report.linked, vec![id.clone()]);
+        assert!(report.removed.is_empty(), "doc must NOT be deleted");
+        assert!(report.failed.is_empty(), "adoption: {:?}", report);
+
+        let doc = repo.get(id.clone()).unwrap();
+        assert_eq!(
+            doc.extra.get("main_path").map(String::as_str),
+            Some("/new"),
+            "main_path must be re-stamped to the file's folder"
+        );
+        // The soft hierarchy knows the document at /new.
+        let paths = repo.paths_of(id.clone()).unwrap();
+        assert!(
+            paths.iter().any(|p| p.path == "/new"),
+            "doc must be soft-assigned to /new: {:?}",
+            paths
+        );
+
+        // Idempotent: second run is empty.
+        let second = sync_library(&repo, &dir).unwrap();
+        assert_eq!(second, LibrarySyncReport::default());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ambiguous_double_move_prefers_soft_path_match() {
+        let root = temp_root("adopt-ambiguous");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let dir = FakeDir::new();
+        let bytes = b"duplicated across folders".to_vec();
+        let id = hash_bytes(&bytes);
+
+        // The doc was at /old/ but the name now appears in /a/ and /target/.
+        // The existing soft path /target must break the tie.
+        seed_doc(
+            &repo,
+            "Dup",
+            &bytes,
+            HashMap::from([
+                ("file_name".to_owned(), "dup.txt".to_owned()),
+                ("main_path".to_owned(), "/old".to_owned()),
+            ]),
+            None,
+        );
+        repo.assign_path(PathAssignment {
+            document_id: id.clone(),
+            path: "/target".to_owned(),
+            position: 0,
+        })
+        .unwrap();
+        dir.add_tree("/a", "dup.txt", &bytes);
+        dir.add_tree("/target", "dup.txt", &bytes);
+
+        let report = sync_library(&repo, &dir).unwrap();
+        assert_eq!(report.linked, vec![id.clone()]);
+        assert!(report.removed.is_empty());
+        assert!(report.failed.is_empty());
+
+        // Tie broken by the doc's soft path.
+        let doc = repo.get(id.clone()).unwrap();
+        assert_eq!(
+            doc.extra.get("main_path").map(String::as_str),
+            Some("/target")
+        );
+
+        // The other file at /a stays untouched (extra mirror).
+        assert!(repo.get(hash_bytes(&bytes)).is_ok());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn removal_anywhere_prunes_doc_and_keeps_tree_consistent() {
+        let root = temp_root("removal-anywhere");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let dir = FakeDir::new();
+        let bytes = b"vanished from a deep folder".to_vec();
+        let id = hash_bytes(&bytes);
+
+        // File existed at /deep/nested/ before, now gone entirely.
+        seed_doc(
+            &repo,
+            "Deep",
+            &bytes,
+            HashMap::from([
+                ("file_name".to_owned(), "deep.txt".to_owned()),
+                ("main_path".to_owned(), "/deep/nested".to_owned()),
+            ]),
+            None,
+        );
+        // No file anywhere in the tree.
+
+        let report = sync_library(&repo, &dir).unwrap();
+        assert_eq!(report.removed, vec![id.clone()]);
+        assert!(repo.get(id.clone()).is_err(), "doc must be deleted");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn addition_in_subdir_ingests_with_main_path_and_soft_path() {
+        let root = temp_root("add-subdir");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let dir = FakeDir::new();
+        let content = "quarterly invoice summary for acme corporation total due";
+        dir.add_tree("/x/y", "invoice.txt", content.as_bytes());
+
+        let report = sync_library(&repo, &dir).unwrap();
+        assert!(report.failed.is_empty(), "addition: {:?}", report);
+        assert_eq!(report.ingested.len(), 1);
+
+        let id = &report.ingested[0];
+        let doc = repo.get(id.clone()).unwrap();
+        assert_eq!(
+            doc.extra.get("file_name").map(String::as_str),
+            Some("invoice.txt")
+        );
+        assert_eq!(doc.extra.get("main_path").map(String::as_str), Some("/x/y"));
+        let paths = repo.paths_of(id.clone()).unwrap();
+        assert!(
+            paths.iter().any(|p| p.path == "/x/y"),
+            "new doc must be soft-assigned to /x/y: {:?}",
+            paths
+        );
+        assert!(
+            !doc.tags.is_empty(),
+            "auto-organization should have tagged the new doc"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn addition_at_root_gets_empty_main_path() {
+        let root = temp_root("add-root");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let dir = FakeDir::new();
+        let content = "root-level foreign file content";
+        dir.add("foreign.txt", content.as_bytes());
+
+        let report = sync_library(&repo, &dir).unwrap();
+        assert!(report.failed.is_empty());
+        assert_eq!(report.ingested.len(), 1);
+
+        let id = &report.ingested[0];
+        let doc = repo.get(id.clone()).unwrap();
+        assert_eq!(
+            doc.extra.get("main_path").map(String::as_str),
+            Some(""),
+            "root files must get main_path = \"\""
+        );
+        // The sync pass itself must not soft-assign the empty root as a path
+        // (auto-org may still assign its own fallback path, which is fine).
+        let paths = repo.paths_of(id.clone()).unwrap();
+        assert!(
+            !paths.iter().any(|p| p.path.is_empty()),
+            "root file must not be soft-assigned to the empty path: {:?}",
+            paths
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn full_tree_pass_is_idempotent() {
+        let root = temp_root("tree-idempotent");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let dir = FakeDir::new();
+
+        // Backfill target under a path.
+        let backfill_bytes = b"tree backfill".to_vec();
+        seed_doc(
+            &repo,
+            "Awaiting",
+            &backfill_bytes,
+            HashMap::from([
+                ("original_name".to_owned(), "queued.txt".to_owned()),
+                ("main_path".to_owned(), "/p1/p2".to_owned()),
+            ]),
+            None,
+        );
+        // Kept doc at nested location.
+        let kept_bytes = b"kept during tree sweep".to_vec();
+        let kept_id = seed_doc(
+            &repo,
+            "Kept",
+            &kept_bytes,
+            HashMap::from([
+                ("file_name".to_owned(), "kept.txt".to_owned()),
+                ("main_path".to_owned(), "/a/b".to_owned()),
+            ]),
+            None,
+        );
+        dir.add_tree("/a/b", "kept.txt", &kept_bytes);
+        // A new file in a subdir + one at root.
+        dir.add_tree("/z/1", "incoming.txt", b"incoming content");
+        dir.add("root.txt", b"root incoming");
+
+        let first = sync_library(&repo, &dir).unwrap();
+        assert!(first.failed.is_empty(), "first pass: {:?}", first);
+        assert_eq!(first.ingested.len(), 2);
+
+        // Second run: nothing to do.
+        let second = sync_library(&repo, &dir).unwrap();
+        assert_eq!(second, LibrarySyncReport::default());
+
+        // The kept doc is intact, backfill stamped.
+        assert!(repo.get(kept_id.clone()).is_ok());
 
         let _ = fs::remove_dir_all(&root);
     }
