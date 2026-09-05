@@ -1,6 +1,6 @@
 # Zoo context — docer
 
-Reusable session context for AI orchestration (Zoo). Last updated: 2026-09-04.
+Reusable session context for AI orchestration (Zoo). Last updated: 2026-09-05.
 Purpose: a fresh session can resume work without re-researching the codebase.
 
 ## Project layout & tooling
@@ -9,7 +9,7 @@ Purpose: a fresh session can resume work without re-researching the codebase.
 - RULE (repo instructions): use fvm for everything fvm supports — `cd app && fvm dart analyze`, `fvm flutter test`, `fvm dart format ...`. NEVER bare `flutter`/`dart`.
 - ENV GOTCHA: bare `dart`/`flutter` resolve to a broken `proto` shim here, so `just check` fails at fmt-app-check. Run the underlying commands with fvm directly (cargo commands are fine).
 - Generated files (never hand-edit): `core/src/frb_generated.rs`, `app/lib/src/rust/**`. Regenerate with `just codegen` after editing `core/src/api/**`.
-- Tests: core via `cargo test --manifest-path core/Cargo.toml` (161 passing as of this date); app via `cd app && fvm flutter test` (96 passing).
+- Tests: core via `cargo test --manifest-path core/Cargo.toml` (161 passing as of this date); app via `cd app && fvm flutter test` (97 passing).
 
 ## Architecture map (verified)
 ### Rust core
@@ -25,10 +25,12 @@ Purpose: a fresh session can resume work without re-researching the codebase.
 - Core unit tests live inline (`#[cfg(test)] mod tests` in api/auto_org.rs with `seed_doc`/`seed_sibling` helpers) and in `core/src/auto_org/tests.rs`, `core/src/storage/tests.rs`, etc.
 
 ### Dart app
-- `app/lib/src/features/document_service.dart` — `DocumentService` interface + `BridgeDocumentService` (FRB-backed, shares repo via `openSharedRepository`) + `FakeDocumentService` (in-memory; tracks setTagsCount, updateTitleCount, completedPolls: list of (id, kind), completedPollCount, bulkAdds/bulkRemoves). `SuggestionPlan{title, tags, outcome: SuggestOutcome?}`; `SuggestionEntry` mirrors bridge `DocumentSuggestion` (title/tags decoded, `isPending`).
+- `app/lib/src/features/document_service.dart` — `DocumentService` interface + `BridgeDocumentService` (FRB-backed, shares repo via `openSharedRepository`) + `FakeDocumentService` (in-memory; tracks setTagsCount, updateTitleCount, completedPolls: list of (id, kind), completedPollCount, bulkAdds/bulkRemoves). `SuggestionPlan{title, tags, outcome: SuggestOutcome?}`; `SuggestionEntry` mirrors bridge `DocumentSuggestion` (title/tags decoded, `isPending`). `readBytes(id)` streams stored bytes (used by DnD export — documents are content-addressed SQLite blobs, no on-disk files).
 - `app/lib/src/features/learning_prefs.dart` — in-memory `suggestionLearningMode()`/`setSuggestionLearningMode()` (Off/Basic), used by `BridgeDocumentService._orgConfig()` and poll feedback gating.
 - `app/lib/src/ui/document_view.dart` — `DocumentDetailView`: inline title editor (`_saveTitle` ~line 310), tag chips optimistic persist (`_applyTagsOptimistically`/`_persistTags` ~line 268 with `_tagsGeneration` guard), suggest flows (`_suggestTitle`/`_suggestTags` with outcome snackbars + "N alternatives available to review"), suggestion review card (`_buildSuggestionsSection` ~line 730 / `_buildSuggestionRow`: "Keep" button `confirm-<kind>` + pending alternative chips `suggestion-<id>` with × dismiss), `_chooseSuggestion`/`_confirmCurrent`/`_dismissSuggestion`. `DocumentSummary.extra` carries `title_manual`/`tags_manual` (getters `titleManuallyEdited`/`tagsManuallyEdited`).
-- `app/lib/src/ui/documents_screen.dart` — browse grid, selection mode + bulk toolbar (suggest title/tags, reorganize selected, bulk tags, delete), `_suggestProgress` corner chip + `CountProgress`.
+- `app/lib/src/ui/documents_screen.dart` — browse grid, selection mode + bulk toolbar (suggest title/tags, reorganize selected, bulk tags, delete), `_suggestProgress` corner chip + `CountProgress`. Tag filter uses INTERSECTION (AND) semantics — `_filtered` (~:134): `_tagFilters.every(d.tags.contains)` (was `.any`/union); zero tags = show all. Grid tiles wrapped with `wrapDocumentDragOut` (~:314) with `document.originalName` (extension kept).
+- `app/lib/src/ui/search_screen.dart` — search results display real document TITLES (not paths) via `_docSummaries` cache (`Map<String, DocumentSummary>` ~:65) populated by `_resolveTitles()` (~:162, fetches `DocumentService.getDocument` per hit, best-effort with path fallback); `_titleFrom()` (~:149) prefers resolved `summary.title`. `_summaryOf()` (~:139) forwards `originalName`/`mimeType` from the cache. Drag-out (~:376) uses `_dragFileName(hit)`: prefers resolved `originalName`, else title/path + MIME-derived extension (`.pdf`/`.docx`/...) — dropped file ALWAYS has an extension.
+- `app/lib/src/ui/widgets.dart` — shared DnD helper `wrapDocumentDragOut()` (~:528): wraps child in `DragItemWidget` + `DraggableWidget`; `_documentDragItem()` (~:555) builds `DragItem` with `addVirtualFile` (DataWriterProvider streaming `DocumentService.readBytes(id)` on demand); `_kFileFormatForMime()` (~:596) maps MIME→UTI; generic binary fallback (~:644). Drag-out only active on macOS/Windows (platform guard ~:535 + drag-item guard ~:561).
 - `app/lib/src/ui/learning_panel.dart` (on Provider screen) — learning mode selector + "reset learning".
 - Tests: `app/test/document_detail_test.dart` (detail view; includes suggestion-card + poll tests), `documents_browse_test.dart`, `widget_test.dart`, `widgets_test.dart`, `ingest_ui_test.dart`, `search_chat_ui_test.dart`, `document_preview_test.dart`, `p2p_sync_screen_test.dart`.
 
@@ -52,6 +54,15 @@ Plan: `plans/title-suggestion-tuning.md`. Core-internal only — NO FRB codegen,
 4. `core/src/api/auto_org.rs:1331` — inline test assertion updated `"acme-invoice-quarterly"` → `"acme invoice quarterly"`.
 5. `core/src/auto_org/tests.rs` — relaxed `organize_reuses_tags_and_resolves_path` (was `.ends_with(".pdf")` → content-derived space-joined check); +5 tests: `suggested_title_uses_spaces_only`, `cyrillic_filename_latin_content_title_from_content`, `symmetric_latin_filename_cyrillic_content_title_from_content`, `filename_template_behavior_unchanged`, `determinism_same_corpus_same_output`.
 6. Verification: `just fmt-core` / `fmt-core-check` / `lint-core` / `test-core` all green; core 161 passing (was ~149-150); `fvm dart analyze` 0 issues; `fvm flutter test` 96/96; Dart-side unchanged.
+
+## Completed work (2026-09-05): search titles, tag intersection, drag-and-drop UI→OS
+Commits (newest first): `93d388e`, `c409a17`, `fe3da0d`, `ad7da4a`. Working tree clean; `fvm dart analyze` 0 issues; `fvm flutter test` 97/97 (was 96).
+1. `ad7da4a fix(search): show titles instead of paths` — search results now show real document titles resolved from the repository (see `search_screen.dart` in architecture map) instead of raw paths like `/inbox/...`.
+2. `fe3da0d docs: change tag filter from union (OR) to intersection (AND) semantics` — `documents_screen.dart` `_filtered` getter changed `_tagFilters.any(d.tags.contains)` → `_tagFilters.every(...)`; document must have ALL selected tags; added widget test in `documents_browse_test.dart` (~:141, multi-tag intersection).
+3. `c409a17 feat(dnd): add drag-and-drop from documents to OS file system` — added `super_drag_and_drop` + `super_clipboard` 0.10.0-dev.2 (pubspec + generated plugin registrations for macOS/Linux/Windows). Shared `wrapDocumentDragOut()` in `widgets.dart` exports a VIRTUAL file per document: bytes streamed lazily from SQLite blob store via `DocumentService.readBytes(id)`; MIME→UTI mapping for correct extension. Implemented on documents grid (required) + search results (optional).
+   - PLATFORM SUPPORT: virtual-file drag-out works on macOS (NSFilePromiseProvider) and Windows (CFSTR_FILEDESCRIPTOR/CFSTR_FILECONTENTS IStream); iOS too. LINUX: drag-out deliberately disabled (app platform guard) — the package has NO Linux virtual-file support (native layer no-ops VirtualFile; `addVirtualFile` asserts in debug). If Linux DnD ever wanted: must inline bytes (Lazy) or temp-file URI.
+4. `93d388e fix(dnd): provide file name with extension when dragging from search page` — root cause: `_summaryOf()` built `DocumentSummary` WITHOUT copying `originalName`/`mimeType` from `_docSummaries`, so search drag name had no extension → OS had no handler. Fix: forward `originalName`/`mimeType` from cache + new `_dragFileName(hit)` fallback appends MIME-derived extension.
+5. Verification: analyze 0 issues; flutter test 97/97; `fvm flutter build macos` success (86.4 MB) after DnD plugin addition.
 
 ## Session-management gotchas (for the orchestrator)
 - Do NOT spam `update_todo_list` — a repetition-limit loop (3×) interrupted work in the 2026-09-04 session; update todos only on real status transitions, or skip todos entirely and delegate via `new_task` early.
