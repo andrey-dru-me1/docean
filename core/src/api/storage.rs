@@ -41,6 +41,10 @@ impl DocumentRepository {
             .lock()
             .map_err(|_| "repository is closed".to_owned())
     }
+
+    pub(crate) fn root_dir(&self) -> &Path {
+        Path::new(&self.root)
+    }
 }
 
 /// Open (or create) a document repository rooted at `root` on disk.

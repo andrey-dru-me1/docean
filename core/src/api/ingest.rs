@@ -181,6 +181,9 @@ pub fn ingest_files(
                     if let Err(e) = index_document_from_repository(repo, id) {
                         eprintln!("ingest: failed to index {id} into search: {e}");
                     }
+                    if let Err(e) = crate::props::process_document(repo, id) {
+                        eprintln!("ingest: props processing failed for {id}: {e}");
+                    }
                 }
                 for id in &ids {
                     if let Err(e) = repo.ensure_library_file(id.clone()) {
