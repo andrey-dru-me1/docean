@@ -531,12 +531,20 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     }
   }
 
-  /// Prompts for a tag name and strips it from every selected document (batch
-  /// [`DocumentService.bulkTags`] with only `remove`).
+  /// Prompts for a tag name to strip from every selected document. Unlike the
+  /// add flow (free text), the removal dialog forces a choice from the tags
+  /// that actually exist on the selected documents.
   Future<void> _bulkRemoveTag() async {
-    final tag = await _promptForTag(context, title: 'Remove tag');
-    if (tag == null || !mounted) return;
     final ids = List.of(_selected);
+    if (ids.isEmpty || _busy) return;
+    // The candidate list is the union of tags across every selected document —
+    // removing a tag nobody has is a no-op, so only real tags are offered.
+    final existing = <String>{
+      for (final doc in _all)
+        if (ids.contains(doc.id)) ...doc.tags,
+    }.toList()..sort();
+    final tag = await _promptForExistingTag(context, tags: existing);
+    if (tag == null || !mounted) return;
     if (ids.isEmpty) return;
     setState(() => _busy = true);
     try {
@@ -715,6 +723,18 @@ Future<String?> _promptForTag(BuildContext context, {required String title}) =>
       builder: (dialogContext) => _TagNameDialog(title: title),
     );
 
+/// Prompts for one tag among [tags] (the tags that exist on the selection) and
+/// returns the chosen name, or `null` when the user cancels. The dialog offers
+/// a searchable list and only existing tags can be picked — no free text.
+Future<String?> _promptForExistingTag(
+  BuildContext context, {
+  required List<String> tags,
+}) =>
+    showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _ExistingTagDialog(tags: tags),
+    );
+
 /// The file name the dropped document should receive.
 ///
 /// Prefers the original ingested file name (so extensions are preserved);
@@ -778,6 +798,103 @@ class _TagNameDialogState extends State<_TagNameDialog> {
           key: const ValueKey('confirm-tag-name'),
           onPressed: () => _submit(_controller.text),
           child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
+}
+
+/// A searchable picker dialog that shows only existing [tags] (the union of
+/// tags present on the selected documents) and forces the user to pick one.
+/// Unlike [_TagNameDialog] there is no free-text input — every accepted value
+/// is guaranteed to be an already-used tag.
+class _ExistingTagDialog extends StatefulWidget {
+  const _ExistingTagDialog({required this.tags});
+
+  /// Pre-sorted list of tags that exist on at least one selected document.
+  final List<String> tags;
+
+  @override
+  State<_ExistingTagDialog> createState() => _ExistingTagDialogState();
+}
+
+class _ExistingTagDialogState extends State<_ExistingTagDialog> {
+  late final TextEditingController _controller = TextEditingController();
+  List<String> _filtered = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.tags;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _applyFilter(String query) {
+    final q = query.trim().toLowerCase();
+    setState(() {
+      _filtered = q.isEmpty
+          ? widget.tags
+          : widget.tags.where((t) => t.toLowerCase().contains(q)).toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final noneMatch =
+        _controller.text.trim().isNotEmpty && _filtered.isEmpty;
+    return AlertDialog(
+      title: const Text('Remove tag'),
+      content: SizedBox(
+        width: 320,
+        height: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Search tags',
+                prefixIcon: Icon(Icons.search, size: 18),
+                border: OutlineInputBorder(),
+              ),
+              onChanged: _applyFilter,
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: _filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        noneMatch ? 'No matching tag' : 'No tags in selection',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _filtered.length,
+                      itemBuilder: (context, index) {
+                        final tag = _filtered[index];
+                        return ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.tag, size: 16),
+                          title: Text(tag),
+                          onTap: () => Navigator.of(context).pop(tag),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
         ),
       ],
     );

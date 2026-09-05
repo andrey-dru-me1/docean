@@ -733,11 +733,14 @@ void main() {
         containsAll(['existing', 'work']),
       );
 
-      // Remove tag 'existing' from every selected doc.
+      // Remove tag 'existing' from every selected doc.  The removal dialog now
+      // presents a searchable list of existing tags rather than a free-text field,
+      // so we filter then tap the matching list tile.
       await tester.tap(find.byKey(const ValueKey('bulk-remove-tag')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, 'existing');
-      await tester.tap(find.byKey(const ValueKey('confirm-tag-name')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('existing').last);
       await tester.pumpAndSettle();
 
       expect(service.bulkRemoves, isNotEmpty);
