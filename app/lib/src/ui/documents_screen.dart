@@ -8,10 +8,12 @@ import '../features/document_service.dart'
     show BulkOrganizer, DocumentService, NoopBulkOrganizer;
 import 'document_preview_view.dart' show DocumentTilePreview;
 import 'document_view.dart' show DocumentSummary;
+import 'hierarchy_view.dart'
+    show HierarchyView, docProperties, docScopes;
 import 'search_screen.dart' show DocumentOpener;
 import 'widgets.dart' show EmptyState, TagChip, wrapDocumentDragOut;
 
-/// Categories for filtering documents by file type.
+  /// Categories for filtering documents by file type.
 enum FileTypeCategory {
   all('All files'),
   pdf('PDF'),
@@ -42,6 +44,8 @@ enum FileTypeCategory {
     };
   }
 }
+
+enum DocumentsViewMode { grid, hierarchy }
 
 /// The Documents browse/list surface.
 ///
@@ -103,6 +107,20 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
   /// Whether a bulk operation (tag edit / delete / re-organize) is running.
   bool _busy = false;
+
+  /// Current view mode (grid or hierarchy).
+  DocumentsViewMode _viewMode = DocumentsViewMode.grid;
+
+  /// The selected scope for the hierarchy view (null = "(no scope)").
+  String? _hierScope;
+
+  /// The property key ordering for the hierarchy view.
+  List<String> _hierOrder = [];
+
+  /// Whether the user has manually reordered the hierarchy grouping keys.
+  /// When true, scope changes still recompute, but filter changes preserve
+  /// the user's custom order.
+  bool _hierOrderCustomized = false;
 
   /// Progress notifier for the async "Suggest title"/"Suggest tags" passes so
   /// the corner progress chip can show completed/total counts.
@@ -268,6 +286,30 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              SegmentedButton<DocumentsViewMode>(
+                key: const ValueKey('view-mode-toggle'),
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  padding: WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+                segments: const [
+                  ButtonSegment<DocumentsViewMode>(
+                    value: DocumentsViewMode.grid,
+                    icon: Icon(Icons.grid_view, semanticLabel: 'Grid'),
+                  ),
+                  ButtonSegment<DocumentsViewMode>(
+                    value: DocumentsViewMode.hierarchy,
+                    icon: Icon(Icons.account_tree, semanticLabel: 'Hierarchy'),
+                  ),
+                ],
+                selected: {_viewMode},
+                onSelectionChanged: (mode) =>
+                    setState(() => _viewMode = mode.first),
+              ),
+              const SizedBox(width: 8),
               IconButton(
                 key: const ValueKey('select-documents'),
                 tooltip: 'Select all',
@@ -358,6 +400,25 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         icon: Icons.filter_alt_off,
         title: 'No documents match',
         subtitle: 'Clear or change the filters above.',
+      );
+    }
+    if (_viewMode == DocumentsViewMode.hierarchy) {
+      _ensureHierOrder();
+      return HierarchyView(
+        key: const ValueKey('hierarchy-view'),
+        documents: filtered,
+        scope: _hierScope,
+        order: _hierOrder,
+        onOpenDocument: widget.onOpenDocument,
+        onPickScope: (scope) => setState(() {
+          _hierScope = scope;
+          _hierOrder = _orderKeysForScope();
+          _hierOrderCustomized = false;
+        }),
+        onPickOrder: _showOrderSheet,
+        selectionMode: _selectionMode,
+        selectedIds: _selected,
+        onToggleSelected: _selectionMode ? _toggleSelected : null,
       );
     }
     return RefreshIndicator(
@@ -463,6 +524,62 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final filtered = _filtered;
     return filtered.isNotEmpty &&
         filtered.every((d) => _selected.contains(d.id));
+  }
+
+  // --- Hierarchy view ------------------------------------------------------
+
+  /// The documents belonging to the selected scope: every document carrying
+  /// that `scope:` tag (selecting an ancestor scope therefore includes its
+  /// descendant documents), or unscoped documents for [scope] = null.
+  List<DocumentSummary> get _hierScopedDocs {
+    if (_hierScope == null) {
+      return _filtered.where((d) => docScopes(d.tags).isEmpty).toList();
+    }
+    return _filtered
+        .where((d) => docScopes(d.tags).contains(_hierScope))
+        .toList();
+  }
+
+  /// The property keys available on the selected scope's documents, sorted
+  /// alphabetically (the default grouping order).
+  List<String> _orderKeysForScope() {
+    final keys = <String>{
+      for (final doc in _hierScopedDocs)
+        for (final prop in docProperties(doc.tags)) prop.key,
+    }.toList()
+      ..sort();
+    return keys;
+  }
+
+  /// Recomputes [_hierOrder] to the scope's current key union unless the user
+  /// has customized the order (their ordering is preserved).
+  void _ensureHierOrder() {
+    if (_hierOrderCustomized) return;
+    final next = _orderKeysForScope();
+    if (!listEquals(_hierOrder, next)) {
+      _hierOrder = next;
+    }
+  }
+
+  /// The grouping-order editor: a bottom sheet with a reorderable list of the
+  /// property keys present on the selected scope's documents.  Confirming
+  /// applies the new order and marks it as user-customized.
+  Future<void> _showOrderSheet() async {
+    final keys = _orderKeysForScope();
+    if (keys.isEmpty) {
+      _showSnack(context, 'No grouping properties on these documents.');
+      return;
+    }
+    final result = await showModalBottomSheet<List<String>>(
+      context: context,
+      builder: (sheetContext) =>
+          _HierarchyOrderSheet(initialOrder: List.of(_hierOrder)),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _hierOrder = result;
+      _hierOrderCustomized = true;
+    });
   }
 
   /// The toolbar shown during selection mode: selected count, select-all,
@@ -1263,6 +1380,75 @@ class _TileScrim extends StatelessWidget {
             Colors.transparent,
             Colors.black.withValues(alpha: 0.45),
             Colors.black.withValues(alpha: 0.85),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The grouping-order editor bottom sheet: a reorderable list of the property
+/// keys to group the hierarchy by.  Dragging items changes the order; the
+/// "Apply" button pops with the current order (or `null` on cancel via
+/// dismiss).
+class _HierarchyOrderSheet extends StatefulWidget {
+  const _HierarchyOrderSheet({required this.initialOrder});
+
+  /// The current grouping order (may be empty/outdated vs. the scope's key
+  /// union — the sheet displays exactly these keys).
+  final List<String> initialOrder;
+
+  @override
+  State<_HierarchyOrderSheet> createState() => _HierarchyOrderSheetState();
+}
+
+class _HierarchyOrderSheetState extends State<_HierarchyOrderSheet> {
+  late final List<String> _keys = List.of(widget.initialOrder);
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SizedBox(
+        height: 420,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Grouping order',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            Expanded(
+              child: ReorderableListView(
+                key: const ValueKey('hier-order-sheet'),
+                buildDefaultDragHandles: true,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                children: [
+                  for (final key in _keys)
+                    ListTile(
+                      key: ValueKey('hier-order-item-$key'),
+                      dense: true,
+                      title: Text(key),
+                    ),
+                ],
+                onReorderItem: (oldIndex, newIndex) {
+                  setState(() {
+                    final key = _keys.removeAt(oldIndex);
+                    _keys.insert(newIndex, key);
+                  });
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: FilledButton(
+                key: const ValueKey('hier-order-apply'),
+                onPressed: () => Navigator.of(context).pop(List.of(_keys)),
+                child: const Text('Apply'),
+              ),
+            ),
           ],
         ),
       ),
