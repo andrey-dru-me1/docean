@@ -12,6 +12,7 @@ import 'api/assistant.dart';
 import 'api/auto_org.dart';
 import 'api/health.dart';
 import 'api/ingest.dart';
+import 'api/library.dart';
 import 'api/p2p.dart';
 import 'api/search.dart';
 import 'api/storage.dart';
@@ -251,6 +252,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LearningMode dco_decode_learning_mode(dynamic raw);
+
+  @protected
+  LibrarySyncReportDto dco_decode_library_sync_report_dto(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
@@ -725,6 +729,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LearningMode sse_decode_learning_mode(SseDeserializer deserializer);
+
+  @protected
+  LibrarySyncReportDto sse_decode_library_sync_report_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
@@ -1297,6 +1306,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_learning_mode(LearningMode self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_library_sync_report_dto(
+    LibrarySyncReportDto self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);

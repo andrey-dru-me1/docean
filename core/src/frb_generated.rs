@@ -40,7 +40,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1580510356;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 666188514;
 
 // Section: executor
 
@@ -578,6 +578,59 @@ fn wire__crate__api__storage__DocumentRepository_documents_at_impl(
         },
     )
 }
+fn wire__crate__api__storage__DocumentRepository_ensure_library_file_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "DocumentRepository_ensure_library_file",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::storage::DocumentRepository::ensure_library_file(
+                        &*api_that_guard,
+                        api_id,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__storage__DocumentRepository_feedback_stats_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -730,6 +783,57 @@ fn wire__crate__api__storage__DocumentRepository_get_content_impl(
                     let output_ok = crate::api::storage::DocumentRepository::get_content(
                         &*api_that_guard,
                         api_document_id,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__storage__DocumentRepository_library_dir_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "DocumentRepository_library_dir",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = Ok::<_, ()>(
+                        crate::api::storage::DocumentRepository::library_dir(&*api_that_guard),
                     )?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -1472,6 +1576,59 @@ fn wire__crate__api__storage__DocumentRepository_record_feedback_impl(
                     let output_ok = crate::api::storage::DocumentRepository::record_feedback(
                         &*api_that_guard,
                         api_feedback,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__storage__DocumentRepository_set_library_dir_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "DocumentRepository_set_library_dir",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
+            let api_dir = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::storage::DocumentRepository::set_library_dir(
+                        &*api_that_guard,
+                        api_dir,
                     )?;
                     std::result::Result::Ok(output_ok)
                 })())
@@ -3119,6 +3276,230 @@ fn wire__crate__api__init_app_impl(
         },
     )
 }
+fn wire__crate__api__library__library_file_path_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "library_file_path",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_repo = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_repo_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_repo, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_repo_guard = Some(api_repo.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_repo_guard = api_repo_guard.unwrap();
+                let output_ok = Ok::<_, ()>(crate::api::library::library_file_path(
+                    &*api_repo_guard,
+                    api_id,
+                ))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__library__library_get_directory_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "library_get_directory",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_repo = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_repo_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_repo, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_repo_guard = Some(api_repo.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_repo_guard = api_repo_guard.unwrap();
+                let output_ok =
+                    Ok::<_, ()>(crate::api::library::library_get_directory(&*api_repo_guard))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__library__library_set_directory_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "library_set_directory",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_repo = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
+            let api_dir = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let mut api_repo_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_repo, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_repo_guard = Some(api_repo.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_repo_guard = api_repo_guard.unwrap();
+                let output_ok =
+                    crate::api::library::library_set_directory(&*api_repo_guard, api_dir)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__library__library_sync_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "library_sync",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_repo = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<DocumentRepository>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let mut api_repo_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_repo, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_repo_guard = Some(api_repo.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_repo_guard = api_repo_guard.unwrap();
+                let output_ok = crate::api::library::library_sync(&*api_repo_guard)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__library__library_sync_report_dto_default_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "library_sync_report_dto_default",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Ok::<_, ()>(crate::api::library::LibrarySyncReportDto::default())?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__storage__open_repository_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -4376,6 +4757,22 @@ impl SseDecode for crate::auto_org::feedback::LearningMode {
     }
 }
 
+impl SseDecode for crate::api::library::LibrarySyncReportDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_added = <Vec<String>>::sse_decode(deserializer);
+        let mut var_removed = <Vec<String>>::sse_decode(deserializer);
+        let mut var_linked = <Vec<String>>::sse_decode(deserializer);
+        let mut var_failed = <Vec<(String, String)>>::sse_decode(deserializer);
+        return crate::api::library::LibrarySyncReportDto {
+            added: var_added,
+            removed: var_removed,
+            linked: var_linked,
+            failed: var_failed,
+        };
+    }
+}
+
 impl SseDecode for Vec<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -5357,208 +5754,232 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        11 => wire__crate__api__storage__DocumentRepository_feedback_stats_impl(
+        11 => wire__crate__api__storage__DocumentRepository_ensure_library_file_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        12 => wire__crate__api__storage__DocumentRepository_get_impl(
+        12 => wire__crate__api__storage__DocumentRepository_feedback_stats_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        13 => wire__crate__api__storage__DocumentRepository_get_content_impl(
+        13 => wire__crate__api__storage__DocumentRepository_get_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        14 => wire__crate__api__storage__DocumentRepository_link_impl(
+        14 => wire__crate__api__storage__DocumentRepository_get_content_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        15 => wire__crate__api__storage__DocumentRepository_list_paths_impl(
+        15 => wire__crate__api__storage__DocumentRepository_library_dir_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        16 => wire__crate__api__storage__DocumentRepository_list_tags_impl(
+        16 => wire__crate__api__storage__DocumentRepository_link_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        17 => wire__crate__api__storage__DocumentRepository_mark_suggestion_impl(
+        17 => wire__crate__api__storage__DocumentRepository_list_paths_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        18 => wire__crate__api__storage__DocumentRepository_paths_of_impl(
+        18 => wire__crate__api__storage__DocumentRepository_list_tags_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        19 => wire__crate__api__storage__DocumentRepository_prune_suggestions_impl(
+        19 => wire__crate__api__storage__DocumentRepository_mark_suggestion_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        20 => wire__crate__api__storage__DocumentRepository_put_impl(
+        20 => wire__crate__api__storage__DocumentRepository_paths_of_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        21 => wire__crate__api__storage__DocumentRepository_put_content_impl(
+        21 => wire__crate__api__storage__DocumentRepository_prune_suggestions_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        22 => wire__crate__api__storage__DocumentRepository_put_path_impl(
+        22 => wire__crate__api__storage__DocumentRepository_put_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        23 => wire__crate__api__storage__DocumentRepository_put_suggestion_impl(
+        23 => wire__crate__api__storage__DocumentRepository_put_content_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        24 => wire__crate__api__storage__DocumentRepository_put_tag_impl(
+        24 => wire__crate__api__storage__DocumentRepository_put_path_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        25 => wire__crate__api__storage__DocumentRepository_query_impl(
+        25 => wire__crate__api__storage__DocumentRepository_put_suggestion_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        26 => wire__crate__api__storage__DocumentRepository_read_bytes_impl(
+        26 => wire__crate__api__storage__DocumentRepository_put_tag_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        27 => wire__crate__api__storage__DocumentRepository_record_feedback_impl(
+        27 => wire__crate__api__storage__DocumentRepository_query_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        28 => wire__crate__api__storage__DocumentRepository_set_tags_impl(
+        28 => wire__crate__api__storage__DocumentRepository_read_bytes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        29 => wire__crate__api__storage__DocumentRepository_suggestions_of_impl(
+        29 => wire__crate__api__storage__DocumentRepository_record_feedback_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        30 => wire__crate__api__storage__DocumentRepository_unassign_path_impl(
+        30 => wire__crate__api__storage__DocumentRepository_set_library_dir_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        31 => wire__crate__api__storage__DocumentRepository_update_title_impl(
+        31 => wire__crate__api__storage__DocumentRepository_set_tags_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        33 => wire__crate__api__ai__ai_classify_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__ai__ai_embed_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__crate__api__ai__ai_generate_impl(port, ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__assistant__assistant_ask_impl(port, ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__assistant__assistant_ask_stream_impl(
+        32 => wire__crate__api__storage__DocumentRepository_suggestions_of_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        46 => wire__crate__api__auto_org__auto_org_apply_suggestion_impl(
+        33 => wire__crate__api__storage__DocumentRepository_unassign_path_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        47 => wire__crate__api__auto_org__auto_org_confirm_current_impl(
+        34 => wire__crate__api__storage__DocumentRepository_update_title_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        50 => wire__crate__api__auto_org__auto_org_dismiss_suggestion_impl(
+        36 => wire__crate__api__ai__ai_classify_impl(port, ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__ai__ai_embed_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__ai__ai_generate_impl(port, ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__assistant__assistant_ask_impl(port, ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__assistant__assistant_ask_stream_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        51 => wire__crate__api__auto_org__auto_org_generate_filename_impl(
+        49 => wire__crate__api__auto_org__auto_org_apply_suggestion_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        52 => wire__crate__api__auto_org__auto_org_list_suggestions_impl(
+        50 => wire__crate__api__auto_org__auto_org_confirm_current_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        53 => wire__crate__api__auto_org__auto_org_organize_impl(port, ptr, rust_vec_len, data_len),
-        56 => wire__crate__api__auto_org__auto_org_reorganize_selected_impl(
+        53 => wire__crate__api__auto_org__auto_org_dismiss_suggestion_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        57 => wire__crate__api__auto_org__auto_org_reset_learning_impl(
+        54 => wire__crate__api__auto_org__auto_org_generate_filename_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        58 => wire__crate__api__auto_org__auto_org_resolve_manual_edit_impl(
+        55 => wire__crate__api__auto_org__auto_org_list_suggestions_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        59 => wire__crate__api__auto_org__auto_org_suggest_tags_impl(
+        56 => wire__crate__api__auto_org__auto_org_organize_impl(port, ptr, rust_vec_len, data_len),
+        59 => wire__crate__api__auto_org__auto_org_reorganize_selected_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        60 => wire__crate__api__auto_org__auto_org_suggest_title_impl(
+        60 => wire__crate__api__auto_org__auto_org_reset_learning_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        62 => wire__crate__api__ingest__ingest_files_impl(port, ptr, rust_vec_len, data_len),
-        63 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
-        64 => wire__crate__api__storage__open_repository_impl(port, ptr, rust_vec_len, data_len),
-        66 => wire__crate__api__p2p__p2p_events_impl(port, ptr, rust_vec_len, data_len),
-        82 => wire__crate__api__sync__sync_events_impl(port, ptr, rust_vec_len, data_len),
+        61 => wire__crate__api__auto_org__auto_org_resolve_manual_edit_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        62 => wire__crate__api__auto_org__auto_org_suggest_tags_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        63 => wire__crate__api__auto_org__auto_org_suggest_title_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        65 => wire__crate__api__ingest__ingest_files_impl(port, ptr, rust_vec_len, data_len),
+        66 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
+        71 => wire__crate__api__library__library_sync_report_dto_default_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        72 => wire__crate__api__storage__open_repository_impl(port, ptr, rust_vec_len, data_len),
+        74 => wire__crate__api__p2p__p2p_events_impl(port, ptr, rust_vec_len, data_len),
+        90 => wire__crate__api__sync__sync_events_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -5571,50 +5992,54 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        32 => wire__crate__api__ai__ai_active_provider_impl(ptr, rust_vec_len, data_len),
-        36 => wire__crate__api__ai__ai_list_providers_impl(ptr, rust_vec_len, data_len),
-        37 => wire__crate__api__ai__ai_remove_api_key_impl(ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__ai__ai_save_provider_settings_impl(ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__ai__ai_select_provider_impl(ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__ai__ai_set_api_key_impl(ptr, rust_vec_len, data_len),
-        43 => {
+        35 => wire__crate__api__ai__ai_active_provider_impl(ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__ai__ai_list_providers_impl(ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__ai__ai_remove_api_key_impl(ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__ai__ai_save_provider_settings_impl(ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__ai__ai_select_provider_impl(ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__ai__ai_set_api_key_impl(ptr, rust_vec_len, data_len),
+        46 => {
             wire__crate__api__assistant__assistant_clear_history_impl(ptr, rust_vec_len, data_len)
         }
-        44 => {
+        47 => {
             wire__crate__api__assistant__assistant_index_document_impl(ptr, rust_vec_len, data_len)
         }
-        45 => {
+        48 => {
             wire__crate__api__assistant__assistant_remove_document_impl(ptr, rust_vec_len, data_len)
         }
-        48 => wire__crate__api__auto_org__auto_org_default_config_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__auto_org__auto_org_default_rules_impl(ptr, rust_vec_len, data_len),
-        54 => wire__crate__api__auto_org__auto_org_reorganize_all_impl(ptr, rust_vec_len, data_len),
-        55 => wire__crate__api__auto_org__auto_org_reorganize_one_impl(ptr, rust_vec_len, data_len),
-        61 => wire__crate__api__health__health_check_impl(ptr, rust_vec_len, data_len),
-        65 => wire__crate__api__p2p__p2p_connect_impl(ptr, rust_vec_len, data_len),
-        67 => wire__crate__api__p2p__p2p_list_peers_impl(ptr, rust_vec_len, data_len),
-        68 => wire__crate__api__p2p__p2p_local_peer_id_impl(ptr, rust_vec_len, data_len),
-        69 => wire__crate__api__search__search_duplicates_impl(ptr, rust_vec_len, data_len),
-        70 => wire__crate__api__search__search_embed_impl(ptr, rust_vec_len, data_len),
-        71 => wire__crate__api__search__search_embed_dims_impl(ptr, rust_vec_len, data_len),
-        72 => wire__crate__api__search__search_exact_impl(ptr, rust_vec_len, data_len),
-        73 => wire__crate__api__search__search_find_duplicates_impl(ptr, rust_vec_len, data_len),
-        74 => wire__crate__api__search__search_index_document_impl(ptr, rust_vec_len, data_len),
-        75 => wire__crate__api__search__search_query_impl(ptr, rust_vec_len, data_len),
-        76 => wire__crate__api__search__search_reindex_from_repository_impl(
+        51 => wire__crate__api__auto_org__auto_org_default_config_impl(ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__auto_org__auto_org_default_rules_impl(ptr, rust_vec_len, data_len),
+        57 => wire__crate__api__auto_org__auto_org_reorganize_all_impl(ptr, rust_vec_len, data_len),
+        58 => wire__crate__api__auto_org__auto_org_reorganize_one_impl(ptr, rust_vec_len, data_len),
+        64 => wire__crate__api__health__health_check_impl(ptr, rust_vec_len, data_len),
+        67 => wire__crate__api__library__library_file_path_impl(ptr, rust_vec_len, data_len),
+        68 => wire__crate__api__library__library_get_directory_impl(ptr, rust_vec_len, data_len),
+        69 => wire__crate__api__library__library_set_directory_impl(ptr, rust_vec_len, data_len),
+        70 => wire__crate__api__library__library_sync_impl(ptr, rust_vec_len, data_len),
+        73 => wire__crate__api__p2p__p2p_connect_impl(ptr, rust_vec_len, data_len),
+        75 => wire__crate__api__p2p__p2p_list_peers_impl(ptr, rust_vec_len, data_len),
+        76 => wire__crate__api__p2p__p2p_local_peer_id_impl(ptr, rust_vec_len, data_len),
+        77 => wire__crate__api__search__search_duplicates_impl(ptr, rust_vec_len, data_len),
+        78 => wire__crate__api__search__search_embed_impl(ptr, rust_vec_len, data_len),
+        79 => wire__crate__api__search__search_embed_dims_impl(ptr, rust_vec_len, data_len),
+        80 => wire__crate__api__search__search_exact_impl(ptr, rust_vec_len, data_len),
+        81 => wire__crate__api__search__search_find_duplicates_impl(ptr, rust_vec_len, data_len),
+        82 => wire__crate__api__search__search_index_document_impl(ptr, rust_vec_len, data_len),
+        83 => wire__crate__api__search__search_query_impl(ptr, rust_vec_len, data_len),
+        84 => wire__crate__api__search__search_reindex_from_repository_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        77 => wire__crate__api__search__search_remove_document_impl(ptr, rust_vec_len, data_len),
-        78 => wire__crate__api__search__search_semantic_impl(ptr, rust_vec_len, data_len),
-        79 => wire__crate__api__search__search_set_metadata_impl(ptr, rust_vec_len, data_len),
-        80 => wire__crate__api__sync__sync_conflicts_impl(ptr, rust_vec_len, data_len),
-        81 => wire__crate__api__sync__sync_connect_impl(ptr, rust_vec_len, data_len),
-        83 => wire__crate__api__sync__sync_peers_impl(ptr, rust_vec_len, data_len),
-        84 => wire__crate__api__sync__sync_pull_impl(ptr, rust_vec_len, data_len),
-        85 => wire__crate__api__sync__sync_push_impl(ptr, rust_vec_len, data_len),
-        86 => wire__crate__api__sync__sync_start_impl(ptr, rust_vec_len, data_len),
+        85 => wire__crate__api__search__search_remove_document_impl(ptr, rust_vec_len, data_len),
+        86 => wire__crate__api__search__search_semantic_impl(ptr, rust_vec_len, data_len),
+        87 => wire__crate__api__search__search_set_metadata_impl(ptr, rust_vec_len, data_len),
+        88 => wire__crate__api__sync__sync_conflicts_impl(ptr, rust_vec_len, data_len),
+        89 => wire__crate__api__sync__sync_connect_impl(ptr, rust_vec_len, data_len),
+        91 => wire__crate__api__sync__sync_peers_impl(ptr, rust_vec_len, data_len),
+        92 => wire__crate__api__sync__sync_pull_impl(ptr, rust_vec_len, data_len),
+        93 => wire__crate__api__sync__sync_push_impl(ptr, rust_vec_len, data_len),
+        94 => wire__crate__api__sync__sync_start_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -6199,6 +6624,29 @@ impl flutter_rust_bridge::IntoIntoDart<crate::auto_org::feedback::LearningMode>
     for crate::auto_org::feedback::LearningMode
 {
     fn into_into_dart(self) -> crate::auto_org::feedback::LearningMode {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::library::LibrarySyncReportDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.added.into_into_dart().into_dart(),
+            self.removed.into_into_dart().into_dart(),
+            self.linked.into_into_dart().into_dart(),
+            self.failed.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::library::LibrarySyncReportDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::library::LibrarySyncReportDto>
+    for crate::api::library::LibrarySyncReportDto
+{
+    fn into_into_dart(self) -> crate::api::library::LibrarySyncReportDto {
         self
     }
 }
@@ -7273,6 +7721,16 @@ impl SseEncode for crate::auto_org::feedback::LearningMode {
             },
             serializer,
         );
+    }
+}
+
+impl SseEncode for crate::api::library::LibrarySyncReportDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<String>>::sse_encode(self.added, serializer);
+        <Vec<String>>::sse_encode(self.removed, serializer);
+        <Vec<String>>::sse_encode(self.linked, serializer);
+        <Vec<(String, String)>>::sse_encode(self.failed, serializer);
     }
 }
 

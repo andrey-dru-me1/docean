@@ -39,6 +39,9 @@ abstract class DocumentRepository implements RustOpaqueInterface {
   Future<void> clearFeedback();
 
   /// Delete a document and (when unreferenced) its blob.
+  ///
+  /// Also best-effort removes the mirrored library file (if any); a library
+  /// failure never fails or masks the delete.
   Future<void> delete({required String id});
 
   Future<void> deleteContent({required String documentId});
@@ -50,6 +53,19 @@ abstract class DocumentRepository implements RustOpaqueInterface {
 
   Future<List<String>> documentsAt({required String path});
 
+  /// Ensure a document's file exists on disk with a friendly, deterministic
+  /// name and that `extra["file_name"]` is stamped to record that mapping.
+  ///
+  /// When no library is configured this is a no-op (`Ok(())`).
+  ///
+  /// The name is derived from `extra["original_name"]` + mime type via
+  /// [`LibraryFs::file_name_for`], avoiding collisions with
+  /// [`LibraryFs::unique_name`]. Blob bytes are read from the store and
+  /// written atomically when the file is missing. Stamp order (write first,
+  /// then `put`) means a crash after the write but before the stamp is healed
+  /// by a subsequent call.
+  Future<void> ensureLibraryFile({required String id});
+
   /// Aggregated accept/reject evidence per term (feedback model input).
   Future<Map<String, FeedbackStats>> feedbackStats({
     SuggestionKind? kind,
@@ -60,6 +76,9 @@ abstract class DocumentRepository implements RustOpaqueInterface {
   Future<Document> get_({required String id});
 
   Future<Content?> getContent({required String documentId});
+
+  /// Returns the configured library directory, or `None`.
+  Future<String?> libraryDir();
 
   Future<void> link({required HierarchyLink link});
 
@@ -98,10 +117,24 @@ abstract class DocumentRepository implements RustOpaqueInterface {
   Future<List<Document>> query({required DocumentQuery query});
 
   /// Fetch a document's raw bytes.
+  ///
+  /// When a library mirror is configured and the document's `file_name` is
+  /// present and the mirrored file exists, bytes are read from the library
+  /// file. On any library failure (or when not configured) it falls back to
+  /// the blob store, which remains the source of truth for correctness.
   Future<Uint8List> readBytes({required String id});
 
   /// Persist one feedback event.
   Future<void> recordFeedback({required SuggestionFeedback feedback});
+
+  /// Set (or clear) the library mirror directory.
+  ///
+  /// When `Some(dir)`, the directory is created (via [`LibraryFs::open`]), the
+  /// path is persisted in `<root>/library_dir.txt` **before** the handle is
+  /// swapped so that a crash never leaves metadata pointing to an un-writable
+  /// location. When `None`, the path file is removed (missing is OK) and the
+  /// library handle is dropped.
+  Future<void> setLibraryDir({String? dir});
 
   /// Replace the full tag set on a document (creating tag-catalog entries as
   /// needed) so the UI can add/remove tags without re-putting raw bytes.

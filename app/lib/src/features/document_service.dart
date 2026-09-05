@@ -28,6 +28,7 @@ import '../rust/api/auto_org.dart'
         autoOrgSuggestTitle;
 import '../rust/api/search.dart' as search_bridge;
 import '../rust/api/storage.dart' show DocumentRepository;
+import '../rust/api/library.dart' as library_bridge;
 import '../rust/auto_org/config.dart' show OrgConfig;
 import 'learning_prefs.dart' show suggestionLearningMode;
 import '../rust/auto_org/feedback.dart' show LearningMode;
@@ -234,6 +235,13 @@ abstract interface class DocumentService {
   /// Called once at app startup so documents stored in previous sessions are
   /// searchable even though the ephemeral in-memory engine starts empty.
   Future<void> reindex();
+
+  /// The on-disk path of a document's mirrored library file, when it exists.
+  ///
+  /// When non-null the caller can reveal/open the file directly (no temp copy
+  /// needed). Returns `null` when no library is configured, the document has
+  /// no stamped file name, or the file no longer exists on disk.
+  Future<String?> libraryFilePath(String id);
 }
 
 /// A suggestion from the deterministic auto-organization pipeline.
@@ -685,9 +693,13 @@ class BridgeDocumentService implements DocumentService {
     final repo = await _repo();
     search_bridge.searchReindexFromRepository(repo: repo);
   }
-}
 
-/// A test double backed by in-memory data, used by widget tests.
+  @override
+  Future<String?> libraryFilePath(String id) async {
+    final repo = await _repo();
+    return library_bridge.libraryFilePath(repo: repo, id: id);
+  }
+}
 class FakeDocumentService implements DocumentService {
   FakeDocumentService({
     List<DocumentSummary> documents = const [],
@@ -1125,4 +1137,7 @@ class FakeDocumentService implements DocumentService {
   Future<void> reindex() async {
     reindexCount++;
   }
+
+  @override
+  Future<String?> libraryFilePath(String id) async => null;
 }

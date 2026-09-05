@@ -6,7 +6,10 @@ import 'features/document_service.dart'
     show BridgeDocumentService, DocerBulkOrganizer, DocumentService;
 import 'features/ingest_service.dart' show BridgeIngestService, IngestService;
 import 'features/library_directory.dart'
-    show InMemoryLibraryDirectoryService, LibraryDirectoryService;
+    show
+        BridgeLibraryDirectoryService,
+        InMemoryLibraryDirectoryService,
+        LibraryDirectoryService;
 import 'features/provider_service.dart'
     show BridgeProviderService, ProviderService;
 import 'features/search_service.dart' show BridgeSearchService, SearchService;
@@ -40,7 +43,7 @@ class DocerApp extends StatelessWidget {
     this.paths = const [],
     this.pickPaths,
     this.openDocument,
-    this.libraryService,
+    this.libraryService = const BridgeLibraryDirectoryService(),
     this.pickDirectory,
   });
 
@@ -61,8 +64,9 @@ class DocerApp extends StatelessWidget {
   /// detail view.
   final DocumentOpener? openDocument;
 
-  /// Injectable library-folder service (defaults to an in-memory fake until
-  /// the Rust bridge lands in a later wave).
+  /// Injectable library-folder service. Defaults to the bridge-backed
+  /// implementation; tests inject their own fakes so they never touch the
+  /// native library.
   final LibraryDirectoryService? libraryService;
 
   /// Injected directory picker for the library-folder dialog (defaults to the

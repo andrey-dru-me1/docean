@@ -10,6 +10,7 @@ pub mod assistant;
 pub mod auto_org;
 pub mod health;
 pub mod ingest;
+pub mod library;
 pub mod p2p;
 pub mod search;
 pub mod storage;

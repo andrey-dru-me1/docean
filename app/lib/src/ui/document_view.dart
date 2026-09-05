@@ -476,6 +476,16 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
 
   Future<void> _openExternally() async {
     try {
+      // Prefer the real library file when the document is mirrored there:
+      // reveal/open it directly with no temp copy. Fall back to materializing
+      // a temp file from the raw bytes otherwise.
+      final libraryPath = await widget.documentService.libraryFilePath(
+        widget.document.id,
+      );
+      if (libraryPath != null && libraryPath.isNotEmpty) {
+        await widget.openExternally(libraryPath);
+        return;
+      }
       final bytes = await widget.documentService.readBytes(widget.document.id);
       if (bytes.isEmpty) {
         throw StateError('Document has no raw bytes to open');
