@@ -1176,11 +1176,7 @@ class _DocumentPreviewTile extends StatelessWidget {
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: scheme.primary.withValues(
-                      alpha: Theme.of(context).brightness == Brightness.light
-                          ? 0.30
-                          : 0.18,
-                    ),
+                    color: scheme.primary.withValues(alpha: 0.18),
                   ),
                 ),
               ),
@@ -1241,6 +1237,7 @@ class _DocumentPreviewTile extends StatelessWidget {
                 value: selectionMode ? selected : false,
                 onChanged: (_) => onCheckboxTap?.call(),
                 visualDensity: VisualDensity.compact,
+                side: const BorderSide(color: Color(0xFFE6E1E5), width: 1.6),
               ),
             ),
           ],
