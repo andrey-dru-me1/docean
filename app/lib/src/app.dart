@@ -5,6 +5,8 @@ import 'features/assistant_service.dart'
 import 'features/document_service.dart'
     show BridgeDocumentService, DocerBulkOrganizer, DocumentService;
 import 'features/ingest_service.dart' show BridgeIngestService, IngestService;
+import 'features/library_directory.dart'
+    show InMemoryLibraryDirectoryService, LibraryDirectoryService;
 import 'features/provider_service.dart'
     show BridgeProviderService, ProviderService;
 import 'features/search_service.dart' show BridgeSearchService, SearchService;
@@ -18,6 +20,8 @@ import 'ui/documents_upload_page.dart' show DocumentsUploadPage;
 import 'ui/ingest_panel.dart'
     show IngestPanelState, PathPicker, pickPathsWithFilePicker;
 import 'ui/learning_panel.dart' show LearningPanel;
+import 'ui/library_folder_dialog.dart'
+    show DirectoryPicker, pickDirectoryWithFilePicker, showLibraryFolderDialog;
 import 'ui/provider_screen.dart' show ProviderScreen;
 import 'ui/search_screen.dart' show DocumentOpener, SearchScreen;
 
@@ -36,6 +40,8 @@ class DocerApp extends StatelessWidget {
     this.paths = const [],
     this.pickPaths,
     this.openDocument,
+    this.libraryService,
+    this.pickDirectory,
   });
 
   final HealthCheckFn healthCheck;
@@ -54,6 +60,14 @@ class DocerApp extends StatelessWidget {
   /// Opens a document from a search result or citation. Defaults to a local
   /// detail view.
   final DocumentOpener? openDocument;
+
+  /// Injectable library-folder service (defaults to an in-memory fake until
+  /// the Rust bridge lands in a later wave).
+  final LibraryDirectoryService? libraryService;
+
+  /// Injected directory picker for the library-folder dialog (defaults to the
+  /// native `file_picker`); tests inject a fake.
+  final DirectoryPicker? pickDirectory;
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +92,8 @@ class DocerApp extends StatelessWidget {
         paths: paths,
         pickPaths: pickPaths,
         openDocument: openDocument,
+        libraryService: libraryService,
+        pickDirectory: pickDirectory,
       ),
     );
   }
@@ -149,6 +165,8 @@ class MainShell extends StatefulWidget {
     required this.paths,
     this.pickPaths,
     this.openDocument,
+    this.libraryService,
+    this.pickDirectory,
   });
 
   final HealthCheckFn healthCheck;
@@ -161,6 +179,8 @@ class MainShell extends StatefulWidget {
   final List<String> paths;
   final PathPicker? pickPaths;
   final DocumentOpener? openDocument;
+  final LibraryDirectoryService? libraryService;
+  final DirectoryPicker? pickDirectory;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -171,6 +191,9 @@ class _MainShellState extends State<MainShell> {
   bool _aiAvailable = true;
   HealthStatus? _status;
   bool _healthError = false;
+
+  late final LibraryDirectoryService _libraryService =
+      widget.libraryService ?? InMemoryLibraryDirectoryService();
 
   /// The document shown in the wide-screen right-side detail panel (master-
   /// detail). `null` renders an empty placeholder.
@@ -193,6 +216,7 @@ class _MainShellState extends State<MainShell> {
     // documents from previous sessions are searchable immediately.
     _reindexSearch();
     _documentsRefreshTick.addListener(_checkSidebarDocument);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoSyncLibrary());
   }
 
   @override
@@ -217,6 +241,32 @@ class _MainShellState extends State<MainShell> {
   /// quietly (e.g. the repository is not open yet in tests / headless shell).
   void _reindexSearch() {
     widget.documentService.reindex().catchError((Object _) {});
+  }
+
+  /// Best-effort startup sync: if a library directory is already configured,
+  /// run one sync and bump the document list — never block or surface errors.
+  Future<void> _autoSyncLibrary() async {
+    try {
+      final dir = await _libraryService.libraryDirectory();
+      if (dir == null) return;
+      await _libraryService.syncLibrary();
+      if (mounted) _documentsRefreshTick.value++;
+    } catch (_) {
+      // Startup sync is best-effort: never surface errors.
+    }
+  }
+
+  /// Opens the library-folder dialog and bumps the refresh tick when the
+  /// user changes the folder.
+  Future<void> _openLibraryFolder() async {
+    final changed = await showLibraryFolderDialog(
+      context,
+      service: _libraryService,
+      pickDirectory: widget.pickDirectory ?? pickDirectoryWithFilePicker,
+    );
+    if (changed == true && mounted) {
+      _documentsRefreshTick.value++;
+    }
   }
 
   void _probeHealth() {
@@ -365,6 +415,12 @@ class _MainShellState extends State<MainShell> {
           title: const Text('Docer'),
           actions: [
             IconButton(
+              key: const ValueKey('library-folder'),
+              tooltip: 'Library folder',
+              onPressed: _openLibraryFolder,
+              icon: const Icon(Icons.folder_copy_outlined),
+            ),
+            IconButton(
               key: const ValueKey('upload-files'),
               tooltip: 'Upload files',
               onPressed: _uploadFromAppBar,
@@ -460,6 +516,12 @@ class _MainShellState extends State<MainShell> {
       appBar: AppBar(
         title: Text(['Documents', 'Search', 'Chat', 'Providers'][_index]),
         actions: [
+          IconButton(
+            key: const ValueKey('library-folder'),
+            tooltip: 'Library folder',
+            onPressed: _openLibraryFolder,
+            icon: const Icon(Icons.folder_copy_outlined),
+          ),
           IconButton(
             key: const ValueKey('upload-files'),
             tooltip: 'Upload files',
