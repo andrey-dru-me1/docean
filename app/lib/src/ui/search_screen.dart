@@ -60,6 +60,10 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _loading = false;
   Object? _error;
 
+  /// Resolved document summaries keyed by document id. Populated after search
+  /// so each result can display its real title instead of a raw path.
+  final Map<String, DocumentSummary> _docSummaries = {};
+
   /// Shared preview loader backed by the optional document service. Injectable
   /// via [SearchScreen.previewLoader] (tests swap in a synchronous thumbnailer);
   /// when no service is provided search-result thumbnails degrade to the
@@ -110,6 +114,7 @@ class _SearchScreenState extends State<SearchScreen> {
       );
       if (!mounted) return;
       setState(() => _results = hits);
+      _resolveTitles(hits);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e);
@@ -130,20 +135,43 @@ class _SearchScreenState extends State<SearchScreen> {
     _runSearch();
   }
 
-  DocumentSummary _summaryOf(SearchHitDto hit) => DocumentSummary(
-    id: hit.documentId,
-    title: _titleFrom(hit),
-    snippet: hit.snippet,
-    tags: hit.tags,
-    paths: hit.paths,
-  );
+  DocumentSummary _summaryOf(SearchHitDto hit) {
+    final cached = _docSummaries[hit.documentId];
+    return DocumentSummary(
+      id: hit.documentId,
+      title: cached?.title ?? _titleFrom(hit),
+      snippet: hit.snippet,
+      tags: hit.tags,
+      paths: hit.paths,
+    );
+  }
 
   String _titleFrom(SearchHitDto hit) {
-    // Prefer a path segment as a human-readable title hint.
+    // Prefer a resolved document title from the repository.
+    final cached = _docSummaries[hit.documentId];
+    if (cached != null) return cached.title;
+    // Fall back to a path segment as a human-readable title hint.
     if (hit.paths.isNotEmpty) return hit.paths.first;
     // Never surface the raw internal document id: fall back to a friendly
     // placeholder when the search index has no path/title metadata.
     return 'Untitled document';
+  }
+
+  /// Best-effort fetch of document metadata for each search result so the UI
+  /// can display real titles instead of raw file paths.
+  Future<void> _resolveTitles(List<SearchHitDto> hits) async {
+    final service = widget.documentService;
+    if (service == null) return;
+    for (final hit in hits) {
+      if (_docSummaries.containsKey(hit.documentId)) continue;
+      try {
+        final summary = await service.getDocument(hit.documentId);
+        if (!mounted) return;
+        setState(() => _docSummaries[hit.documentId] = summary);
+      } catch (_) {
+        // Metadata fetch failed — fallback to path-based title.
+      }
+    }
   }
 
   @override
