@@ -144,6 +144,8 @@ class _SearchScreenState extends State<SearchScreen> {
       snippet: hit.snippet,
       tags: hit.tags,
       paths: hit.paths,
+      originalName: cached?.originalName,
+      mimeType: cached?.mimeType,
     );
   }
 
@@ -156,6 +158,23 @@ class _SearchScreenState extends State<SearchScreen> {
     // Never surface the raw internal document id: fall back to a friendly
     // placeholder when the search index has no path/title metadata.
     return 'Untitled document';
+  }
+
+  /// The file name a dropped search hit should receive.
+  ///
+  /// Prefers the resolved original ingested file name so the real extension is
+  /// preserved (e.g. `report.pdf`); when the metadata has not resolved yet (a
+  /// drag started before [_resolveTitles] finished) it falls back to the
+  /// title/path with an extension derived from the resolved MIME type, so the
+  /// OS can still pick a default handler.
+  String _dragFileName(SearchHitDto hit) {
+    final cached = _docSummaries[hit.documentId];
+    final original = cached?.originalName?.trim();
+    if (original != null && original.isNotEmpty) return original;
+    final title = _titleFrom(hit).trim();
+    final base = title.isEmpty ? 'document' : title;
+    final extension = _extensionForMime(cached?.mimeType);
+    return extension == null ? base : '$base$extension';
   }
 
   /// Best-effort fetch of document metadata for each search result so the UI
@@ -387,9 +406,7 @@ class _SearchScreenState extends State<SearchScreen> {
         if (service == null) return card;
         return wrapDocumentDragOut(
           documentId: summary.id,
-          fileName: summary.originalName?.isNotEmpty == true
-              ? summary.originalName!
-              : _titleFrom(hit),
+          fileName: _dragFileName(hit),
           mimeType: summary.mimeType,
           readBytes: () => service.readBytes(summary.id),
           child: card,
@@ -397,6 +414,54 @@ class _SearchScreenState extends State<SearchScreen> {
       },
     );
   }
+}
+
+/// Best-effort file extension for a MIME type (e.g. `'.pdf'` for
+/// `'application/pdf'`).  Returns `null` when the MIME type is unknown or the
+/// lookup has no sensible default extension.
+String? _extensionForMime(String? mimeType) {
+  if (mimeType == null || mimeType.isEmpty) return null;
+  const byMime = <String, String>{
+    'application/pdf': '.pdf',
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+    'image/svg+xml': '.svg',
+    'image/bmp': '.bmp',
+    'image/tiff': '.tiff',
+    'image/heic': '.heic',
+    'image/heif': '.heif',
+    'text/markdown': '.md',
+    'text/csv': '.csv',
+    'application/json': '.json',
+    'application/zip': '.zip',
+    'application/gzip': '.gz',
+    'application/x-tar': '.tar',
+    'application/msword': '.doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        '.docx',
+    'application/epub+zip': '.epub',
+    'application/vnd.ms-excel': '.xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        '.xlsx',
+    'application/vnd.ms-powerpoint': '.ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+        '.pptx',
+    'text/rtf': '.rtf',
+    'audio/mpeg': '.mp3',
+    'audio/mp4': '.m4a',
+    'audio/ogg': '.oga',
+    'audio/flac': '.flac',
+    'video/mp4': '.mp4',
+    'video/quicktime': '.mov',
+    'video/x-msvideo': '.avi',
+    'video/mpeg': '.mpeg',
+    'video/webm': '.webm',
+    'video/ogg': '.ogv',
+    'video/x-matroska': '.mkv',
+  };
+  return byMime[mimeType.toLowerCase()];
 }
 
 /// A thumbnail for a search result.
