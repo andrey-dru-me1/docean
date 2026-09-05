@@ -22,6 +22,7 @@
 pub mod api;
 pub mod domain;
 pub mod ingest;
+pub mod library_fs;
 pub mod storage;
 pub mod taxonomy;
 pub mod search;

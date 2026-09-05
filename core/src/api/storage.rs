@@ -5,12 +5,14 @@
 //! here is reachable from Flutter via `flutter_rust_bridge`.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::domain::{
     Content, Document, DocumentSuggestion, FeedbackStats, HierarchyLink, HierarchyPath,
     PathAssignment, SuggestionFeedback, SuggestionKind, Tag,
 };
+use crate::library_fs::LibraryFs;
 use crate::storage::{DocumentQuery, DocumentStore, SqliteDocumentStore};
 
 /// Opaque handle to an open document repository.
@@ -20,9 +22,17 @@ use crate::storage::{DocumentQuery, DocumentStore, SqliteDocumentStore};
 /// the FFI boundary. `Clone` is a cheap handle copy onto the same underlying
 /// store (used internally so consumers can keep using a repository after
 /// handing one to a consuming bridge function).
+///
+/// The optional [`LibraryFs`] mirrors document bytes as friendly-named files in
+/// a user-chosen directory. It lives in its own `Mutex` so reads/writes
+/// through `read_bytes`/`ensure_library_file`/`delete` never deadlock the
+/// store mutex — library lock is always acquired before any store lock.
 #[derive(Clone)]
 pub struct DocumentRepository {
     inner: Arc<Mutex<SqliteDocumentStore>>,
+    /// Root directory of the store; needed to persist `library_dir.txt`.
+    root: String,
+    library: Arc<std::sync::Mutex<Option<LibraryFs>>>,
 }
 
 impl DocumentRepository {
@@ -36,9 +46,16 @@ impl DocumentRepository {
 /// Open (or create) a document repository rooted at `root` on disk.
 pub fn open_repository(root: String) -> Result<DocumentRepository, String> {
     let store =
-        SqliteDocumentStore::open(std::path::PathBuf::from(root)).map_err(|e| e.to_string())?;
+        SqliteDocumentStore::open(std::path::PathBuf::from(&root)).map_err(|e| e.to_string())?;
+    let library = std::fs::read_to_string(Path::new(&root).join("library_dir.txt"))
+        .ok()
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .and_then(|dir| LibraryFs::open(Path::new(&dir)).ok());
     Ok(DocumentRepository {
         inner: Arc::new(Mutex::new(store)),
+        root,
+        library: Arc::new(std::sync::Mutex::new(library)),
     })
 }
 
@@ -58,13 +75,149 @@ impl DocumentRepository {
     }
 
     /// Fetch a document's raw bytes.
+    ///
+    /// When a library mirror is configured and the document's `file_name` is
+    /// present and the mirrored file exists, bytes are read from the library
+    /// file. On any library failure (or when not configured) it falls back to
+    /// the blob store, which remains the source of truth for correctness.
     pub fn read_bytes(&self, id: String) -> Result<Vec<u8>, String> {
+        {
+            let lib_guard = self
+                .library
+                .lock()
+                .map_err(|_| "library lock poisoned".to_string())?;
+            if let Some(lib) = lib_guard.as_ref() {
+                if let Ok(doc) = self.get(id.clone()) {
+                    if let Some(name) = doc.extra.get("file_name") {
+                        if lib.contains(name) {
+                            if let Ok(bytes) = lib.read_file(name) {
+                                return Ok(bytes);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         self.store()?.read_bytes(&id).map_err(|e| e.to_string())
     }
 
     /// Delete a document and (when unreferenced) its blob.
+    ///
+    /// Also best-effort removes the mirrored library file (if any); a library
+    /// failure never fails or masks the delete.
     pub fn delete(&self, id: String) -> Result<(), String> {
-        self.store()?.delete(&id).map_err(|e| e.to_string())
+        let library_file = {
+            let lib_guard = self
+                .library
+                .lock()
+                .map_err(|_| "library lock poisoned".to_string())?;
+            lib_guard
+                .as_ref()
+                .and_then(|_| self.get(id.clone()).ok())
+                .and_then(|doc| doc.extra.get("file_name").cloned())
+        };
+        self.store()?.delete(&id).map_err(|e| e.to_string())?;
+        if let Some(name) = library_file {
+            let lib_guard = self
+                .library
+                .lock()
+                .map_err(|_| "library lock poisoned".to_string())?;
+            if let Some(lib) = lib_guard.as_ref() {
+                let _ = lib.remove_file(&name);
+            }
+        }
+        Ok(())
+    }
+
+    // --- library filesystem ------------------------------------------------
+
+    /// Set (or clear) the library mirror directory.
+    ///
+    /// When `Some(dir)`, the directory is created (via [`LibraryFs::open`]), the
+    /// path is persisted in `<root>/library_dir.txt` **before** the handle is
+    /// swapped so that a crash never leaves metadata pointing to an un-writable
+    /// location. When `None`, the path file is removed (missing is OK) and the
+    /// library handle is dropped.
+    pub fn set_library_dir(&self, dir: Option<String>) -> Result<(), String> {
+        match dir {
+            Some(dir) => {
+                let lib = LibraryFs::open(Path::new(&dir)).map_err(|e| e.to_string())?;
+                // Persist first; on failure the handle stays unchanged (consistent).
+                std::fs::write(Path::new(&self.root).join("library_dir.txt"), &dir)
+                    .map_err(|e| e.to_string())?;
+                let mut guard = self
+                    .library
+                    .lock()
+                    .map_err(|_| "library lock poisoned".to_string())?;
+                *guard = Some(lib);
+                Ok(())
+            }
+            None => {
+                let _ = std::fs::remove_file(Path::new(&self.root).join("library_dir.txt"));
+                let mut guard = self
+                    .library
+                    .lock()
+                    .map_err(|_| "library lock poisoned".to_string())?;
+                *guard = None;
+                Ok(())
+            }
+        }
+    }
+
+    /// Returns the configured library directory, or `None`.
+    pub fn library_dir(&self) -> Option<String> {
+        let guard = self.library.lock().ok()?;
+        guard
+            .as_ref()
+            .map(|lib| lib.dir().to_string_lossy().into_owned())
+    }
+
+    /// Ensure a document's file exists on disk with a friendly, deterministic
+    /// name and that `extra["file_name"]` is stamped to record that mapping.
+    ///
+    /// When no library is configured this is a no-op (`Ok(())`).
+    ///
+    /// The name is derived from `extra["original_name"]` + mime type via
+    /// [`LibraryFs::file_name_for`], avoiding collisions with
+    /// [`LibraryFs::unique_name`]. Blob bytes are read from the store and
+    /// written atomically when the file is missing. Stamp order (write first,
+    /// then `put`) means a crash after the write but before the stamp is healed
+    /// by a subsequent call.
+    pub fn ensure_library_file(&self, id: String) -> Result<(), String> {
+        let lib_guard = self
+            .library
+            .lock()
+            .map_err(|_| "library lock poisoned".to_string())?;
+        let lib = match lib_guard.as_ref() {
+            Some(lib) => lib,
+            None => return Ok(()),
+        };
+        let mut doc = self.get(id.clone())?;
+        let hash = doc.checksum_sha256.clone();
+        let name = match doc.extra.get("file_name") {
+            Some(n) => n.clone(),
+            None => {
+                let base = LibraryFs::file_name_for(
+                    doc.extra.get("original_name").map(String::as_str),
+                    &doc.mime_type,
+                    &hash,
+                );
+                lib.unique_name(&base, &hash)
+            }
+        };
+        let exists = lib.contains(&name);
+        let stamped = doc.extra.contains_key("file_name");
+        if exists && stamped {
+            return Ok(());
+        }
+        let bytes = self.store()?.read_bytes(&id).map_err(|e| e.to_string())?;
+        if !exists {
+            lib.write_file(&name, &bytes).map_err(|e| e.to_string())?;
+        }
+        doc.extra.insert("file_name".to_owned(), name);
+        doc.updated_at_ms = now_ms();
+        self.store()?.put(doc, &bytes).map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// List documents matching a query.
@@ -385,4 +538,208 @@ pub(crate) fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::PathBuf;
+
+    use crate::api::storage::open_repository;
+    use crate::domain::{Document, NodeKind};
+    use crate::storage::hash_bytes;
+
+    /// A temp root for a fresh on-disk repository.
+    fn temp_root(tag: &str) -> PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let mut p = std::env::temp_dir();
+        p.push(format!(
+            "docer-storage-bridge-{tag}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    /// A document whose id/checksum is the content hash, with `original_name`
+    /// stamped (as the ingest pipeline does).
+    fn make_doc(original_name: &str, mime_type: &str, bytes: &[u8]) -> Document {
+        let hash = hash_bytes(bytes);
+        let mut extra = HashMap::new();
+        extra.insert("original_name".to_owned(), original_name.to_owned());
+        Document {
+            id: hash.clone(),
+            parent_id: None,
+            kind: NodeKind::Document,
+            title: original_name.to_owned(),
+            mime_type: mime_type.to_owned(),
+            size_bytes: bytes.len() as u64,
+            checksum_sha256: hash,
+            tags: Vec::new(),
+            created_at_ms: 1,
+            updated_at_ms: 1,
+            extra,
+        }
+    }
+
+    #[test]
+    fn ensure_library_file_backfills_name_file_and_extra() {
+        let root = temp_root("lib-backfill");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let lib_dir = temp_root("lib-backfill-dir");
+        repo.set_library_dir(Some(lib_dir.display().to_string()))
+            .unwrap();
+
+        let bytes = b"quarterly report contents";
+        let doc = make_doc("Quarterly Report.pdf", "application/pdf", bytes);
+        let id = doc.id.clone();
+        repo.put(doc, bytes.to_vec()).unwrap();
+
+        repo.ensure_library_file(id.clone()).unwrap();
+
+        let doc = repo.get(id.clone()).unwrap();
+        let name = doc
+            .extra
+            .get("file_name")
+            .expect("file_name should be stamped")
+            .clone();
+        assert_eq!(name, "Quarterly Report.pdf");
+        assert!(PathBuf::from(&lib_dir).join(&name).exists());
+    }
+
+    #[test]
+    fn ensure_library_file_idempotent_second_call() {
+        let root = temp_root("lib-idempotent");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let lib_dir = temp_root("lib-idempotent-dir");
+        repo.set_library_dir(Some(lib_dir.display().to_string()))
+            .unwrap();
+
+        let bytes = b"same content twice";
+        let doc = make_doc("Notes.txt", "text/plain", bytes);
+        let id = doc.id.clone();
+        repo.put(doc, bytes.to_vec()).unwrap();
+
+        repo.ensure_library_file(id.clone()).unwrap();
+        let name_before = repo
+            .get(id.clone())
+            .unwrap()
+            .extra
+            .get("file_name")
+            .unwrap()
+            .clone();
+        assert_eq!(fs::read_dir(&lib_dir).unwrap().count(), 1);
+
+        repo.ensure_library_file(id.clone()).unwrap();
+        let doc = repo.get(id.clone()).unwrap();
+        assert_eq!(doc.extra.get("file_name").unwrap(), &name_before);
+        assert_eq!(fs::read_dir(&lib_dir).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn read_bytes_prefers_library_file_after_blob_deleted() {
+        let root = temp_root("lib-read");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let lib_dir = temp_root("lib-read-dir");
+        repo.set_library_dir(Some(lib_dir.display().to_string()))
+            .unwrap();
+
+        let bytes = b"blob backup source";
+        let doc = make_doc("Doc.pdf", "application/pdf", bytes);
+        let id = doc.id.clone();
+        let hash = doc.checksum_sha256.clone();
+        repo.put(doc, bytes.to_vec()).unwrap();
+        repo.ensure_library_file(id.clone()).unwrap();
+
+        assert_eq!(repo.read_bytes(id.clone()).unwrap(), bytes);
+
+        let blob_path = root.join("blobs").join(&hash);
+        assert!(blob_path.exists());
+        fs::remove_file(&blob_path).unwrap();
+
+        assert_eq!(repo.read_bytes(id.clone()).unwrap(), bytes);
+    }
+
+    #[test]
+    fn delete_removes_library_file() {
+        let root = temp_root("lib-delete");
+        let repo = open_repository(root.display().to_string()).unwrap();
+        let lib_dir = temp_root("lib-delete-dir");
+        repo.set_library_dir(Some(lib_dir.display().to_string()))
+            .unwrap();
+
+        let bytes = b"to be deleted";
+        let doc = make_doc("Gone.pdf", "application/pdf", bytes);
+        let id = doc.id.clone();
+        repo.put(doc, bytes.to_vec()).unwrap();
+        repo.ensure_library_file(id.clone()).unwrap();
+
+        let name = repo
+            .get(id.clone())
+            .unwrap()
+            .extra
+            .get("file_name")
+            .unwrap()
+            .clone();
+        assert!(PathBuf::from(&lib_dir).join(&name).exists());
+
+        repo.delete(id.clone()).unwrap();
+        assert!(repo.get(id.clone()).is_err());
+        assert!(!PathBuf::from(&lib_dir).join(&name).exists());
+    }
+
+    #[test]
+    fn set_library_dir_persists_across_reopen() {
+        let root = temp_root("lib-persist");
+        let lib_dir = temp_root("lib-persist-dir");
+        {
+            let repo = open_repository(root.display().to_string()).unwrap();
+            assert_eq!(repo.library_dir(), None);
+            repo.set_library_dir(Some(lib_dir.display().to_string()))
+                .unwrap();
+            assert_eq!(repo.library_dir(), Some(lib_dir.display().to_string()));
+        }
+        let reopened = open_repository(root.display().to_string()).unwrap();
+        assert_eq!(reopened.library_dir(), Some(lib_dir.display().to_string()));
+    }
+
+    #[test]
+    fn set_library_dir_none_clears() {
+        let root = temp_root("lib-clear");
+        let lib_dir = temp_root("lib-clear-dir");
+        let repo = open_repository(root.display().to_string()).unwrap();
+
+        repo.set_library_dir(Some(lib_dir.display().to_string()))
+            .unwrap();
+        assert!(root.join("library_dir.txt").exists());
+
+        repo.set_library_dir(None).unwrap();
+        assert_eq!(repo.library_dir(), None);
+        assert!(!root.join("library_dir.txt").exists());
+
+        // And stays cleared across a reopen
+        let reopened = open_repository(root.display().to_string()).unwrap();
+        assert_eq!(reopened.library_dir(), None);
+        assert!(!root.join("library_dir.txt").exists());
+    }
+
+    #[test]
+    fn ensure_library_file_noop_without_library() {
+        let root = temp_root("lib-noop");
+        let repo = open_repository(root.display().to_string()).unwrap();
+
+        let bytes = b"no library configured";
+        let doc = make_doc("Plain.txt", "text/plain", bytes);
+        let id = doc.id.clone();
+        repo.put(doc, bytes.to_vec()).unwrap();
+
+        repo.ensure_library_file(id.clone()).unwrap();
+        let doc = repo.get(id.clone()).unwrap();
+        assert!(!doc.extra.contains_key("file_name"));
+    }
 }

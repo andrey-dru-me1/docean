@@ -170,16 +170,21 @@ pub fn ingest_files(
                 // persisted store so the just-uploaded document is immediately
                 // searchable with its applied tags/title. This is the wiring
                 // point between the SQLite repository and the search UI.
-                for id in ids {
+                for id in &ids {
                     if let Err(e) =
-                        organize_document(repo, &id, crate::auto_org::config::OrgConfig::default())
+                        organize_document(repo, id, crate::auto_org::config::OrgConfig::default())
                     {
                         eprintln!(
                             "ingest: auto-organization failed for {id} (tags/title left unchanged): {e}"
                         );
                     }
-                    if let Err(e) = index_document_from_repository(repo, &id) {
+                    if let Err(e) = index_document_from_repository(repo, id) {
                         eprintln!("ingest: failed to index {id} into search: {e}");
+                    }
+                }
+                for id in &ids {
+                    if let Err(e) = repo.ensure_library_file(id.clone()) {
+                        eprintln!("ingest: library file sync failed for {id}: {e}");
                     }
                 }
             }
