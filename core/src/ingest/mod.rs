@@ -35,7 +35,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::domain::{Content, Document, NodeKind};
 use crate::storage::{hash_bytes, DocumentStore, StorageError};
 
-mod text;
+pub(crate) mod text;
 
 #[cfg(test)]
 mod tests;
@@ -354,7 +354,7 @@ impl IngestPipeline {
 }
 
 /// The extension of `name`, lowercase, without the dot.
-fn extension_of(name: &str) -> String {
+pub(crate) fn extension_of(name: &str) -> String {
     name.rsplit('.')
         .next()
         .map(|s| s.to_ascii_lowercase())
@@ -362,7 +362,7 @@ fn extension_of(name: &str) -> String {
 }
 
 /// The file stem (basename without final extension).
-fn stem_of(name: &str) -> String {
+pub(crate) fn stem_of(name: &str) -> String {
     match name.rfind('.') {
         Some(i) if i > 0 => name[..i].to_owned(),
         _ => name.to_owned(),
@@ -370,7 +370,7 @@ fn stem_of(name: &str) -> String {
 }
 
 /// Map an extracted format to a MIME type.
-fn mime_for(ext: String, source: &str) -> String {
+pub(crate) fn mime_for(ext: String, source: &str) -> String {
     match text::classify(&ext) {
         Format::Pdf => "application/pdf".to_owned(),
         Format::PlainText => "text/plain".to_owned(),
@@ -400,7 +400,7 @@ fn mime_for(ext: String, source: &str) -> String {
     }
 }
 
-fn now_millis() -> i64 {
+pub(crate) fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
