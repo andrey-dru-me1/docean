@@ -6,7 +6,8 @@ import '../features/search_service.dart'
     show SearchHitDto, SearchMode, SearchService;
 import 'document_preview_view.dart' show DocumentPlaceholder, DocumentThumbnail;
 import 'document_view.dart' show DocumentSummary;
-import 'widgets.dart' show EmptyState, HighlightedSnippet, TagChip;
+import 'widgets.dart'
+    show EmptyState, HighlightedSnippet, TagChip, wrapDocumentDragOut;
 
 /// What a search result should do when tapped.
 typedef DocumentOpener = void Function(DocumentSummary summary);
@@ -300,15 +301,17 @@ class _SearchScreenState extends State<SearchScreen> {
         subtitle: 'Try different keywords or switch search mode.',
       );
     }
+    final service = widget.documentService;
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: _results.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
         final hit = _results[i];
-        return Card(
+        final summary = _summaryOf(hit);
+        final card = Card(
           child: InkWell(
-            onTap: () => widget.onOpenDocument(_summaryOf(hit)),
+            onTap: () => widget.onOpenDocument(summary),
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -317,7 +320,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 children: [
                   _SearchResultThumb(
                     hit: hit,
-                    documentService: widget.documentService,
+                    documentService: service,
                     loader: _previewLoader,
                   ),
                   const SizedBox(width: 12),
@@ -378,6 +381,18 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
           ),
+        );
+        // Search hits can drag their document out to the OS only when a
+        // document service is available to resolve the raw bytes.
+        if (service == null) return card;
+        return wrapDocumentDragOut(
+          documentId: summary.id,
+          fileName: summary.originalName?.isNotEmpty == true
+              ? summary.originalName!
+              : _titleFrom(hit),
+          mimeType: summary.mimeType,
+          readBytes: () => service.readBytes(summary.id),
+          child: card,
         );
       },
     );

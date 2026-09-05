@@ -1,8 +1,16 @@
 /// Rendering helpers shared across the search/chat UI.
 library;
 
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:super_clipboard/super_clipboard.dart'
+    show FileFormat, Formats, SimpleFileFormat, VirtualFileStorage;
+import 'package:super_drag_and_drop/super_drag_and_drop.dart'
+    show DragItem, DragItemWidget, DropOperation, DraggableWidget;
 
 import '../features/search_service.dart' show HighlightSpan;
 
@@ -505,3 +513,135 @@ class EmptyState extends StatelessWidget {
     );
   }
 }
+
+/// Wraps [child] in a draggable that exports [documentId]'s raw bytes as a
+/// virtual file when dragged out to the OS (Finder/Desktop/etc on macOS).
+///
+/// Documents are stored in a content-addressed blob store rather than as loose
+/// on-disk files, so the drag exports a **virtual file**: the plugin's macOS
+/// implementation wraps this in an `NSFilePromiseProvider`, letting the user
+/// drop the document onto Finder where the raw bytes (fetched lazily from
+/// [readBytes]) are materialized into a real file.
+///
+/// Returns [child] unchanged when the platform cannot provide a virtual-file
+/// drag-out (e.g. Linux/Android tests) so the fallback surface stays intact.
+Widget wrapDocumentDragOut({
+  required Widget child,
+  required String documentId,
+  required String fileName,
+  String? mimeType,
+  required Future<List<int>> Function() readBytes,
+}) {
+  if (!kIsWeb &&
+      defaultTargetPlatform != TargetPlatform.macOS &&
+      defaultTargetPlatform != TargetPlatform.windows) {
+    return child;
+  }
+  return DragItemWidget(
+    allowedOperations: () => [DropOperation.copy],
+    canAddItemToExistingSession: true,
+    dragItemProvider: (request) => _documentDragItem(
+      documentId: documentId,
+      fileName: fileName,
+      mimeType: mimeType,
+      readBytes: readBytes,
+    ),
+    child: DraggableWidget(child: child),
+  );
+}
+
+/// Builds the [DragItem] exported when a document tile is dragged out to the
+/// OS (Finder/Desktop/etc).
+Future<DragItem?> _documentDragItem({
+  required String documentId,
+  required String fileName,
+  String? mimeType,
+  required Future<List<int>> Function() readBytes,
+}) async {
+  if (!kIsWeb &&
+      defaultTargetPlatform != TargetPlatform.macOS &&
+      defaultTargetPlatform != TargetPlatform.windows) {
+    // Virtual files are currently supported for drag-out on macOS and Windows
+    // only; other platforms would provide no useful representation.
+    return null;
+  }
+  final item = DragItem(
+    suggestedName: fileName,
+    localData: documentId,
+  );
+  item.addVirtualFile(
+    format: _kFileFormatForMime(mimeType),
+    provider: (sinkProvider, _) async {
+      try {
+        final bytes = await readBytes();
+        final data = Uint8List.fromList(bytes);
+        // Some receivers call the provider with a file size hint; forward the
+        // actual length so the written file matches the stored blob.
+        final sink = sinkProvider(fileSize: data.length);
+        sink.add(data);
+        sink.close();
+      } catch (_) {
+        // The drop receiver aborted or the blob could not be read; nothing to
+        // write. The drag session simply ends without materializing a file.
+      }
+    },
+    storageSuggestion: VirtualFileStorage.temporaryFile,
+  );
+  return item;
+}
+
+/// A best-effort [FileFormat] for the document's MIME type so the dropped file
+/// is tagged with a sensible UTI on macOS / MIME on other platforms. Unknown
+/// MIME types fall back to a generic binary data format.
+FileFormat _kFileFormatForMime(String? mimeType) {
+  if (mimeType == null || mimeType.isEmpty) return _kGenericFileFormat;
+  final mime = mimeType.toLowerCase();
+  const byMime = <String, FileFormat>{
+    'application/pdf': Formats.pdf,
+    'image/png': Formats.png,
+    'image/jpeg': Formats.jpeg,
+    'image/gif': Formats.gif,
+    'image/webp': Formats.webp,
+    'image/svg+xml': Formats.svg,
+    'image/bmp': Formats.bmp,
+    'image/tiff': Formats.tiff,
+    'image/heic': Formats.heic,
+    'image/heif': Formats.heif,
+    'text/markdown': Formats.md,
+    'text/csv': Formats.csv,
+    'application/json': Formats.json,
+    'application/zip': Formats.zip,
+    'application/gzip': Formats.gzip,
+    'application/x-tar': Formats.tar,
+    'application/msword': Formats.doc,
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        Formats.docx,
+    'application/epub+zip': Formats.epub,
+    'application/vnd.ms-excel': Formats.xls,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        Formats.xlsx,
+    'application/vnd.ms-powerpoint': Formats.ppt,
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+        Formats.pptx,
+    'text/rtf': Formats.rtf,
+    'audio/mpeg': Formats.mp3,
+    'audio/mp4': Formats.m4a,
+    'audio/ogg': Formats.oga,
+    'audio/flac': Formats.flac,
+    'video/mp4': Formats.mp4,
+    'video/quicktime': Formats.mov,
+    'video/x-msvideo': Formats.avi,
+    'video/mpeg': Formats.mpeg,
+    'video/webm': Formats.webm,
+    'video/ogg': Formats.ogg,
+    'video/x-matroska': Formats.mkv,
+  };
+  return byMime[mime] ?? _kGenericFileFormat;
+}
+
+/// Generic binary format used when a document's MIME type is unknown, so the
+/// virtual file still carries a valid UTI (`public.data`) for the drag.
+const FileFormat _kGenericFileFormat = SimpleFileFormat(
+  uniformTypeIdentifiers: ['public.data'],
+  mimeTypes: ['application/octet-stream'],
+);

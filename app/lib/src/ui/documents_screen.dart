@@ -9,7 +9,7 @@ import '../features/document_service.dart'
 import 'document_preview_view.dart' show DocumentTilePreview;
 import 'document_view.dart' show DocumentSummary;
 import 'search_screen.dart' show DocumentOpener;
-import 'widgets.dart' show EmptyState, TagChip;
+import 'widgets.dart' show EmptyState, TagChip, wrapDocumentDragOut;
 
 /// The Documents browse/list surface.
 ///
@@ -297,7 +297,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         itemCount: filtered.length,
         itemBuilder: (context, i) {
           final document = filtered[i];
-          return _DocumentPreviewTile(
+          final tile = _DocumentPreviewTile(
             document: document,
             loader: _previewLoader,
             selectionMode: _selectionMode,
@@ -310,6 +310,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 : () => _enterSelectionMode(document.id),
             onLongPress: () => _enterSelectionMode(document.id),
             onTagTap: _toggleTagFilter,
+          );
+          return wrapDocumentDragOut(
+            documentId: document.id,
+            fileName: _dragFileName(document),
+            mimeType: document.mimeType,
+            readBytes: () => widget.documentService.readBytes(document.id),
+            child: tile,
           );
         },
       ),
@@ -707,6 +714,19 @@ Future<String?> _promptForTag(BuildContext context, {required String title}) =>
       context: context,
       builder: (dialogContext) => _TagNameDialog(title: title),
     );
+
+/// The file name the dropped document should receive.
+///
+/// Prefers the original ingested file name (so extensions are preserved);
+/// falls back to the cleaned title with the MIME-derived extension when the
+/// original name is unknown.
+String _dragFileName(DocumentSummary document) {
+  final original = document.originalName?.trim();
+  if (original != null && original.isNotEmpty) return original;
+  final title = document.title.trim();
+  if (title.isEmpty) return 'document';
+  return title;
+}
 
 /// A small stateful dialog that owns its [TextEditingController] for the
 /// lifetime of the dialog (created in [initState], disposed in [dispose]) to

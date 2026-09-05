@@ -77,6 +77,8 @@ dependencies:
   # rendering. Guarded behind Platform.isWindows in dart so it's never
   # imported on other platforms; flutter analyze won't flag it.
   win32: ^6.4.0
+  super_drag_and_drop: ^0.10.0-dev.2
+  super_clipboard: ^0.10.0-dev.2
 
 dev_dependencies:
   flutter_test:
