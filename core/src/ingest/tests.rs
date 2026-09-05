@@ -296,6 +296,7 @@ fn ingests_plain_text_file_with_metadata() {
             ProgressEvent::Extracting { .. } => "extracting",
             ProgressEvent::Completed { .. } => "completed",
             ProgressEvent::Failed { .. } => "failed",
+            ProgressEvent::Skipped { .. } => "skipped",
         })
         .collect();
     assert!(kinds.contains(&"processing"));
@@ -368,11 +369,23 @@ fn skip_existing_does_not_rewrite_duplicate() {
         )
         .unwrap();
     assert_eq!(ids.len(), 1);
-    // Skipped: the only event is the initial Processing — no Completed.
+    // Skipped: the only events are Processing then Skipped — no Completed.
     assert!(!progress
         .events
         .iter()
         .any(|e| matches!(e, ProgressEvent::Completed { .. })));
+    assert!(progress
+        .events
+        .iter()
+        .any(|e| matches!(e, ProgressEvent::Skipped { .. })));
+    assert_eq!(
+        progress
+            .events
+            .iter()
+            .filter(|e| matches!(e, ProgressEvent::Skipped { .. }))
+            .count(),
+        1
+    );
 
     let _ = fs::remove_dir_all(&root);
 }

@@ -192,12 +192,25 @@ class _MainShellState extends State<MainShell> {
     // Rebuild the in-memory search index from the persisted repository so
     // documents from previous sessions are searchable immediately.
     _reindexSearch();
+    _documentsRefreshTick.addListener(_checkSidebarDocument);
   }
 
   @override
   void dispose() {
+    _documentsRefreshTick.removeListener(_checkSidebarDocument);
     _documentsRefreshTick.dispose();
     super.dispose();
+  }
+
+  /// When the document list refreshes, verify the selected sidebar document
+  /// still exists; close the panel if it was deleted.
+  void _checkSidebarDocument() async {
+    if (_selectedDocument == null) return;
+    try {
+      await widget.documentService.getDocument(_selectedDocument!.id);
+    } catch (_) {
+      if (mounted) setState(() => _selectedDocument = null);
+    }
   }
 
   /// Best-effort startup re-index of the in-memory engine from SQLite. Fails

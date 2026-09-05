@@ -40,7 +40,7 @@ class BridgeIngestService implements IngestService {
   @override
   Stream<IngestEvent> ingestFiles(List<String> paths) async* {
     final repo = await _repository();
-    yield* bridge.ingestFiles(repo: repo, paths: paths, skipExisting: false);
+    yield* bridge.ingestFiles(repo: repo, paths: paths, skipExisting: true);
   }
 }
 

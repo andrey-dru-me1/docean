@@ -11,6 +11,38 @@ import 'document_view.dart' show DocumentSummary;
 import 'search_screen.dart' show DocumentOpener;
 import 'widgets.dart' show EmptyState, TagChip, wrapDocumentDragOut;
 
+/// Categories for filtering documents by file type.
+enum FileTypeCategory {
+  all('All files'),
+  pdf('PDF'),
+  textMarkdown('Text/Markdown'),
+  images('Images'),
+  documents('Documents (DOCX, ODT)'),
+  email('Email (EML)');
+
+  const FileTypeCategory(this.label);
+
+  final String label;
+
+  /// Returns `true` if [mimeType] matches this category. For [all], returns
+  /// `null` so the filter check is skipped.
+  bool? matchesMime(String? mimeType) {
+    if (this == all) return null;
+    if (mimeType == null) return false;
+    return switch (this) {
+      pdf => mimeType == 'application/pdf',
+      textMarkdown => mimeType.startsWith('text/'),
+      images => mimeType.startsWith('image/'),
+      documents =>
+        mimeType ==
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+            mimeType == 'application/vnd.oasis.opendocument.text',
+      email => mimeType == 'message/rfc822',
+      _ => false,
+    };
+  }
+}
+
 /// The Documents browse/list surface.
 ///
 /// Lists every document persisted in the SQLite repository (through
@@ -57,6 +89,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   String _query = '';
   final Set<String> _tagFilters = {};
   String? _pathFilter;
+  FileTypeCategory? _fileTypeFilter;
   bool _loading = true;
   Object? _error;
 
@@ -118,7 +151,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       if (!mounted) return;
       setState(() {
         _all = results[0] as List<DocumentSummary>;
-        _tags = results[1] as List<String>;
+        // Only show tags that appear on at least one document.
+        final usedTags = <String>{
+          for (final doc in _all) ...doc.tags,
+        };
+        _tags = (results[1] as List<String>)
+            .where(usedTags.contains)
+            .toList();
         _paths = results[2] as List<String>;
         _loading = false;
       });
@@ -140,6 +179,10 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         return false;
       }
       if (_pathFilter != null && !d.paths.contains(_pathFilter)) {
+        return false;
+      }
+      if (_fileTypeFilter != null &&
+          _fileTypeFilter!.matchesMime(d.mimeType) == false) {
         return false;
       }
       if (q.isNotEmpty &&
@@ -184,6 +227,43 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     prefixIcon: Icon(Icons.filter_list),
                     border: OutlineInputBorder(),
                     isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              PopupMenuButton<FileTypeCategory>(
+                key: const ValueKey('file-type-filter'),
+                tooltip: 'Filter by file type',
+                onSelected: (cat) => setState(() => _fileTypeFilter = cat),
+                itemBuilder: (context) => [
+                  for (final cat in FileTypeCategory.values)
+                    PopupMenuItem<FileTypeCategory>(
+                      value: cat,
+                      child: Row(
+                        children: [
+                          if (_fileTypeFilter == cat)
+                            Icon(Icons.check, size: 16, color: Theme.of(context).colorScheme.primary)
+                          else
+                            const SizedBox(width: 16),
+                          const SizedBox(width: 8),
+                          Flexible(child: Text(cat.label)),
+                        ],
+                      ),
+                    ),
+                ],
+                child: InputChip(
+                  label: Text(_fileTypeFilter?.label ?? 'All files'),
+                  avatar: Icon(
+                    Icons.extension_outlined,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  selected: _fileTypeFilter != null &&
+                      _fileTypeFilter != FileTypeCategory.all,
+                  labelStyle: TextStyle(
+                    fontSize: 11.5,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -508,9 +588,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
   /// Prompts for a single tag name and appends it to every selected document
   /// (batch [`DocumentService.bulkTags`] with only `add` — existing tags are
-  /// honored, so this appends rather than replaces).
+  /// honored, so this appends rather than replaces). Existing repository tags
+  /// are offered as tappable suggestions, but a brand-new tag can also be typed.
   Future<void> _bulkAddTag() async {
-    final tag = await _promptForTag(context, title: 'Add tag');
+    final tag = await _promptForTag(
+      context,
+      title: 'Add tag',
+      tags: _tags,
+    );
     if (tag == null || !mounted) return;
     final ids = List.of(_selected);
     if (ids.isEmpty) return;
@@ -594,6 +679,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       _showSnack(context, 'Deleted $count document${count == 1 ? '' : 's'}.');
       _exitSelectionMode();
       await _load();
+      if (widget.refreshTick case final vn as ValueNotifier<int>) vn.value++;
     } catch (e) {
       if (!mounted) return;
       _showSnack(context, 'Could not delete documents: $e');
@@ -716,11 +802,16 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 }
 
 /// Prompts for a single tag name and returns the trimmed name (or `null` when
-/// the user cancels).
-Future<String?> _promptForTag(BuildContext context, {required String title}) =>
+/// the user cancels). When [tags] is provided, existing tags are shown as
+/// tappable suggestions below the text field.
+Future<String?> _promptForTag(
+  BuildContext context, {
+  required String title,
+  List<String>? tags,
+}) =>
     showDialog<String>(
       context: context,
-      builder: (dialogContext) => _TagNameDialog(title: title),
+      builder: (dialogContext) => _TagNameDialog(title: title, tags: tags),
     );
 
 /// Prompts for one tag among [tags] (the tags that exist on the selection) and
@@ -752,9 +843,13 @@ String _dragFileName(DocumentSummary document) {
 /// lifetime of the dialog (created in [initState], disposed in [dispose]) to
 /// avoid "used after disposed" crashes during the exit animation.
 class _TagNameDialog extends StatefulWidget {
-  const _TagNameDialog({required this.title});
+  const _TagNameDialog({required this.title, this.tags});
 
   final String title;
+
+  /// When provided, shows existing tags as tappable suggestions below the
+  /// text field. Users can tap to apply or type a new tag name.
+  final List<String>? tags;
 
   @override
   State<_TagNameDialog> createState() => _TagNameDialogState();
@@ -779,15 +874,47 @@ class _TagNameDialogState extends State<_TagNameDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.title),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        decoration: const InputDecoration(
-          labelText: 'Tag name',
-          prefixIcon: Icon(Icons.tag, size: 18),
-          border: OutlineInputBorder(),
-        ),
-        onSubmitted: _submit,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Tag name',
+                    prefixIcon: Icon(Icons.tag, size: 18),
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: _submit,
+                ),
+              ),
+            ],
+          ),
+          if (widget.tags != null && widget.tags!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Existing tags',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final tag in widget.tags!)
+                  TagChip(
+                    key: ValueKey('suggest-$tag'),
+                    label: tag,
+                    onPressed: () => _submit(tag),
+                  ),
+              ],
+            ),
+          ],
+        ],
       ),
       actions: [
         TextButton(
@@ -1049,7 +1176,11 @@ class _DocumentPreviewTile extends StatelessWidget {
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: scheme.primary.withValues(alpha: 0.18),
+                    color: scheme.primary.withValues(
+                      alpha: Theme.of(context).brightness == Brightness.light
+                          ? 0.30
+                          : 0.18,
+                    ),
                   ),
                 ),
               ),

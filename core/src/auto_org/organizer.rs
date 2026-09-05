@@ -141,7 +141,21 @@ fn render_title(keywords: &[String], max: usize) -> String {
     if joined.trim().is_empty() {
         "document".to_owned()
     } else {
+        // Apply title case: capitalize first character of each word
         joined
+            .split_whitespace()
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => {
+                        let upper: String = first.to_uppercase().collect();
+                        format!("{}{}", upper, chars.as_str())
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
@@ -205,7 +219,7 @@ impl DeterministicOrganizer {
         // fallback, de-duplicated.
         let mut tags: Vec<String> = Vec::new();
         for t in reused_tags.iter().chain(cluster_tags.iter()) {
-            if tags.len() >= 8 {
+            if tags.len() >= 4 {
                 break;
             }
             if !tags.contains(&t.tag()) {
@@ -221,7 +235,7 @@ impl DeterministicOrganizer {
             let kw =
                 keywords::extract_keywords(&doc.text, Some(&model), None, keywords::DEFAULT_TOP_K);
             for term in kw {
-                if tags.len() >= 8 {
+                if tags.len() >= 4 {
                     break;
                 }
                 if !tags.contains(&term) {

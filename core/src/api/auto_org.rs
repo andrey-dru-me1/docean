@@ -1165,10 +1165,11 @@ mod tests {
 
         let doc = repo.get(target).unwrap();
         // The auto suggestion applied: title derived from content + tags reused.
+        let title_lower = doc.title.to_lowercase();
         assert!(
-            doc.title.contains("quarterly")
-                || doc.title.contains("invoice")
-                || doc.title.contains("acme"),
+            title_lower.contains("quarterly")
+                || title_lower.contains("invoice")
+                || title_lower.contains("acme"),
             "auto title should be content-derived, got {:?}",
             doc.title
         );
@@ -1328,7 +1329,7 @@ mod tests {
             .get(target.clone())
             .expect("repository must remain fully usable after two reorganize_one calls");
         assert_eq!(
-            doc.title, "acme invoice quarterly",
+            doc.title, "Acme Invoice Quarterly",
             "reorganize_one applied the deterministic content-derived title"
         );
 

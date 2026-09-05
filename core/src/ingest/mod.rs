@@ -121,6 +121,8 @@ pub enum ProgressEvent {
         file_name: String,
         document_id: String,
     },
+    /// The file was skipped because it already exists (hash match).
+    Skipped { file_name: String },
     /// The file could not be ingested.
     Failed { file_name: String, error: String },
 }
@@ -215,6 +217,11 @@ impl IngestPipeline {
             if opts.skip_existing {
                 match store.get(&hash) {
                     Ok(_) => {
+                        if let Some(p) = progress.as_deref_mut() {
+                            p.add(ProgressEvent::Skipped {
+                                file_name: file_name.clone(),
+                            });
+                        }
                         ids.push(hash.clone());
                         continue;
                     }

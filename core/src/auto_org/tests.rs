@@ -97,8 +97,11 @@ fn organize_reuses_tags_and_resolves_path() {
     assert_eq!(plan.suggested_path.as_deref(), Some("/finance/invoices"));
     assert_eq!(plan.filename_source, FilenameSource::Template);
     let title = plan.suggested_title.as_deref().unwrap();
+    let title_lower = title.to_lowercase();
     assert!(
-        title.contains("invoice") || title.contains("stark") || title.contains("office"),
+        title_lower.contains("invoice")
+            || title_lower.contains("stark")
+            || title_lower.contains("office"),
         "title should be content-derived, got {title:?}"
     );
     assert!(
@@ -266,9 +269,12 @@ fn cyrillic_filename_latin_content_title_from_content() {
     });
     let plan = organizer.organize(&corpus, "doc-cyr");
     let title = plan.suggested_title.as_deref().unwrap();
+    let title_lower = title.to_lowercase();
     // Rank-0 title must be built from content (Latin) tokens.
     assert!(
-        title.contains("invoice") || title.contains("report") || title.contains("quarterly"),
+        title_lower.contains("invoice")
+            || title_lower.contains("report")
+            || title_lower.contains("quarterly"),
         "title should be built from Latin content tokens, got {title:?}"
     );
     // Cyrillic filename tokens must NOT appear at rank 0 when content tokens exist.
@@ -291,9 +297,12 @@ fn symmetric_latin_filename_cyrillic_content_title_from_content() {
     });
     let plan = organizer.organize(&corpus, "doc-lat");
     let title = plan.suggested_title.as_deref().unwrap();
+    let title_lower = title.to_lowercase();
     // Rank-0 title must be built from Cyrillic content tokens.
     assert!(
-        title.contains("привет") || title.contains("мир") || title.contains("отчёт"),
+        title_lower.contains("привет")
+            || title_lower.contains("мир")
+            || title_lower.contains("отчёт"),
         "title should be built from Cyrillic content tokens, got {title:?}"
     );
 }

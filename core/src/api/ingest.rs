@@ -64,6 +64,13 @@ impl From<ProgressEvent> for IngestEvent {
                 document_id,
                 error: String::new(),
             },
+            ProgressEvent::Skipped { file_name } => IngestEvent {
+                kind: "skipped".to_owned(),
+                file_name,
+                percent: 0,
+                document_id: String::new(),
+                error: "Duplicate document — same content already exists".to_owned(),
+            },
             ProgressEvent::Failed { file_name, error } => IngestEvent {
                 kind: "failed".to_owned(),
                 file_name,
@@ -305,12 +312,13 @@ mod tests {
         // Content-derived: the template renders top keywords from the text, so
         // the title must contain at least one term from the file body (and not
         // just the original file stem).
+        let title_lower = doc.title.to_lowercase();
         assert!(
-            doc.title.contains("invoice")
-                || doc.title.contains("quarterly")
-                || doc.title.contains("acme")
-                || doc.title.contains("corporation")
-                || doc.title.contains("payable"),
+            title_lower.contains("invoice")
+                || title_lower.contains("quarterly")
+                || title_lower.contains("acme")
+                || title_lower.contains("corporation")
+                || title_lower.contains("payable"),
             "title should derive from body keywords, got {:?}",
             doc.title
         );

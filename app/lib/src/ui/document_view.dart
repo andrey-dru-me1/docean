@@ -13,10 +13,6 @@ import '../rust/domain.dart' show SuggestionKind;
 import 'document_preview_view.dart' show DocumentPreviewPanel;
 import 'widgets.dart' show TagChip;
 
-/// How many one-tap "existing tag" suggestions the add-tag composer shows at
-/// most (kept small for the dense detail-view layout).
-const int kAddTagSuggestionLimit = 8;
-
 /// A compact summary of a document enough to open it in a detail view.
 ///
 /// Shared by the search results and the chat citations so both can hand a
@@ -567,14 +563,14 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
 
   /// Tag names the add-tag composer can one-tap: the last suggestion run plus
   /// every tag already known to the repository, filtered to ones not yet on
-  /// this document. Kept compact (up to [kAddTagSuggestionLimit]).
+  /// this document.
   Future<List<String>> _composerTagSuggestions() async {
     final known = <String>{
       ..._lastSuggestedTags,
       ...await widget.documentService.listTags(),
     };
     final applied = _doc.tags.toSet();
-    return known.where((t) => !applied.contains(t)).take(8).toList();
+    return known.where((t) => !applied.contains(t)).toList();
   }
 
   /// Opens the compact add-tag composer: a text field to name a brand-new tag
@@ -703,11 +699,15 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   Widget _buildTitleEditor() {
     final suggestingTitle = _suggestingTitle;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: TextField(
             controller: _titleController,
             style: Theme.of(context).textTheme.headlineSmall,
+            minLines: 1,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
             decoration: InputDecoration(
               hintText: 'Document title',
               isDense: true,

@@ -77,7 +77,8 @@ class _FileProgress {
   _FileProgress(this.fileName);
 
   final String fileName;
-  String status = 'processing'; // processing | extracting | completed | failed
+  String status =
+      'processing'; // processing | extracting | completed | skipped | failed
   int percent = 0;
   String? documentId;
   String? error;
@@ -275,6 +276,7 @@ class _FileRow extends StatelessWidget {
       'completed' => (Icons.check_circle, Colors.green),
       'failed' => (Icons.error, scheme.error),
       'extracting' => (Icons.hourglass_top, scheme.primary),
+      'skipped' => (Icons.content_copy, scheme.outline),
       _ => (Icons.file_present, scheme.outline),
     };
 
@@ -320,6 +322,17 @@ class _FileRow extends StatelessWidget {
                 ).textTheme.bodySmall?.copyWith(color: scheme.error),
               ),
             ],
+            if (file.status == 'skipped' && file.error != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                file.error!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+              ),
+            ],
             if (file.status == 'completed' && file.documentId != null) ...[
               const SizedBox(height: 4),
               Text(
@@ -339,6 +352,7 @@ class _FileRow extends StatelessWidget {
     'processing' => 'Processing',
     'extracting' => 'Extracting ${f.percent}%',
     'completed' => 'Done',
+    'skipped' => 'Skipped',
     'failed' => 'Failed',
     _ => f.status,
   };
