@@ -139,6 +139,53 @@ void main() {
     });
 
     testWidgets(
+      'multiple selected tags require ALL of them (intersection)',
+      (tester) async {
+        final service = FakeDocumentService(
+          documents: [
+            _doc('i-1', 'Finance only', tags: const ['finance']),
+            _doc('i-2', 'Personal only', tags: const ['personal']),
+            _doc('i-3', 'Both tags', tags: const ['finance', 'personal']),
+          ],
+          tags: const ['finance', 'personal'],
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Zero tags selected: every document is visible.
+        expect(find.text('Finance only'), findsOneWidget);
+        expect(find.text('Personal only'), findsOneWidget);
+        expect(find.text('Both tags'), findsOneWidget);
+
+        // One tag selected: union and intersection agree here.
+        await tester.tap(find.byKey(const ValueKey('filter-finance')));
+        await tester.pumpAndSettle();
+        expect(find.text('Finance only'), findsOneWidget);
+        expect(find.text('Both tags'), findsOneWidget);
+        expect(find.text('Personal only'), findsNothing);
+
+        // Two tags selected: only the document carrying ALL of them survives.
+        await tester.tap(find.byKey(const ValueKey('filter-personal')));
+        await tester.pumpAndSettle();
+        expect(find.text('Both tags'), findsOneWidget);
+        expect(find.text('Finance only'), findsNothing);
+        expect(find.text('Personal only'), findsNothing);
+
+        // Deselecting one filter widens the results back to a single tag.
+        await tester.tap(find.byKey(const ValueKey('filter-finance')));
+        await tester.pumpAndSettle();
+        expect(find.text('Personal only'), findsOneWidget);
+        expect(find.text('Both tags'), findsOneWidget);
+        expect(find.text('Finance only'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'renders documents in a preview grid with title and tag overlay',
       (tester) async {
         final opened = <DocumentSummary>[];

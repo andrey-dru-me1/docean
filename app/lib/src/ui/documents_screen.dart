@@ -134,7 +134,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   List<DocumentSummary> get _filtered {
     final q = _query.trim().toLowerCase();
     return _all.where((d) {
-      if (_tagFilters.isNotEmpty && !_tagFilters.any(d.tags.contains)) {
+      // Intersection semantics: with multiple tags selected, a document must
+      // carry EVERY selected tag (an empty selection matches everything).
+      if (_tagFilters.isNotEmpty && !_tagFilters.every(d.tags.contains)) {
         return false;
       }
       if (_pathFilter != null && !d.paths.contains(_pathFilter)) {
