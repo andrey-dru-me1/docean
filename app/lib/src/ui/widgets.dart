@@ -30,6 +30,42 @@ const List<Color> kTagPalette = <Color>[
   Color(0xFF4E342E), // brown 900
   Color(0xFF1A237E), // indigo 900
   Color(0xFF004D40), // teal 900
+  Color(0xFFBF360C), // deep orange 900
+  Color(0xFF00695C), // teal 800
+  Color(0xFF1565C0), // blue 800
+  Color(0xFFAD1457), // pink 800
+  Color(0xFF2E7D32), // green 800
+  Color(0xFF283593), // indigo 800
+  Color(0xFFC62828), // red 800
+  Color(0xFF6A1B9A), // purple 800
+  Color(0xFF00838F), // cyan 800
+  Color(0xFF4E342E), // brown 800
+  Color(0xFF558B2F), // light green 800
+  Color(0xFF0277BD), // light blue 800
+  Color(0xFFEF6C00), // orange 800
+  Color(0xFF7B1FA2), // purple 700
+  Color(0xFF37474F), // blue grey 800
+  Color(0xFF5D4037), // brown 700
+  Color(0xFF1976D2), // blue 700
+  Color(0xFFD81B60), // pink 700
+  Color(0xFF388E3C), // green 700
+  Color(0xFF512DA8), // deep purple 700
+  Color(0xFFD32F2F), // red 700
+  Color(0xFF4527A0), // deep purple 800
+  Color(0xFF00897B), // teal 700
+  Color(0xFF827717), // lime 900
+  Color(0xFFF57F17), // yellow 900
+  Color(0xFFE91E63), // pink 600
+  Color(0xFF9C27B0), // purple 600
+  Color(0xFF3F51B5), // indigo 500
+  Color(0xFF2196F3), // blue 500
+  Color(0xFF009688), // teal 500
+  Color(0xFF4CAF50), // green 500
+  Color(0xFFFF9800), // orange 500
+  Color(0xFF607D8B), // blue grey 500
+  Color(0xFF78909C), // blue grey 400
+  Color(0xFFEF5350), // red 400
+  Color(0xFFAB47BC), // purple 300
 ];
 
 /// Derive a deterministic color for a tag name.
