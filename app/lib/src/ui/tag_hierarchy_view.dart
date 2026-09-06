@@ -101,8 +101,8 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     );
   }
 
-  /// Appends [path]'s node row; when expanded, its direct sub-tags (recursed
-  /// at depth+1) followed by its directly-assigned documents as leaf rows.
+  /// Appends [path]'s node row; when expanded, renders its subtag subtree via
+  /// [_appendSubtree].
   void _appendNode(
     List<Widget> rows,
     String path,
@@ -111,17 +111,112 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   ) {
     rows.add(_buildTagRow(path, depth, tagsByDoc));
     if (!_expandedTagPaths.contains(path)) return;
-    // The engine returns bare next SEGMENTS; nodes are keyed and expanded by
-    // FULL path, so join each segment onto the expanded parent path.
-    for (final sub in directSubTags(path, tagsByDoc)) {
-      _appendNode(rows, '$path/$sub', depth + 1, tagsByDoc);
+    _appendSubtree(rows, path, depth + 1, tagsByDoc);
+  }
+
+  /// Renders the subtag rows of the EXPANDED node [path] at [depth].
+  ///
+  /// Expanded sub-tags keep their navigational row and recurse one level
+  /// deeper; after all expanded child sections, [path]'s OWN subtag section
+  /// (its remaining sub-tags + directly-assigned documents) lands one level
+  /// deeper than the plain rows whenever a child section unwound — so the
+  /// previously selected tag's context stays visible at the deepest level,
+  /// every section row labeled `(owner) > full/path`.
+  void _appendSubtree(
+    List<Widget> rows,
+    String path,
+    int depth,
+    TagsByDoc tagsByDoc,
+  ) {
+    final subs = directSubTags(path, tagsByDoc);
+    var anyChildExpanded = false;
+    for (final sub in subs) {
+      final child = '$path/$sub';
+      if (!_expandedTagPaths.contains(child)) continue;
+      // Only EXPANDED sub-tags keep their navigational row; everything else
+      // is rendered once, inside this tag's own labeled section below.
+      anyChildExpanded = true;
+      rows.add(_buildTagRow(child, depth, tagsByDoc));
+      _appendSubtree(rows, child, depth + 1, tagsByDoc);
+    }
+    final ownDepth = depth + (anyChildExpanded ? 1 : 0);
+    for (final sub in subs) {
+      final child = '$path/$sub';
+      if (_expandedTagPaths.contains(child)) continue;
+      rows.add(
+        _buildSectionRow(child, owner: path, depth: ownDepth, tagsByDoc: tagsByDoc),
+      );
     }
     for (final id in directlyAssignedDocIds(path, tagsByDoc)) {
       final doc = _byId[id];
       if (doc != null) {
-        rows.add(_buildDocumentRow(doc, depth + 1));
+        rows.add(_buildDocumentRow(doc, ownDepth));
       }
     }
+  }
+
+  /// A labeled sub-tag row inside a section: `(owner) > full/path` as
+  /// colorful text, chevron affordance when the tag is a dirtag, no count
+  /// badge (the badge lives on navigational dirtag rows). Tapping toggles
+  /// expansion like any other row.
+  Widget _buildSectionRow(
+    String path, {
+    required String owner,
+    required int depth,
+    required TagsByDoc tagsByDoc,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDir = isDirtag(path, _allTagPaths(tagsByDoc));
+
+    return GestureDetector(
+      key: ValueKey('tag-section-$path'),
+      onTap: () => _toggleExpanded(path),
+      behavior: HitTestBehavior.opaque,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: SizedBox(
+          height: _kTagRowHeight,
+          child: Row(
+            children: [
+              _buildGutter(path, depth),
+              SizedBox(width: (depth * 20).toDouble()),
+              AnimatedRotation(
+                turns: _expandedTagPaths.contains(path) ? 0.25 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: isDir
+                    ? Icon(
+                        Icons.expand_more,
+                        size: 18,
+                        color: scheme.onSurfaceVariant,
+                      )
+                    : const SizedBox(width: 18),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    style: const TextStyle(height: 1),
+                    children: [
+                      TextSpan(
+                        text: '(${lastSegmentOf(owner)}) > ',
+                        style: TextStyle(
+                          color: scheme.outline,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      ..._pathSpans(path),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildTagRow(String path, int depth, TagsByDoc tagsByDoc) {
@@ -168,10 +263,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     );
   }
 
-  /// The row's FULL path rendered as colorful text: segment i is tinted with
-  /// the color of its cumulative prefix (`study`, `study/mit`, ...), segments
-  /// joined by a muted ` / ` separator.
-  Widget _buildColorfulPath(String path) {
+  /// The colorful spans of [path]: segment i tinted with the color of its
+  /// cumulative prefix (`study`, `study/mit`, ...), joined by a muted ` / `.
+  List<TextSpan> _pathSpans(String path) {
     final scheme = Theme.of(context).colorScheme;
     final segments = path.split('/');
     final spans = <TextSpan>[];
@@ -199,8 +293,13 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
         ),
       );
     }
+    return spans;
+  }
+
+  /// The row's FULL path rendered as colorful text (see [_pathSpans]).
+  Widget _buildColorfulPath(String path) {
     return Text.rich(
-      TextSpan(style: const TextStyle(height: 1), children: spans),
+      TextSpan(style: const TextStyle(height: 1), children: _pathSpans(path)),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );

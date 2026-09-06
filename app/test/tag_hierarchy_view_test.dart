@@ -178,16 +178,17 @@ void main() {
       await tester.pumpAndSettle();
       await _toggleToTags(tester);
 
-      expect(find.byKey(const ValueKey('tag-node-study/mit')), findsNothing);
-      expect(find.byKey(const ValueKey('tag-node-study/lecture')), findsNothing);
-      expect(find.byKey(const ValueKey('tag-node-study/seminar')), findsNothing);
+      expect(find.byKey(const ValueKey('tag-section-study/mit')), findsNothing);
+      expect(find.byKey(const ValueKey('tag-section-study/lecture')), findsNothing);
+      expect(find.byKey(const ValueKey('tag-section-study/seminar')), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('tag-node-study')));
       await tester.pumpAndSettle();
 
-      final mit = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/mit')));
-      final lecture = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/lecture')));
-      final seminar = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/seminar')));
+      // Non-expanded subtags render as labeled section rows (owner study).
+      final mit = tester.getTopLeft(find.byKey(const ValueKey('tag-section-study/mit')));
+      final lecture = tester.getTopLeft(find.byKey(const ValueKey('tag-section-study/lecture')));
+      final seminar = tester.getTopLeft(find.byKey(const ValueKey('tag-section-study/seminar')));
       expect(mit.dy, lessThan(lecture.dy));
       expect(lecture.dy, lessThan(seminar.dy));
     });
@@ -207,17 +208,17 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('tag-node-study')));
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('tag-node-study/mit')));
+        await tester.tap(find.byKey(const ValueKey('tag-section-study/mit')));
         await tester.pumpAndSettle();
 
-        final cprog = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/mit/cprog')));
-        final ml = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/mit/ml')));
+        final cprog = tester.getTopLeft(find.byKey(const ValueKey('tag-section-study/mit/cprog')));
+        final ml = tester.getTopLeft(find.byKey(const ValueKey('tag-section-study/mit/ml')));
         expect(cprog.dy, lessThan(ml.dy));
 
         // ml row: has a RotatedBox (the rotated parent pill) — exactly one.
         expect(
           find.descendant(
-            of: find.byKey(const ValueKey('tag-node-study/mit/ml')),
+            of: find.byKey(const ValueKey('tag-section-study/mit/ml')),
             matching: find.byType(RotatedBox),
           ),
           findsOneWidget,
@@ -226,7 +227,7 @@ void main() {
         // ml row: has the parent pill with key tag-parent-pill-study/mit.
         expect(
           find.descendant(
-            of: find.byKey(const ValueKey('tag-node-study/mit/ml')),
+            of: find.byKey(const ValueKey('tag-section-study/mit/ml')),
             matching: find.byKey(const ValueKey('tag-parent-pill-study/mit')),
           ),
           findsOneWidget,
@@ -235,7 +236,7 @@ void main() {
         // ml row: has colorful text containing 'study / mit / ml'.
         expect(
           find.descendant(
-            of: find.byKey(const ValueKey('tag-node-study/mit/ml')),
+            of: find.byKey(const ValueKey('tag-section-study/mit/ml')),
             matching: find.textContaining('study / mit / ml'),
           ),
           findsOneWidget,
@@ -244,10 +245,75 @@ void main() {
         // cprog row: colorful text containing 'study / mit / cprog'.
         expect(
           find.descendant(
-            of: find.byKey(const ValueKey('tag-node-study/mit/cprog')),
+            of: find.byKey(const ValueKey('tag-section-study/mit/cprog')),
             matching: find.textContaining('study / mit / cprog'),
           ),
           findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'unwound subtag sections: owner-labelled rows at the deepest level',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(DocumentsScreen(
+            documentService: _treeService(),
+            onOpenDocument: (_) {},
+          )),
+        );
+        await tester.pumpAndSettle();
+        await _toggleToTags(tester);
+
+        await tester.tap(find.byKey(const ValueKey('tag-node-study')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('tag-section-study/mit')));
+        await tester.pumpAndSettle();
+
+        // Owner-mit section rows: study/mit's subtags at depth 2, labeled
+        // '(mit) > mit / <sub>'.
+        final cprog = tester.getTopLeft(
+          find.byKey(const ValueKey('tag-section-study/mit/cprog')),
+        );
+        final ml = tester.getTopLeft(
+          find.byKey(const ValueKey('tag-section-study/mit/ml')),
+        );
+        expect(cprog.dy, lessThan(ml.dy));
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('tag-section-study/mit/ml')),
+            matching: find.textContaining('(mit) > study / mit / ml'),
+          ),
+          findsOneWidget,
+        );
+
+        // Owner-study section: study's REMAINING subtags (lecture, seminar)
+        // follow at the SAME deepest level, labeled '(study) > ...'.
+        final lecture = tester.getTopLeft(
+          find.byKey(const ValueKey('tag-section-study/lecture')),
+        );
+        final seminar = tester.getTopLeft(
+          find.byKey(const ValueKey('tag-section-study/seminar')),
+        );
+        expect(ml.dy, lessThan(lecture.dy));
+        expect(lecture.dy, lessThan(seminar.dy));
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('tag-section-study/lecture')),
+            matching: find.textContaining('(study) > study / lecture'),
+          ),
+          findsOneWidget,
+        );
+
+        // The expanded subtag itself (mit) keeps its navigational row style.
+        expect(
+          find.byKey(const ValueKey('tag-node-study/mit')),
+          findsOneWidget,
+        );
+        // Section rows are NOT navigational rows (no duplicate rendering).
+        expect(
+          find.byKey(const ValueKey('tag-node-study/lecture')),
+          findsNothing,
         );
       },
     );
@@ -270,7 +336,7 @@ void main() {
         // study/mit row has colorful text containing 'study / mit'.
         expect(
           find.descendant(
-            of: find.byKey(const ValueKey('tag-node-study/mit')),
+            of: find.byKey(const ValueKey('tag-section-study/mit')),
             matching: find.textContaining('study / mit'),
           ),
           findsOneWidget,
@@ -290,7 +356,7 @@ void main() {
         // tag-parent-pill-study.
         expect(
           find.descendant(
-            of: find.byKey(const ValueKey('tag-node-study/mit')),
+            of: find.byKey(const ValueKey('tag-section-study/mit')),
             matching: find.byKey(const ValueKey('tag-parent-pill-study')),
           ),
           findsOneWidget,
@@ -299,7 +365,7 @@ void main() {
         // study/mit row has a guide-line column for 'study' (level 1).
         expect(
           find.descendant(
-            of: find.byKey(const ValueKey('tag-node-study/mit')),
+            of: find.byKey(const ValueKey('tag-section-study/mit')),
             matching: find.byKey(const ValueKey('tag-guide-1')),
           ),
           findsOneWidget,
@@ -317,14 +383,17 @@ void main() {
       await tester.pumpAndSettle();
       await _toggleToTags(tester);
 
-      expect(find.byKey(const ValueKey('tag-node-study/mit')), findsNothing);
+      expect(find.byKey(const ValueKey('tag-section-study/mit')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('tag-tree-toggle-all')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('tag-node-study')), findsWidgets);
+      // Everything is expanded: every subtag keeps its navigational row.
       expect(find.byKey(const ValueKey('tag-node-study/mit')), findsOneWidget);
       expect(find.byKey(const ValueKey('tag-node-study/mit/ml')), findsOneWidget);
       expect(find.byKey(const ValueKey('tag-node-study/mit/cprog')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tag-node-study/lecture')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tag-node-study/seminar')), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('tag-tree-toggle-all')));
       await tester.pumpAndSettle();
@@ -346,11 +415,11 @@ void main() {
         // Expand study, then study/mit.
         await tester.tap(find.byKey(const ValueKey('tag-node-study')));
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('tag-node-study/mit')), findsOneWidget);
+        expect(find.byKey(const ValueKey('tag-section-study/mit')), findsOneWidget);
 
-        await tester.tap(find.byKey(const ValueKey('tag-node-study/mit')));
+        await tester.tap(find.byKey(const ValueKey('tag-section-study/mit')));
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('tag-node-study/mit/ml')), findsOneWidget);
+        expect(find.byKey(const ValueKey('tag-section-study/mit/ml')), findsOneWidget);
 
         // Collapse study — no exception; children disappear.
         await tester.tap(find.byKey(const ValueKey('tag-node-study')));
@@ -362,7 +431,8 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('tag-node-study')));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('tag-node-study/mit')), findsOneWidget);
-        expect(find.byKey(const ValueKey('tag-node-study/mit/ml')), findsOneWidget);
+        // mit is expanded but ml is not: ml stays a labeled section row.
+        expect(find.byKey(const ValueKey('tag-section-study/mit/ml')), findsOneWidget);
       },
     );
   });
