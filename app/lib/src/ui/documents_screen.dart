@@ -11,6 +11,7 @@ import 'document_view.dart' show DocumentSummary;
 import 'hierarchy_view.dart'
     show HierarchyView, docProperties, docScopes;
 import 'search_screen.dart' show DocumentOpener;
+import 'tag_hierarchy_view.dart' show TagHierarchyView;
 import 'widgets.dart' show EmptyState, TagChip, wrapDocumentDragOut;
 
   /// Categories for filtering documents by file type.
@@ -45,7 +46,7 @@ enum FileTypeCategory {
   }
 }
 
-enum DocumentsViewMode { grid, hierarchy }
+enum DocumentsViewMode { grid, hierarchy, tags }
 
 /// The Documents browse/list surface.
 ///
@@ -192,8 +193,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final q = _query.trim().toLowerCase();
     return _all.where((d) {
       // Intersection semantics: with multiple tags selected, a document must
-      // carry EVERY selected tag (an empty selection matches everything).
-      if (_tagFilters.isNotEmpty && !_tagFilters.every(d.tags.contains)) {
+      // carry EVERY selected tag (an empty selection matches everything). A
+      // selected tag matches the document when any of its tags equals it OR
+      // starts a subtree under it (`T/...`), so selecting a dirtag chip
+      // filters by the whole subtree.
+      if (_tagFilters.isNotEmpty &&
+          !_tagFilters.every(
+            (f) => d.tags.any((t) => t == f || t.startsWith('$f/')),
+          )) {
         return false;
       }
       if (_pathFilter != null && !d.paths.contains(_pathFilter)) {
@@ -304,6 +311,10 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     value: DocumentsViewMode.hierarchy,
                     icon: Icon(Icons.account_tree, semanticLabel: 'Hierarchy'),
                   ),
+                  ButtonSegment<DocumentsViewMode>(
+                    value: DocumentsViewMode.tags,
+                    icon: Icon(Icons.sell, semanticLabel: 'Tags'),
+                  ),
                 ],
                 selected: {_viewMode},
                 onSelectionChanged: (mode) =>
@@ -400,6 +411,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         icon: Icons.filter_alt_off,
         title: 'No documents match',
         subtitle: 'Clear or change the filters above.',
+      );
+    }
+    if (_viewMode == DocumentsViewMode.tags) {
+      return TagHierarchyView(
+        key: const ValueKey('tag-hierarchy-view'),
+        documents: filtered,
+        onOpenDocument: widget.onOpenDocument,
       );
     }
     if (_viewMode == DocumentsViewMode.hierarchy) {
