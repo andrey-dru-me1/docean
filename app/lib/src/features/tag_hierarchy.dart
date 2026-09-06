@@ -316,17 +316,22 @@ List<String> suggestTagCompletions(
 }
 
 /// Rename planner: for every doc containing EXACTLY [oldPath], produces the
-/// new tag set (old replaced by [newPath]; if the doc already has [newPath],
-/// it is kept and old is dropped — set semantics). Other tags, including
-/// property tags, are preserved.
+/// new tag set. [newPath] replaces [oldPath] at its original position
+/// (insertion order is preserved); when [newPath] already exists on the doc,
+/// it stays at its earlier position and [oldPath] is simply dropped. Other
+/// tags, including property tags, are preserved.
 ///
-/// Docs without [oldPath] are absent from the result. An invalid [newPath]
-/// throws [ArgumentError].
+/// Docs without [oldPath] are absent from the result. A no-op rename
+/// ([oldPath] == [newPath]) yields an empty map. An invalid [newPath] throws
+/// [ArgumentError].
 Map<String, Set<String>> renamedTagsByDoc(
   TagsByDoc tagsByDoc,
   String oldPath,
   String newPath,
 ) {
+  if (oldPath == newPath) {
+    return {};
+  }
   final error = validateTagPath(newPath);
   if (error != null) {
     throw ArgumentError.value(newPath, 'newPath', error);
@@ -336,7 +341,18 @@ Map<String, Set<String>> renamedTagsByDoc(
     if (!entry.value.contains(oldPath)) {
       continue;
     }
-    final next = {...entry.value}..remove(oldPath)..add(newPath);
+    final next = <String>{};
+    for (final tag in entry.value) {
+      if (tag == oldPath) {
+        // Positional substitution; skip when newPath already sits earlier in
+        // the set (dedupe keeps the earlier slot).
+        if (!next.contains(newPath)) {
+          next.add(newPath);
+        }
+      } else {
+        next.add(tag);
+      }
+    }
     result[entry.key] = next;
   }
   return result;

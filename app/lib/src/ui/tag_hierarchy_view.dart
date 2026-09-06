@@ -104,8 +104,10 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   ) {
     rows.add(_buildTagRow(path, depth, tagsByDoc));
     if (!_expandedTagPaths.contains(path)) return;
+    // The engine returns bare next SEGMENTS; nodes are keyed and expanded by
+    // FULL path, so join each segment onto the expanded parent path.
     for (final sub in directSubTags(path, tagsByDoc)) {
-      _appendNode(rows, sub, depth + 1, tagsByDoc);
+      _appendNode(rows, '$path/$sub', depth + 1, tagsByDoc);
     }
     for (final id in directlyAssignedDocIds(path, tagsByDoc)) {
       final doc = _byId[id];

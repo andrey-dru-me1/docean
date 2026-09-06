@@ -37,7 +37,7 @@ Finder _editIconFor(String tagLabel) {
     of: find.text(tagLabel),
     matching: find.byType(TagChip),
   );
-  return find.descendant(of: chip, matching: find.byIcon(Icons.edit_outlined));
+  return find.descendant(of: chip, matching: find.byIcon(Icons.edit));
 }
 
 void main() {
@@ -107,8 +107,8 @@ void main() {
       expect(validateTagPath('a//b'), isNotNull);
     });
 
-    test('whitespace in segment returns error', () {
-      expect(validateTagPath('a/b c'), isNotNull);
+    test('whitespace in segment is allowed (space is in the charset)', () {
+      expect(validateTagPath('a/b c'), isNull);
     });
   });
 
