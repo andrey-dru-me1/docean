@@ -70,6 +70,21 @@ void main() {
       expect(isValidTagPath('a:b'), isFalse);
     });
 
+    test('accepts Unicode letters (Cyrillic, CJK)', () {
+      expect(isValidTagPath('учёба/лекции'), isTrue);
+      expect(isValidTagPath('勉強/機械学習'), isTrue);
+      expect(validateTagPath('учёба'), isNull);
+    });
+
+    test('accepts emoji', () {
+      expect(isValidTagPath('важное📌/срочно🔥'), isTrue);
+      expect(validateTagPath('🎓 диплом'), isNull);
+    });
+
+    test('rejects control characters in segments', () {
+      expect(isValidTagPath('a\x01b'), isFalse);
+    });
+
     test('accepts tag with underscore and dot', () {
       expect(isValidTagPath('my_tag/file.txt'), isTrue);
     });

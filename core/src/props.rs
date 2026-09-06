@@ -311,31 +311,38 @@ pub fn detect_scope(tags: &[String], registry: &mut ScopeRegistry) -> ScopeResol
 
 // ── Path building ────────────────────────────────────────────────────────────
 
-/// Sanitize a single path segment: keep `[A-Za-z0-9._ -]`, replace other chars
-/// with `_`, collapse consecutive `_`, trim, cap at 60 chars, return `None` when
-/// the result is empty after sanitization.
+/// Sanitize a single path segment for use as a physical folder name: Unicode
+/// is preserved (Cyrillic, CJK, emoji, ...); only filesystem-hostile
+/// characters (`\ / : * ? " < > |` and control chars) are replaced with `_`.
+/// Consecutive `_` collapse, leading/trailing dots and whitespace are trimmed
+/// (Windows rejects trailing dots/spaces; a leading dot makes a folder hidden
+/// on macOS and is skipped by the library tree walk). Caps at 60 chars;
+/// returns `None` when the result is empty after sanitization.
 fn sanitize_segment(raw: &str) -> Option<String> {
     let mut out = String::new();
     let mut last: Option<char> = None;
     for ch in raw.chars() {
-        let c = if ch.is_ascii_alphanumeric() || ch == '.' || ch == '_' || ch == '-' || ch == ' ' {
-            ch
-        } else {
-            '_'
-        };
+        let hostile =
+            matches!(ch, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || ch.is_control();
+        let c = if hostile { '_' } else { ch };
         if c == '_' && last == Some('_') {
             continue;
         }
         out.push(c);
         last = Some(c);
     }
-    let trimmed = out.trim();
+    let trimmed = out.trim().trim_matches('.');
     if trimmed.is_empty() {
         return None;
     }
     let t: String = trimmed.to_owned();
     if t.len() > 60 {
-        Some(t[..60].to_owned())
+        // Byte-index slice must not split a multi-byte char (Cyrillic, emoji).
+        let mut end = 60;
+        while end > 0 && !t.is_char_boundary(end) {
+            end -= 1;
+        }
+        Some(t[..end].to_owned())
     } else {
         Some(t)
     }
@@ -899,16 +906,44 @@ mod tests {
 
     #[test]
     fn main_path_sanitization() {
+        // '/' is filesystem-hostile → '_', '!' and spaces are legal everywhere.
         let tags: Vec<String> = vec!["name:hello/world! yes".to_owned()];
         let path = main_path_for(&["scope".to_owned()], &["name".to_owned()], &tags);
-        assert_eq!(path, "/scope/hello_world_ yes");
+        assert_eq!(path, "/scope/hello_world! yes");
     }
 
     #[test]
     fn main_path_collapse_repeated_underscores() {
         let tags: Vec<String> = vec!["name:a//b!!c".to_owned()];
         let path = main_path_for(&["scope".to_owned()], &["name".to_owned()], &tags);
-        assert_eq!(path, "/scope/a_b_c");
+        assert_eq!(path, "/scope/a_b!!c");
+    }
+
+    #[test]
+    fn main_path_preserves_unicode_and_emoji() {
+        let tags: Vec<String> = vec!["student:Аня 🎓".to_owned()];
+        let path = main_path_for(&["scope".to_owned()], &["student".to_owned()], &tags);
+        assert_eq!(path, "/scope/Аня 🎓");
+    }
+
+    #[test]
+    fn main_path_strips_hostile_and_leading_dots() {
+        let tags: Vec<String> = vec!["n:.secret/кон?".to_owned()];
+        let path = main_path_for(&["scope".to_owned()], &["n".to_owned()], &tags);
+        // leading dot trimmed, '?' → '_', Cyrillic kept.
+        assert_eq!(path, "/scope/secret_кон_");
+    }
+
+    #[test]
+    fn main_path_truncates_on_char_boundary() {
+        // 40 two-byte Cyrillic chars = 80 bytes > 60 → truncation must not
+        // split a char (a byte-slice on a non-boundary would panic).
+        let long = "я".repeat(40);
+        let tags: Vec<String> = vec![format!("n:{long}")];
+        let path = main_path_for(&["scope".to_owned()], &["n".to_owned()], &tags);
+        assert!(path.len() <= "/scope/".len() + 60);
+        // First value char is intact (char-boundary-safe truncation).
+        assert_eq!(&path[7..9], "я");
     }
 
     #[test]

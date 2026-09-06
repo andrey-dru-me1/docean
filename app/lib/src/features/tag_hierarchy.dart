@@ -17,8 +17,12 @@ library;
 /// The set of tags of one document, keyed by document id.
 typedef TagsByDoc = Map<String, Set<String>>;
 
-/// Matches a single tag segment (same charset as file naming).
-final RegExp _segmentPattern = RegExp(r'^[A-Za-z0-9._ -]+$');
+/// Characters that can never appear in a tag segment: `:` would blur the
+/// property-tag syntax (`key:value`), control characters are invisible and
+/// unsafe in the UI. Everything else is allowed — any Unicode letter
+/// (Cyrillic, CJK, ...), digits, emoji, punctuation, whitespace.
+/// `/` can never occur inside a segment (paths are split on it).
+final RegExp _segmentForbidden = RegExp(r'[\x00-\x1F\x7F:]');
 
 /// Maximum number of segments in a tag path.
 const int _maxSegments = 8;
@@ -72,10 +76,13 @@ String? validateTagPath(String tag) {
     return 'Tag must have at most $_maxSegments segments';
   }
   for (final segment in segments) {
+    if (segment.isEmpty) {
+      return 'Tag must not contain empty segments';
+    }
     if (segment.length > _maxSegmentLength) {
       return 'Segment must be at most $_maxSegmentLength characters';
     }
-    if (!_segmentPattern.hasMatch(segment)) {
+    if (_segmentForbidden.hasMatch(segment)) {
       return 'Segment contains invalid characters';
     }
   }
