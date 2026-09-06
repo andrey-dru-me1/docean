@@ -230,12 +230,10 @@ class _TagChipState extends State<TagChip> {
         if (widget.selected) {
           blockColor = Color.lerp(blockColor, Colors.white, 0.38)!;
         }
-        // No `alignment` on the Container: with an alignment set, a bounded
-        // Container EXPANDS to its constraints and the pill would stretch to
-        // the full available width. Without it the block hugs its text.
-        // Flexible keeps the shrink-to-fit (ellipsis) behavior in genuinely
-        // narrow contexts. No `Flexible` wrapper is added here — it is
-        // applied when the row is assembled below.
+        // Blocks hug their text: no alignment (an alignment makes a bounded
+        // Container EXPAND to its constraints), no Flexible (flex shares
+        // clamp segments to an equal fraction of the run even when the whole
+        // pill would fit — that is where stray ellipses came from).
         blockChildren.add(
           Container(
             color: blockColor,
@@ -244,34 +242,31 @@ class _TagChipState extends State<TagChip> {
               segments[i],
               style: labelStyle,
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
         );
       }
 
-      pill = Align(
-        // Align converts tight parent constraints into loose ones, so the
-        // pill hugs its content even inside stretch-happy parents; the
-        // Flexible segments still shrink (with ellipsis) when the available
-        // width is genuinely too small.
-        alignment: Alignment.centerLeft,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
-          // No border: a border would draw over the segment dividers and
-          // break the seamless split look.
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-          ),
-          clipBehavior: Clip.antiAlias,
+      pill = AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        // No border: a border would draw over the segment dividers and
+        // break the seamless split look.
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: FittedBox(
+          // scaleDown: the pill hugs its content (never stretches to the
+          // available width), segments render at full size whenever the run
+          // allows it, and an oversized pill shrinks slightly instead of
+          // cutting text with an ellipsis.
+          fit: BoxFit.scaleDown,
           child: IntrinsicHeight(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final b in blockChildren) Flexible(child: b),
-              ],
+              children: blockChildren,
             ),
           ),
         ),

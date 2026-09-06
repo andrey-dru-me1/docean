@@ -244,15 +244,20 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         children: [
           Row(
             children: [
-              SizedBox(
-                width: 260,
-                child: TextField(
-                  onChanged: (v) => setState(() => _query = v),
-                  decoration: const InputDecoration(
-                    labelText: 'Filter documents',
-                    prefixIcon: Icon(Icons.filter_list),
-                    border: OutlineInputBorder(),
-                    isDense: true,
+              // Flexible so the filter bar never overflows when the window is
+              // narrow (e.g. sidebar open): the field shrinks first and keeps
+              // its 260px preferred width when there is room.
+              Flexible(
+                child: SizedBox(
+                  width: 260,
+                  child: TextField(
+                    onChanged: (v) => setState(() => _query = v),
+                    decoration: const InputDecoration(
+                      labelText: 'Filter documents',
+                      prefixIcon: Icon(Icons.filter_list),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
                   ),
                 ),
               ),
