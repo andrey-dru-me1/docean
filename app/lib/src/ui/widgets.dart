@@ -74,11 +74,8 @@ const List<Color> kTagPalette = <Color>[
 /// [kTagPalette]. Empty names always resolve to the first palette entry so the
 /// result is stable even for malformed input.
 Color tagColorFor(String name) {
-  // Hierarchical tags (`a/b/c`) inherit their TOP-LEVEL ancestor's color so a
-  // whole subtree shares one hue. Plain tags hash normally.
-  final key = name.contains('/') ? name.substring(0, name.indexOf('/')) : name;
   var hash = 0x811c9dc5;
-  for (final unit in key.codeUnits) {
+  for (final unit in name.codeUnits) {
     hash ^= unit;
     hash = (hash * 0x01000193) & 0xFFFFFFFF;
   }
@@ -198,16 +195,19 @@ class _TagChipState extends State<TagChip> {
   @override
   Widget build(BuildContext context) {
     final color = tagColorFor(widget.label);
+    final isSplit = widget.label.contains('/');
 
-    // The grid-tile overlay look: a fully-opaque fill of the tag's own color
-    // with an opaque tag-colored ring and white label — the visual every
-    // surface now shares. Nothing here is translucent.
-    final background = widget.selected
-        ? Color.lerp(color, Colors.white, 0.38)!
-        : color;
+    // Border and overlay background color are based on the FIRST segment's color.
+    final firstColor = isSplit ? tagColorFor(widget.label.split('/').first) : color;
     final borderColor = widget.selected
-        ? Color.lerp(color, Colors.white, 0.42)!
-        : Color.lerp(color, Colors.white, 0.12)!;
+        ? Color.lerp(firstColor, Colors.white, 0.42)!
+        : Color.lerp(firstColor, Colors.white, 0.12)!;
+
+    // Overlay background used by edit/delete grims: lightened when selected.
+    final background = widget.selected
+        ? Color.lerp(firstColor, Colors.white, 0.38)!
+        : firstColor;
+
     final labelStyle = TextStyle(
       fontSize: 11.5,
       color: Colors.white,
@@ -216,24 +216,76 @@ class _TagChipState extends State<TagChip> {
       shadows: const [Shadow(color: Colors.black45, blurRadius: 3)],
     );
 
-    final pill = AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
-      curve: Curves.easeOut,
-      // Compact pill, slightly taller than the original chips so the white
-      // label breathes (the user-tuned vertical padding stays).
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: borderColor),
-      ),
-      child: Text(
-        widget.label,
-        style: labelStyle,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-    );
+    Widget pill;
+    if (isSplit) {
+      final segments = widget.label.split('/');
+      final blockChildren = <Widget>[];
+      for (var i = 0; i < segments.length; i++) {
+        if (i > 0) {
+          blockChildren.add(
+            const SizedBox(
+              width: 1,
+              child: ColoredBox(color: Colors.white24),
+            ),
+          );
+        }
+        final prefix = segments.sublist(0, i + 1).join('/');
+        var blockColor = tagColorFor(prefix);
+        if (widget.selected) {
+          blockColor = Color.lerp(blockColor, Colors.white, 0.38)!;
+        }
+        blockChildren.add(
+          Flexible(
+            child: Container(
+              color: blockColor,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              child: Text(
+                segments[i],
+                style: labelStyle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        );
+      }
+
+      pill = AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: borderColor),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: IntrinsicHeight(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: blockChildren,
+          ),
+        ),
+      );
+    } else {
+      // Single-segment label: exact same look as before.
+      pill = AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: borderColor),
+        ),
+        child: Text(
+          widget.label,
+          style: labelStyle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+    }
 
     // Display-only chip: inert — no tap handling, no cursor.
     if (!_interactive) {

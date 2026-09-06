@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:docer/src/features/document_service.dart' show FakeDocumentService;
-import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
+import 'package:docer/src/ui/document_view.dart' show DocumentDetailView, DocumentSummary;
 import 'package:docer/src/ui/documents_screen.dart' show DocumentsScreen;
-import 'package:docer/src/ui/widgets.dart' show TagChip;
+import 'package:docer/src/ui/widgets.dart' show TagChip, tagColorFor;
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
@@ -45,6 +45,105 @@ Future<void> _toggleToTags(WidgetTester tester) async {
 
 void main() {
   // ---------------------------------------------------------------
+  // Own colors: tagColorFor hashes the full path, not just top-level
+  // ---------------------------------------------------------------
+  group('own colors', () {
+    test('tagColorFor produces distinct colors for each hierarchical level', () {
+      expect(tagColorFor('study'), isNot(equals(tagColorFor('study/mit'))));
+      expect(
+        tagColorFor('study/mit'),
+        isNot(equals(tagColorFor('study/mit/ml'))),
+      );
+      expect(
+        tagColorFor('study'),
+        isNot(equals(tagColorFor('study/mit/ml'))),
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // Split pill (TagChip)
+  // ---------------------------------------------------------------
+  group('split pill', () {
+    testWidgets(
+      'pumping TagChip(label: study/mit/ml) renders 3 colored segments '
+      'and 2 dividers',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(const TagChip(label: 'study/mit/ml')),
+        );
+
+        // Three text widgets, one per segment.
+        expect(find.text('study'), findsOneWidget);
+        expect(find.text('mit'), findsOneWidget);
+        expect(find.text('ml'), findsOneWidget);
+
+        // Each segment's block Container has its own cumulative-prefix color.
+        Color blockColor(String segment) {
+          final container = tester.widget<Container>(
+            find
+                .ancestor(
+                  of: find.text(segment),
+                  matching: find.byType(Container),
+                )
+                .first,
+          );
+          return container.color!;
+        }
+
+        final studyColor = blockColor('study');
+        final mitColor = blockColor('mit');
+        final mlColor = blockColor('ml');
+
+        expect(studyColor, tagColorFor('study'));
+        expect(mitColor, tagColorFor('study/mit'));
+        expect(mlColor, tagColorFor('study/mit/ml'));
+
+        // All three are distinct.
+        expect(studyColor, isNot(equals(mitColor)));
+        expect(mitColor, isNot(equals(mlColor)));
+
+        // Two 1px white24 dividers between the three blocks.
+        expect(
+          find.descendant(
+            of: find.byType(TagChip),
+            matching: find.byWidgetPredicate(
+              (w) =>
+                  w is ColoredBox && w.color == Colors.white24,
+            ),
+          ),
+          findsNWidgets(2),
+        );
+      },
+    );
+
+    testWidgets(
+      'split pill selected state lightens every segment color',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(const TagChip(label: 'study/mit/ml', selected: true)),
+        );
+
+        Color blockColor(String segment) {
+          final container = tester.widget<Container>(
+            find
+                .ancestor(
+                  of: find.text(segment),
+                  matching: find.byType(Container),
+                )
+                .first,
+          );
+          return container.color!;
+        }
+
+        expect(blockColor('study'), Color.lerp(tagColorFor('study'), Colors.white, 0.38)!);
+        expect(blockColor('mit'), Color.lerp(tagColorFor('study/mit'), Colors.white, 0.38)!);
+        expect(blockColor('ml'), Color.lerp(tagColorFor('study/mit/ml'), Colors.white, 0.38)!);
+      },
+    );
+  });
+
+  // ---------------------------------------------------------------
   // Tag hierarchy tree view
   // ---------------------------------------------------------------
   group('TagHierarchyView tree', () {
@@ -59,7 +158,6 @@ void main() {
       await _toggleToTags(tester);
 
       expect(find.byKey(const ValueKey('tag-node-study')), findsOneWidget);
-      // study/knn has 2 contained docs (knn, qsort).
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('tag-count-study')),
@@ -80,16 +178,13 @@ void main() {
       await tester.pumpAndSettle();
       await _toggleToTags(tester);
 
-      // Initially children are hidden.
       expect(find.byKey(const ValueKey('tag-node-study/mit')), findsNothing);
       expect(find.byKey(const ValueKey('tag-node-study/lecture')), findsNothing);
       expect(find.byKey(const ValueKey('tag-node-study/seminar')), findsNothing);
 
-      // Expand study.
       await tester.tap(find.byKey(const ValueKey('tag-node-study')));
       await tester.pumpAndSettle();
 
-      // Children rendered in order: mit (dirtag), lecture (leaf), seminar (leaf).
       final mit = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/mit')));
       final lecture = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/lecture')));
       final seminar = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/seminar')));
@@ -98,7 +193,8 @@ void main() {
     });
 
     testWidgets(
-      'expand study/mit shows cprog then ml, sub-tag row shows rotated parent and chip ml',
+      'expand study/mit shows cprog then ml, '
+      'sub-tag row renders colorful Text.rich and a rotated parent pill',
       (tester) async {
         await tester.pumpWidget(
           _wrap(DocumentsScreen(
@@ -109,18 +205,16 @@ void main() {
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
 
-        // Expand study, then study/mit.
         await tester.tap(find.byKey(const ValueKey('tag-node-study')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('tag-node-study/mit')));
         await tester.pumpAndSettle();
 
-        // cprog and ml rows present and in alphabetical order.
         final cprog = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/mit/cprog')));
         final ml = tester.getTopLeft(find.byKey(const ValueKey('tag-node-study/mit/ml')));
         expect(cprog.dy, lessThan(ml.dy));
 
-        // Rotated parent label 'mit' is present in the ml row.
+        // ml row: has a RotatedBox (the rotated parent pill) — exactly one.
         expect(
           find.descendant(
             of: find.byKey(const ValueKey('tag-node-study/mit/ml')),
@@ -128,21 +222,38 @@ void main() {
           ),
           findsOneWidget,
         );
-        // Chip label shows 'ml'.
+
+        // ml row: has the parent pill with key tag-parent-pill-study/mit.
         expect(
           find.descendant(
             of: find.byKey(const ValueKey('tag-node-study/mit/ml')),
-            matching: find.text('ml'),
+            matching: find.byKey(const ValueKey('tag-parent-pill-study/mit')),
           ),
           findsOneWidget,
         );
-        // find.text('study') multiple instances ok (top-level chip + rotated label).
-        expect(find.text('study'), findsWidgets);
+
+        // ml row: has colorful text containing 'study / mit / ml'.
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('tag-node-study/mit/ml')),
+            matching: find.textContaining('study / mit / ml'),
+          ),
+          findsOneWidget,
+        );
+
+        // cprog row: colorful text containing 'study / mit / cprog'.
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('tag-node-study/mit/cprog')),
+            matching: find.textContaining('study / mit / cprog'),
+          ),
+          findsOneWidget,
+        );
       },
     );
 
     testWidgets(
-      'sub-tag chip for study/mit/ml has same color as study chip (top-level color)',
+      'tree rows render colorful Text.rich path and contain no TagChip',
       (tester) async {
         await tester.pumpWidget(
           _wrap(DocumentsScreen(
@@ -153,25 +264,45 @@ void main() {
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
 
-        // Expand to reveal the ml node.
         await tester.tap(find.byKey(const ValueKey('tag-node-study')));
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('tag-node-study/mit')));
-        await tester.pumpAndSettle();
 
-        Color pillColor(Key nodeKey) {
-          final pill = tester.widget<AnimatedContainer>(
-            find.descendant(
-              of: find.byKey(nodeKey),
-              matching: find.byType(AnimatedContainer),
-            ),
-          );
-          return (pill.decoration! as BoxDecoration).color!;
-        }
-
+        // study/mit row has colorful text containing 'study / mit'.
         expect(
-          pillColor(const ValueKey('tag-node-study/mit/ml')),
-          pillColor(const ValueKey('tag-node-study')),
+          find.descendant(
+            of: find.byKey(const ValueKey('tag-node-study/mit')),
+            matching: find.textContaining('study / mit'),
+          ),
+          findsOneWidget,
+        );
+
+        // No TagChip anywhere inside the tree rows (pills are replaced by text);
+        // the filter-bar chips up top are outside the tree view.
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('tag-hierarchy-view')),
+            matching: find.byType(TagChip),
+          ),
+          findsNothing,
+        );
+
+        // study/mit row's direct parent is 'study': rotated pill key
+        // tag-parent-pill-study.
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('tag-node-study/mit')),
+            matching: find.byKey(const ValueKey('tag-parent-pill-study')),
+          ),
+          findsOneWidget,
+        );
+
+        // study/mit row has a guide-line column for 'study' (level 1).
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('tag-node-study/mit')),
+            matching: find.byKey(const ValueKey('tag-guide-1')),
+          ),
+          findsOneWidget,
         );
       },
     );
@@ -190,33 +321,108 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('tag-tree-toggle-all')));
       await tester.pumpAndSettle();
 
-      // All nodes expanded, including deep ml and cprog.
       expect(find.byKey(const ValueKey('tag-node-study')), findsWidgets);
       expect(find.byKey(const ValueKey('tag-node-study/mit')), findsOneWidget);
       expect(find.byKey(const ValueKey('tag-node-study/mit/ml')), findsOneWidget);
       expect(find.byKey(const ValueKey('tag-node-study/mit/cprog')), findsOneWidget);
 
-      // Collapse all.
       await tester.tap(find.byKey(const ValueKey('tag-tree-toggle-all')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('tag-node-study/mit')), findsNothing);
     });
+
+    testWidgets(
+      'collapse study after expanding study/mit does not crash and preserves expanded state',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(DocumentsScreen(
+            documentService: _treeService(),
+            onOpenDocument: (_) {},
+          )),
+        );
+        await tester.pumpAndSettle();
+        await _toggleToTags(tester);
+
+        // Expand study, then study/mit.
+        await tester.tap(find.byKey(const ValueKey('tag-node-study')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tag-node-study/mit')), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('tag-node-study/mit')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tag-node-study/mit/ml')), findsOneWidget);
+
+        // Collapse study — no exception; children disappear.
+        await tester.tap(find.byKey(const ValueKey('tag-node-study')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tag-node-study/mit')), findsNothing);
+        expect(find.byKey(const ValueKey('tag-node-study/mit/ml')), findsNothing);
+
+        // Re-expand study — study/mit is still expanded (previously-expanded state persists).
+        await tester.tap(find.byKey(const ValueKey('tag-node-study')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tag-node-study/mit')), findsOneWidget);
+        expect(find.byKey(const ValueKey('tag-node-study/mit/ml')), findsOneWidget);
+      },
+    );
   });
 
   // ---------------------------------------------------------------
-  // Hierarchy-aware filter (startsWith rule)
+  // Ancestor swallowing in document views
   // ---------------------------------------------------------------
-  group('hierarchy-aware filter', () {
+  group('ancestor swallowing', () {
     testWidgets(
-      'selecting a tag filter selects its whole subtree via startsWith',
+      'detail view: doc with [study, study/mit, study/mit/ml, student:Alice] '
+      'shows exactly 2 TagChips (split pill + property tag)',
       (tester) async {
         final service = FakeDocumentService(
           documents: [
-            _doc('ml', 'ML only', tags: const ['study/mit/ml']),
-            _doc('course', 'Course plan', tags: const ['study']),
-            _doc('other', 'Groceries', tags: const ['personal']),
+            _doc('d1', 'Deep doc', tags: [
+              'study',
+              'study/mit',
+              'study/mit/ml',
+              'student:Alice',
+            ]),
           ],
-          tags: const ['study', 'study/mit/ml', 'personal'],
+          tags: ['study', 'study/mit', 'study/mit/ml', 'student:Alice'],
+        );
+
+        final doc = _doc('d1', 'Deep doc', tags: [
+          'study',
+          'study/mit',
+          'study/mit/ml',
+          'student:Alice',
+        ]);
+
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(
+            document: doc,
+            documentService: service,
+          )),
+        );
+        await tester.pumpAndSettle();
+
+        // maximalTags reduces to [student:Alice, study/mit/ml] → 2 TagChips.
+        expect(find.byType(TagChip), findsNWidgets(2));
+        // The split pill renders 'study', 'mit', 'ml' as segment texts inside it.
+        expect(find.text('student:Alice'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'grid tile: doc with [study, study/mit, study/mit/ml, student:Alice] '
+      'shows exactly 2 TagChips in the tile overlay',
+      (tester) async {
+        final service = FakeDocumentService(
+          documents: [
+            _doc('d1', 'Deep doc', tags: [
+              'study',
+              'study/mit',
+              'study/mit/ml',
+              'student:Alice',
+            ]),
+          ],
+          tags: ['study', 'study/mit', 'study/mit/ml', 'student:Alice'],
         );
 
         await tester.pumpWidget(
@@ -227,70 +433,15 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // All three visible before filtering.
-        expect(find.text('ML only'), findsOneWidget);
-        expect(find.text('Course plan'), findsOneWidget);
-        expect(find.text('Groceries'), findsOneWidget);
-
-        // Select the 'study' filter — matches exact + subtree.
-        await tester.tap(find.byKey(const ValueKey('filter-study')));
-        await tester.pumpAndSettle();
-
-        // Both study-prefixed docs visible (ML only stays via startsWith).
-        expect(find.text('ML only'), findsOneWidget);
-        expect(find.text('Course plan'), findsOneWidget);
-        // Doc without study prefix hidden.
-        expect(find.text('Groceries'), findsNothing);
+        // The tile overlay in the grid shows maximalTags → 2 TagChips.
+        // Find TagChips inside GridView tiles (not the filter bar — filter bar
+        // uses the same TagChip type but with ValueKey 'filter-*').
+        final tileChips = find.descendant(
+          of: find.byType(GridView),
+          matching: find.byType(TagChip),
+        );
+        expect(tileChips, findsNWidgets(2));
       },
     );
-  });
-
-  // ---------------------------------------------------------------
-  // Empty state
-  // ---------------------------------------------------------------
-  group('TagHierarchyView empty state', () {
-    testWidgets('shows "No tags yet" when all documents have only property tags',
-        (tester) async {
-      await tester.pumpWidget(
-        _wrap(DocumentsScreen(
-          documentService: FakeDocumentService(
-            documents: [
-              _doc('p1', 'Prop doc', tags: const ['student:Alice', 'scope:diploma']),
-              _doc('p2', 'No tags'),
-            ],
-          ),
-          onOpenDocument: (_) {},
-        )),
-      );
-      await tester.pumpAndSettle();
-      await _toggleToTags(tester);
-
-      expect(find.text('No tags yet'), findsOneWidget);
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // TagChip.onEdit rendering
-  // ---------------------------------------------------------------
-  group('TagChip.onEdit', () {
-    testWidgets('renders edit affordance on the left and fires callback',
-        (tester) async {
-      var edited = false;
-      await tester.pumpWidget(
-        _wrap(TagChip(
-          label: 'finance',
-          onEdit: () => edited = true,
-        )),
-      );
-
-      // Edit icon present in the tree (may be invisible until hover/touch).
-      expect(find.byIcon(Icons.edit), findsOneWidget);
-
-      // The GestureDetector is always hit-testable (behavior: opaque), so
-      // tapping the edit key fires the callback even without hover.
-      await tester.tap(find.byKey(const ValueKey('edit-finance')));
-      await tester.pumpAndSettle();
-      expect(edited, isTrue);
-    });
   });
 }

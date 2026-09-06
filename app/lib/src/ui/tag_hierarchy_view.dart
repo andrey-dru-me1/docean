@@ -10,7 +10,6 @@ import '../features/tag_hierarchy.dart'
         isValidTagPath,
         lastSegmentOf,
         parentOf,
-        topLevelOf,
         topLevelTags;
 import 'document_view.dart' show DocumentSummary;
 import 'widgets.dart' show EmptyState, tagColorFor;
@@ -18,12 +17,14 @@ import 'widgets.dart' show EmptyState, tagColorFor;
 /// The "Tags" view mode: a collapsible tree of the documents' tag hierarchy.
 ///
 /// Tags form a tree via `/`-separated paths (`study/mit/ml` nests under
-/// `study/mit` under `study`). Each node row shows the tag's last segment; a
-/// sub-tag additionally renders its direct parent's name vertically (rotated
-/// 90°) to the left of the chip, with indentation implying the ancestors.
-/// Directory tags (tags with children) carry a right-aligned count badge with
-/// the number of documents contained in the subtree, and every node can expand
-/// to reveal its children (dirtags) and then its directly-assigned documents.
+/// `study/mit` under `study`). Each tag row renders its FULL path as colorful
+/// text (one color per cumulative prefix); a sub-tag row additionally draws an
+/// IDE-style gutter to its left: one 16px guide-line column per ancestor level
+/// (each line tinted with that ancestor's own color), with the direct parent's
+/// name shown as a rotated pill in the last column. Directory tags (tags with
+/// children) carry a right-aligned count badge with the number of documents
+/// contained in the subtree, and every node can expand to reveal its children
+/// (dirtags) and then its directly-assigned documents.
 ///
 /// Expansion state is keyed by the FULL tag path, so a previously-expanded
 /// sub-tag re-expands after a parent collapse/expand cycle.
@@ -43,6 +44,12 @@ class TagHierarchyView extends StatefulWidget {
   @override
   State<TagHierarchyView> createState() => _TagHierarchyViewState();
 }
+
+/// Fixed row height of a tag row so the guide lines can span the full row.
+const double _kTagRowHeight = 28;
+
+/// Width of one gutter column (one ancestor level).
+const double _kGutterColumnWidth = 16;
 
 class _TagHierarchyViewState extends State<TagHierarchyView> {
   /// Expanded tag paths, keyed by FULL path so sub-tags stay expanded across
@@ -121,83 +128,179 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     final scheme = Theme.of(context).colorScheme;
     final expanded = _expandedTagPaths.contains(path);
     final isDir = isDirtag(path, _allTagPaths(tagsByDoc));
-    final label = lastSegmentOf(path);
-    final color = tagColorFor(topLevelOf(path));
-    // Sub-tag rows (any tag with a parent) name the direct parent vertically
-    // to the left of the chip; indentation implies the rest of the chain.
-    final parentName = depth > 0 ? lastSegmentOf(parentOf(path)) : null;
 
-    final chip = _TagPill(label: label, color: color);
-
-    return InkWell(
+    return GestureDetector(
       key: ValueKey('tag-node-$path'),
       onTap: () => _toggleExpanded(path),
-      child: Padding(
-        padding: EdgeInsets.only(left: (depth * 20).toDouble()),
-        child: Row(
-          children: [
-            AnimatedRotation(
-              turns: expanded ? 0.25 : 0,
-              duration: const Duration(milliseconds: 150),
-              child: Icon(
-                Icons.expand_more,
-                size: 18,
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(width: 4),
-            if (parentName != null) ...[
-              RotatedBox(
-                quarterTurns: 1,
-                child: Text(
-                  parentName,
-                  style: TextStyle(
-                    fontSize: 9,
-                    height: 1,
-                    color: scheme.outline,
-                  ),
+      behavior: HitTestBehavior.opaque,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: SizedBox(
+          height: _kTagRowHeight,
+          child: Row(
+            children: [
+              // IDE-style ancestor gutter: one 16px column per ancestor level.
+              _buildGutter(path, depth),
+              // Content indent after the gutter (depth * 20, as before).
+              SizedBox(width: (depth * 20).toDouble()),
+              AnimatedRotation(
+                turns: expanded ? 0.25 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: Icon(
+                  Icons.expand_more,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(width: 4),
+              Expanded(child: _buildColorfulPath(path)),
+              if (isDir) ...[
+                const SizedBox(width: 8),
+                _CountBadge(
+                  key: ValueKey('tag-count-$path'),
+                  count: containedCount(path, tagsByDoc),
+                ),
+              ],
             ],
-            chip,
-            if (isDir) ...[
-              const Spacer(),
-              _CountBadge(
-                key: ValueKey('tag-count-$path'),
-                count: containedCount(path, tagsByDoc),
-              ),
-            ],
-          ],
+          ),
         ),
+      ),
+    );
+  }
+
+  /// The row's FULL path rendered as colorful text: segment i is tinted with
+  /// the color of its cumulative prefix (`study`, `study/mit`, ...), segments
+  /// joined by a muted ` / ` separator.
+  Widget _buildColorfulPath(String path) {
+    final scheme = Theme.of(context).colorScheme;
+    final segments = path.split('/');
+    final spans = <TextSpan>[];
+    for (var i = 0; i < segments.length; i++) {
+      if (i > 0) {
+        spans.add(
+          TextSpan(
+            text: ' / ',
+            style: TextStyle(
+              color: scheme.outline,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      }
+      spans.add(
+        TextSpan(
+          text: segments[i],
+          style: TextStyle(
+            color: tagColorFor(segments.sublist(0, i + 1).join('/')),
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+    return Text.rich(
+      TextSpan(style: const TextStyle(height: 1), children: spans),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  /// The IDE-style gutter shown left of the chevron for sub-tag rows
+  /// (depth > 0): one `_kGutterColumnWidth`-wide column per ancestor level,
+  /// each drawing a 2px vertical guide line tinted with that ancestor's own
+  /// color; the LAST column (the direct parent) additionally shows a rotated
+  /// pill naming the parent's last segment. Total width = depth × column width.
+  Widget _buildGutter(String path, int depth) {
+    if (depth == 0) return const SizedBox.shrink();
+    final segments = path.split('/');
+    final parentPath = parentOf(path);
+    final parentLabel = lastSegmentOf(parentPath);
+
+    return SizedBox(
+      width: (depth * _kGutterColumnWidth).toDouble(),
+      height: double.infinity,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 1; i <= depth; i++)
+            SizedBox(
+              width: _kGutterColumnWidth,
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: (_kGutterColumnWidth - 2) / 2,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      key: ValueKey('tag-guide-$i'),
+                      width: 2,
+                      color: tagColorFor(
+                        segments.sublist(0, i).join('/'),
+                      ).withValues(alpha: 0.45),
+                    ),
+                  ),
+                  if (i == depth)
+                    Center(
+                      child: RotatedBox(
+                        quarterTurns: 1,
+                        child: Container(
+                          key: ValueKey('tag-parent-pill-$parentPath'),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 2,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: tagColorFor(parentPath),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            parentLabel,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
 
   Widget _buildDocumentRow(DocumentSummary doc, int depth) {
     final scheme = Theme.of(context).colorScheme;
-    return InkWell(
+    return GestureDetector(
       key: ValueKey('tag-doc-${doc.id}'),
       onTap: () => widget.onOpenDocument(doc),
-      child: Padding(
-        padding: EdgeInsets.only(left: (depth * 20 + 22).toDouble(), right: 8),
-        child: Row(
-          children: [
-            Icon(
-              Icons.description_outlined,
-              size: 16,
-              color: scheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                doc.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium,
+      behavior: HitTestBehavior.opaque,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Padding(
+          padding: EdgeInsets.only(left: (depth * 20 + 22).toDouble(), right: 8),
+          child: Row(
+            children: [
+              Icon(
+                Icons.description_outlined,
+                size: 16,
+                color: scheme.onSurfaceVariant,
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  doc.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -262,41 +365,6 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
       }
     }
     return paths;
-  }
-}
-
-/// A compact colored tag pill matching [TagChip]'s visuals but with an
-/// EXPLICIT color (the top-level ancestor's color for hierarchical tags).
-class _TagPill extends StatelessWidget {
-  const _TagPill({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
-      curve: Curves.easeOut,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Color.lerp(color, Colors.white, 0.12)!),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          fontSize: 11.5,
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
-          height: 1,
-          shadows: [Shadow(color: Colors.black45, blurRadius: 3)],
-        ),
-      ),
-    );
   }
 }
 

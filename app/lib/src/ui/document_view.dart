@@ -10,7 +10,7 @@ import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart'
     show DocumentService, SuggestionEntry;
 import '../features/tag_hierarchy.dart'
-    show suggestTagCompletions, validateTagPath, renamedTagsByDoc;
+    show maximalTags, suggestTagCompletions, validateTagPath, renamedTagsByDoc;
 import '../rust/domain.dart' show SuggestionKind;
 import 'document_preview_view.dart' show DocumentPreviewPanel;
 import 'widgets.dart' show TagChip;
@@ -1004,7 +1004,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       spacing: 6,
       runSpacing: 6,
       children: [
-        for (final tag in _doc.tags)
+        for (final tag in maximalTags(_doc.tags))
           TagChip(
             key: ValueKey('tag-$tag'),
             label: tag,

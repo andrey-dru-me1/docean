@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart'
     show BulkOrganizer, DocumentService, NoopBulkOrganizer;
-import '../features/tag_hierarchy.dart' show suggestTagCompletions;
+import '../features/tag_hierarchy.dart' show maximalTags, suggestTagCompletions;
 import 'document_preview_view.dart' show DocumentTilePreview;
 import 'document_view.dart' show DocumentSummary;
 import 'hierarchy_view.dart'
@@ -1363,7 +1363,7 @@ class _DocumentPreviewTile extends StatelessWidget {
                   spacing: 4,
                   runSpacing: 4,
                   children: [
-                    for (final tag in document.tags)
+                    for (final tag in maximalTags(document.tags))
                       TagChip(
                         // Tapping the chip toggles it in the filter bar; the
                         // handler lives on TagChip itself so the pill is

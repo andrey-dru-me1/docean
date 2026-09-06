@@ -33,10 +33,7 @@ const _s1 = DocumentSummary(
 
 /// The edit (pencil) affordance on the [TagChip] whose label is [tagLabel].
 Finder _editIconFor(String tagLabel) {
-  final chip = find.ancestor(
-    of: find.text(tagLabel),
-    matching: find.byType(TagChip),
-  );
+  final chip = find.byKey(ValueKey('tag-$tagLabel'));
   return find.descendant(of: chip, matching: find.byIcon(Icons.edit));
 }
 
