@@ -118,10 +118,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   ///
   /// Expanded sub-tags keep their navigational row and recurse one level
   /// deeper; after all expanded child sections, [path]'s OWN subtag section
-  /// (its remaining sub-tags + directly-assigned documents) lands one level
-  /// deeper than the plain rows whenever a child section unwound — so the
-  /// previously selected tag's context stays visible at the deepest level,
-  /// every section row labeled `(owner) > full/path`.
+  /// (its remaining sub-tags) lands one level deeper than the plain rows
+  /// whenever a child section unwound. Directly-assigned documents follow
+  /// right after the node's own section.
   void _appendSubtree(
     List<Widget> rows,
     String path,
@@ -148,7 +147,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     for (final id in directlyAssignedDocIds(path, tagsByDoc)) {
       final doc = _byId[id];
       if (doc != null) {
-        rows.add(_buildDocumentRow(doc, ownDepth));
+        rows.add(
+          _buildDocumentRow(doc, depth: ownDepth, ownerPath: path),
+        );
       }
     }
   }
@@ -283,7 +284,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   /// each drawing a 2px vertical guide line tinted with that ancestor's own
   /// color; the LAST column (the direct parent) additionally shows a rotated
   /// pill naming the parent's last segment. Total width = depth × column width.
-  Widget _buildGutter(String path, int depth) {
+  Widget _buildGutter(String path, int depth, {Widget? lastColumn}) {
     if (depth == 0) return const SizedBox.shrink();
     final segments = path.split('/');
     final parentPath = parentOf(path);
@@ -307,35 +308,40 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
                     child: Container(
                       key: ValueKey('tag-guide-$i'),
                       width: 2,
+                      // Doc rows may be deeper than their owner tag's chain;
+                      // clamp the color index to the last known segment.
                       color: tagColorFor(
-                        segments.sublist(0, i).join('/'),
+                        segments
+                            .sublist(0, i.clamp(1, segments.length))
+                            .join('/'),
                       ).withValues(alpha: 0.45),
                     ),
                   ),
                   if (i == depth)
                     Center(
-                      child: RotatedBox(
-                        quarterTurns: 1,
-                        child: Container(
-                          key: ValueKey('tag-parent-pill-$parentPath'),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 2,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: tagColorFor(parentPath),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            parentLabel,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              height: 1,
+                      child: lastColumn ??
+                          RotatedBox(
+                            quarterTurns: 1,
+                            child: Container(
+                              key: ValueKey('tag-parent-pill-$parentPath'),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: tagColorFor(parentPath),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                parentLabel,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  height: 1,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
                     ),
                 ],
               ),
@@ -345,7 +351,14 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     );
   }
 
-  Widget _buildDocumentRow(DocumentSummary doc, int depth) {
+  /// A directly-assigned document row. Its icon sits in the gutter's LAST
+  /// column — the same spot where tag rows show their rotated parent pill —
+  /// with the ancestor guide lines continuing behind it.
+  Widget _buildDocumentRow(
+    DocumentSummary doc, {
+    required int depth,
+    required String ownerPath,
+  }) {
     final scheme = Theme.of(context).colorScheme;
     return GestureDetector(
       key: ValueKey('tag-doc-${doc.id}'),
@@ -353,16 +366,20 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
       behavior: HitTestBehavior.opaque,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        child: Padding(
-          padding: EdgeInsets.only(left: (depth * 20 + 22).toDouble(), right: 8),
+        child: SizedBox(
+          height: _kTagRowHeight,
           child: Row(
             children: [
-              Icon(
-                Icons.description_outlined,
-                size: 16,
-                color: scheme.onSurfaceVariant,
+              _buildGutter(
+                ownerPath,
+                depth,
+                lastColumn: Icon(
+                  Icons.description_outlined,
+                  size: 14,
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: (depth * 20).toDouble()),
               Expanded(
                 child: Text(
                   doc.title,
