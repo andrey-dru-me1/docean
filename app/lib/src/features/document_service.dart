@@ -43,6 +43,7 @@ import '../rust/domain.dart'
 import '../rust/api/auto_org.dart' show SuggestOutcome;
 import '../rust/storage.dart' show DocumentQuery;
 import '../ui/document_view.dart' show DocumentSummary;
+import 'tag_hierarchy.dart' show expandTagAncestors;
 import 'repository.dart' show openSharedRepository;
 
 /// The heavy-lifting bulk re-organization pipeline.
@@ -700,8 +701,27 @@ class BridgeDocumentService implements DocumentService {
     return library_bridge.libraryFilePath(repo: repo, id: id);
   }
 }
-class FakeDocumentService implements DocumentService {
-  FakeDocumentService({
+/// Returns [doc] with hierarchical-tag ancestors materialized (core parity:
+/// a doc tagged `study/mit/ml` also carries `study`, `study/mit`). Returns
+/// [doc] itself when there is nothing to expand.
+DocumentSummary _withMaterializedAncestors(DocumentSummary doc) {
+  final expanded = expandTagAncestors(doc.tags);
+  if (expanded.length == doc.tags.length && expanded.containsAll(doc.tags)) {
+    return doc;
+  }
+  return DocumentSummary(
+    id: doc.id,
+    title: doc.title,
+    snippet: doc.snippet,
+    tags: expanded.toList(),
+    paths: doc.paths,
+    mimeType: doc.mimeType,
+    originalName: doc.originalName,
+    extra: doc.extra,
+  );
+}
+
+class FakeDocumentService implements DocumentService {  FakeDocumentService({
     List<DocumentSummary> documents = const [],
     List<String> tags = const [],
     List<String> paths = const [],
@@ -709,7 +729,7 @@ class FakeDocumentService implements DocumentService {
     Map<String, List<int>> bytesByDocumentId = const {},
     this.suggestion,
     Map<String, List<SuggestionEntry>> suggestionsByDocumentId = const {},
-  }) : documents = List.of(documents),
+  }) : documents = [for (final d in documents) _withMaterializedAncestors(d)],
        tags = List.of(tags),
        paths = List.of(paths),
        contentByDocumentId = Map.of(contentByDocumentId),
@@ -818,7 +838,7 @@ class FakeDocumentService implements DocumentService {
     final doc = documents[index];
     documents[index] = _copy(
       doc,
-      tags: List.of(nextTags),
+      tags: expandTagAncestors(nextTags).toList(),
       // A manual tag edit marks the document so the auto-suggest button won't
       // clobber the user's assignment (companion storage task).
       extra: {...doc.extra, 'tags_manual': 'true'},
@@ -1095,7 +1115,7 @@ class FakeDocumentService implements DocumentService {
         ..removeWhere(removes.contains);
       documents[index] = _copy(
         doc,
-        tags: next,
+        tags: expandTagAncestors(next).toList(),
         // A bulk tag edit is still a *user* tag edit: mark it so auto-suggest
         // won't clobber the assignment (same contract as the repository).
         extra: {...doc.extra, 'tags_manual': 'true'},

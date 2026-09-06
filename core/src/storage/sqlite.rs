@@ -191,13 +191,14 @@ impl DocumentStore for SqliteDocumentStore {
                 ],
             )?;
 
-            // Reconcile the document's tag assignments.
+            // Reconcile the document's tag assignments; hierarchical tags
+            // materialize their implicit ancestors (see `expand_tag_ancestors`).
             tx.execute(
                 "DELETE FROM document_tags WHERE document_id = ?1",
                 [&doc.id],
             )?;
-            for tag in &doc.tags {
-                tx.execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [tag])?;
+            for tag in expand_tag_ancestors(&doc.tags) {
+                tx.execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [&tag])?;
                 tx.execute(
                     "INSERT INTO document_tags(document_id, tag) VALUES (?1, ?2)",
                     params![doc.id, tag],
@@ -528,12 +529,8 @@ impl DocumentStore for SqliteDocumentStore {
                 "DELETE FROM document_tags WHERE document_id = ?1",
                 [document_id],
             )?;
-            for tag in tags {
-                let tag = tag.trim();
-                if tag.is_empty() {
-                    continue;
-                }
-                tx.execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [tag])?;
+            for tag in expand_tag_ancestors(tags) {
+                tx.execute("INSERT OR IGNORE INTO tags(name) VALUES (?1)", [&tag])?;
                 tx.execute(
                     "INSERT INTO document_tags(document_id, tag) VALUES (?1, ?2)",
                     params![document_id, tag],
@@ -757,6 +754,38 @@ fn kind_from_str(s: &str) -> SuggestionKind {
         "tags" => SuggestionKind::Tags,
         _ => SuggestionKind::Title,
     }
+}
+
+/// Materialize the implicit ancestors of hierarchical tags: a document tagged
+/// `study/mit/ml` also carries `study` and `study/mit`, so the tag index and
+/// flat tag filters see the full chain without deriving it per call site.
+///
+/// Order-preserving and deduplicated; the explicitly-set tag stays first,
+/// ancestors are appended after it. Property tags (`key:value`) contain no
+/// slash and are unaffected.
+fn expand_tag_ancestors<'a, I>(tags: I) -> Vec<String>
+where
+    I: IntoIterator<Item = &'a String>,
+{
+    let mut out: Vec<String> = Vec::new();
+    for tag in tags {
+        let tag = tag.trim();
+        if tag.is_empty() || out.iter().any(|x| x == tag) {
+            continue;
+        }
+        out.push(tag.to_owned());
+        let mut prefix = tag;
+        while let Some(idx) = prefix.rfind('/') {
+            prefix = &prefix[..idx];
+            if prefix.is_empty() {
+                break;
+            }
+            if !out.iter().any(|x| x == prefix) {
+                out.push(prefix.to_owned());
+            }
+        }
+    }
+    out
 }
 
 fn source_str(s: crate::domain::SuggestionSource) -> &'static str {

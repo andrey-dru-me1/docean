@@ -329,6 +329,57 @@ void main() {
     });
   });
 
+  group('maximalTags (ancestor swallowing)', () {
+    test('parents hidden behind deeper tags; property tags always kept', () {
+      final tags = {'study', 'study/mit', 'study/mit/ml', 'student:Alice'};
+      expect(
+        maximalTags(tags),
+        unorderedEquals(['study/mit/ml', 'student:Alice']),
+      );
+    });
+
+    test('unrelated tags kept', () {
+      expect(
+        maximalTags({'work', 'life'}),
+        unorderedEquals(['work', 'life']),
+      );
+    });
+
+    test('single tag kept', () {
+      expect(maximalTags(['seminar']), ['seminar']);
+    });
+  });
+
+  group('directlyAssignedDocIds (deeper-tag exclusion)', () {
+    test('doc with deeper tag in subtree is excluded from the parent dir', () {
+      final tagsByDoc = <String, Set<String>>{
+        'deep': {'study/mit/ml'},
+        'exact': {'study/mit'},
+        'both': {'study/mit', 'study/mit/ml'},
+        'elsewhere': {'work'},
+      };
+      // 'both' carries a deeper tag → belongs to study/mit/ml only.
+      expect(
+        directlyAssignedDocIds('study/mit', tagsByDoc),
+        unorderedEquals(['exact']),
+      );
+      expect(directlyAssignedDocIds('study', tagsByDoc), isEmpty);
+    });
+  });
+
+  group('expandTagAncestors (materialization)', () {
+    test('child first, ancestors appended, property tags untouched', () {
+      expect(
+        expandTagAncestors(['study/mit/ml', 'work', 'student:Alice']),
+        unorderedEquals([
+          'study/mit/ml', 'study/mit', 'study', 'work', 'student:Alice',
+        ]),
+      );
+      expect(expandTagAncestors(['plain']), {'plain'});
+      expect(expandTagAncestors([]), isEmpty);
+    });
+  });
+
   group('renamedTagsByDoc', () {
     test('spec example: rename seminar to mit/seminar', () {
       final tagsByDoc = <String, Set<String>>{

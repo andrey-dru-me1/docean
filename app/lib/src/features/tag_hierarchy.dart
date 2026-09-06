@@ -232,15 +232,54 @@ List<String> topLevelTags(TagsByDoc tagsByDoc) {
   return [...dirtags, ...leaves];
 }
 
-/// Docs whose tag set contains EXACTLY [path] (direct assignment only).
+/// Docs directly assigned to [path]: the doc carries the exact tag AND no
+/// deeper tag inside the subtree — a doc tagged `mit/ml` belongs to the
+/// `mit/ml` directory and must not resurface under `mit`.
 Set<String> directlyAssignedDocIds(String path, TagsByDoc tagsByDoc) {
+  final prefix = '$path/';
   final result = <String>{};
   for (final entry in tagsByDoc.entries) {
-    if (entry.value.contains(path)) {
+    if (!entry.value.contains(path)) {
+      continue;
+    }
+    // A doc carrying a DEEPER tag in this subtree (e.g. 'mit/ml') belongs to
+    // the deeper directory only — it must not also appear under 'mit'.
+    final hasDeeper = entry.value.any(
+      (t) => !t.contains(':') && t.startsWith(prefix),
+    );
+    if (!hasDeeper) {
       result.add(entry.key);
     }
   }
   return result;
+}
+
+/// The tags of one document that should render as chips: hierarchical tags
+/// swallow their implicit ancestors because the ancestor is already visible
+/// inside the child's split pill. Property tags (`key:value`) always render.
+///
+/// `{'study', 'study/mit', 'study/mit/ml', 'student:Alice'}` -> sorted
+/// `['student:Alice', 'study/mit/ml']`.
+List<String> maximalTags(Iterable<String> tags) {
+  final list = tags.toList();
+  final plain = list.where((t) => !t.contains(':')).toList();
+  bool isSwallowedAncestor(String t) =>
+      !t.contains(':') && plain.any((o) => o != t && o.startsWith('$t/'));
+  final kept = list.where((t) => !isSwallowedAncestor(t)).toList()..sort();
+  return kept;
+}
+
+/// Expand every hierarchical tag to include its implicit ancestors
+/// (`study/mit/ml` -> also `study`, `study/mit`), keeping the explicitly-set
+/// tag first. Mirrors the core storage materialization so
+/// `FakeDocumentService` behaves like the real bridge.
+Set<String> expandTagAncestors(Iterable<String> tags) {
+  final out = <String>{};
+  for (final tag in tags) {
+    out.add(tag);
+    out.addAll(implicitAncestors(tag));
+  }
+  return out;
 }
 
 /// Match tier for [query] against a single known tag, or `null` when there

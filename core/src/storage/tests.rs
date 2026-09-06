@@ -347,6 +347,19 @@ fn set_tags_replaces_document_tags_without_rewriting_bytes() {
         b"the raw payload"
     );
 
+    // The ancestors of hierarchical tags are materialized implicitly.
+    store
+        .set_tags(
+            &"d1".to_owned(),
+            &["study/mit/ml".to_owned(), "work".to_owned()],
+        )
+        .unwrap();
+    let got = store.get(&"d1".to_owned()).unwrap();
+    assert!(got.tags.contains(&"study".to_owned()));
+    assert!(got.tags.contains(&"study/mit".to_owned()));
+    assert!(got.tags.contains(&"study/mit/ml".to_owned()));
+    assert!(got.tags.contains(&"work".to_owned()));
+
     // New tag names are created in the catalog so they surface in list_tags.
     let names: Vec<String> = store
         .list_tags()
