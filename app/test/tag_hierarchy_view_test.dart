@@ -21,12 +21,17 @@ DocumentSummary _doc(
 /// qsort[study/seminar, study/mit/cprog]
 /// notes[idea]   (plain top-level leaf)
 /// memo[todo]    (plain top-level leaf)
-FakeDocumentService _treeService() => FakeDocumentService(
+FakeDocumentService _treeService({bool withNestedFiles = false, bool withRootFile = false}) =>
+    FakeDocumentService(
       documents: [
         _doc('knn', 'KNN notes', tags: const ['study/lecture', 'study/mit/ml']),
         _doc('qsort', 'Qsort impl', tags: const ['study/seminar', 'study/mit/cprog']),
         _doc('notes', 'Ideas', tags: const ['idea']),
         _doc('memo', 'TODOs', tags: const ['todo']),
+        if (withNestedFiles)
+          _doc('mit-notes', 'MIT notes', tags: const ['study/mit']),
+        if (withRootFile)
+          _doc('study-doc', 'Study doc', tags: const ['study']),
       ],
       tags: const [
         'study/lecture',
@@ -315,6 +320,50 @@ void main() {
           find.byKey(const ValueKey('tag-node-study/lecture')),
           findsNothing,
         );
+      },
+    );
+
+    testWidgets(
+      'files: root directory defers below sections, nested files stay in place',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(DocumentsScreen(
+            // study has its own file (study-doc); mit has one too (mit-notes).
+            documentService: _treeService(withNestedFiles: true, withRootFile: true),
+            onOpenDocument: (_) {},
+          )),
+        );
+        await tester.pumpAndSettle();
+        await _toggleToTags(tester);
+
+        await tester.tap(find.byKey(const ValueKey('tag-node-study')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('tag-section-study/mit')));
+        await tester.pumpAndSettle();
+
+        // Nested directory file: right below mit's own section (cprog, ml),
+        // BEFORE study's remaining subtag section (lecture).
+        final mitNotes = tester.getTopLeft(
+          find.byKey(const ValueKey('tag-doc-mit-notes')),
+        );
+        final ml = tester.getTopLeft(
+          find.byKey(const ValueKey('tag-section-study/mit/ml')),
+        );
+        final lecture = tester.getTopLeft(
+          find.byKey(const ValueKey('tag-section-study/lecture')),
+        );
+        expect(ml.dy, lessThan(mitNotes.dy));
+        expect(mitNotes.dy, lessThan(lecture.dy));
+
+        // Root directory file: below ALL subtag sections.
+        final seminar = tester.getTopLeft(
+          find.byKey(const ValueKey('tag-section-study/seminar')),
+        );
+        final studyDoc = tester.getTopLeft(
+          find.byKey(const ValueKey('tag-doc-study-doc')),
+        );
+        expect(seminar.dy, lessThan(studyDoc.dy));
+        expect(studyDoc.dy, greaterThan(mitNotes.dy));
       },
     );
 

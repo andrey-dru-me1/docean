@@ -111,22 +111,24 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   ) {
     rows.add(_buildTagRow(path, depth, tagsByDoc));
     if (!_expandedTagPaths.contains(path)) return;
-    _appendSubtree(rows, path, depth + 1, tagsByDoc);
+    // The ROOT expanded tag's own files move below every subtag section;
+    // files of nested expanded directories stay right below their own
+    // section (deferDocs: false on the recursion).
+    final deferredDocs = <Widget>[];
+    _appendSubtree(
+      rows, path, depth + 1, tagsByDoc,
+      deferredDocs: deferredDocs,
+    );
+    rows.addAll(deferredDocs);
   }
 
-  /// Renders the subtag rows of the EXPANDED node [path] at [depth].
-  ///
-  /// Expanded sub-tags keep their navigational row and recurse one level
-  /// deeper; after all expanded child sections, [path]'s OWN subtag section
-  /// (its remaining sub-tags) lands one level deeper than the plain rows
-  /// whenever a child section unwound. Directly-assigned documents follow
-  /// right after the node's own section.
   void _appendSubtree(
     List<Widget> rows,
     String path,
     int depth,
-    TagsByDoc tagsByDoc,
-  ) {
+    TagsByDoc tagsByDoc, {
+    List<Widget>? deferredDocs,
+  }) {
     final subs = directSubTags(path, tagsByDoc);
     var anyChildExpanded = false;
     for (final sub in subs) {
@@ -147,9 +149,12 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     for (final id in directlyAssignedDocIds(path, tagsByDoc)) {
       final doc = _byId[id];
       if (doc != null) {
-        rows.add(
-          _buildDocumentRow(doc, depth: ownDepth, ownerPath: path),
-        );
+        final row = _buildDocumentRow(doc, depth: ownDepth, ownerPath: path);
+        if (deferredDocs != null) {
+          deferredDocs.add(row);
+        } else {
+          rows.add(row);
+        }
       }
     }
   }
