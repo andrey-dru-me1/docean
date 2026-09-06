@@ -153,18 +153,15 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     }
   }
 
-  /// A sub-tag row inside a section: colorful full-path text (the owning
-  /// parent is already shown by the gutter's rotated pill and the chevron is
-  /// the collapse affordance), no count badge. Tapping toggles expansion
-  /// like any other row.
+  /// A sub-tag row inside a section: colorful full-path text with the
+  /// collapse chevron on EVERY row (leaves too — expanding a leaf reveals
+  /// its directly-assigned documents), no count badge. Tapping toggles
+  /// expansion like any other row.
   Widget _buildSectionRow({
     required String path,
     required int depth,
     required TagsByDoc tagsByDoc,
   }) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDir = isDirtag(path, _allTagPaths(tagsByDoc));
-
     return GestureDetector(
       key: ValueKey('tag-section-$path'),
       onTap: () => _toggleExpanded(path),
@@ -180,13 +177,11 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
               AnimatedRotation(
                 turns: _expandedTagPaths.contains(path) ? 0.25 : 0,
                 duration: const Duration(milliseconds: 150),
-                child: isDir
-                    ? Icon(
-                        Icons.expand_more,
-                        size: 18,
-                        color: scheme.onSurfaceVariant,
-                      )
-                    : const SizedBox(width: 18),
+                child: Icon(
+                  Icons.expand_more,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(width: 4),
               Expanded(child: _buildColorfulPath(path)),
