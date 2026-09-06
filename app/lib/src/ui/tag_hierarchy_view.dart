@@ -143,9 +143,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     for (final sub in subs) {
       final child = '$path/$sub';
       if (_expandedTagPaths.contains(child)) continue;
-      rows.add(
-        _buildSectionRow(child, owner: path, depth: ownDepth, tagsByDoc: tagsByDoc),
-      );
+      rows.add(_buildSectionRow(path: child, depth: ownDepth, tagsByDoc: tagsByDoc));
     }
     for (final id in directlyAssignedDocIds(path, tagsByDoc)) {
       final doc = _byId[id];
@@ -155,13 +153,12 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     }
   }
 
-  /// A labeled sub-tag row inside a section: `(owner) > full/path` as
-  /// colorful text, chevron affordance when the tag is a dirtag, no count
-  /// badge (the badge lives on navigational dirtag rows). Tapping toggles
-  /// expansion like any other row.
-  Widget _buildSectionRow(
-    String path, {
-    required String owner,
+  /// A sub-tag row inside a section: colorful full-path text (the owning
+  /// parent is already shown by the gutter's rotated pill and the chevron is
+  /// the collapse affordance), no count badge. Tapping toggles expansion
+  /// like any other row.
+  Widget _buildSectionRow({
+    required String path,
     required int depth,
     required TagsByDoc tagsByDoc,
   }) {
@@ -192,26 +189,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
                     : const SizedBox(width: 18),
               ),
               const SizedBox(width: 4),
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    style: const TextStyle(height: 1),
-                    children: [
-                      TextSpan(
-                        text: '(${lastSegmentOf(owner)}) > ',
-                        style: TextStyle(
-                          color: scheme.outline,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      ..._pathSpans(path),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              Expanded(child: _buildColorfulPath(path)),
             ],
           ),
         ),

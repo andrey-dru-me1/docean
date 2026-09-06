@@ -282,7 +282,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(const ValueKey('tag-section-study/mit/ml')),
-            matching: find.textContaining('(mit) > study / mit / ml'),
+            matching: find.textContaining('study / mit / ml'),
           ),
           findsOneWidget,
         );
@@ -300,7 +300,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(const ValueKey('tag-section-study/lecture')),
-            matching: find.textContaining('(study) > study / lecture'),
+            matching: find.textContaining('study / lecture'),
           ),
           findsOneWidget,
         );
