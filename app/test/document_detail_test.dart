@@ -12,7 +12,7 @@ import 'package:docer/src/rust/domain.dart'
     show SuggestionKind, SuggestionSource, SuggestionStatus;
 import 'package:docer/src/ui/document_view.dart'
     show DocumentDetailView, DocumentSummary;
-import 'package:docer/src/ui/widgets.dart' show TagChip;
+import 'package:docer/src/ui/widgets.dart' show TagChip, TagDeleteIcon;
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
 
@@ -519,7 +519,13 @@ void main() {
         );
         await tester.pumpAndSettle();
         final opacity = tester.widget<AnimatedOpacity>(
-          find.descendant(of: taxChip, matching: find.byType(AnimatedOpacity)),
+          find.descendant(
+            of: find.descendant(
+              of: taxChip,
+              matching: find.byType(TagDeleteIcon),
+            ),
+            matching: find.byType(AnimatedOpacity),
+          ),
         );
         expect(opacity.opacity, 0);
       },

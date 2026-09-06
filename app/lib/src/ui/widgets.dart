@@ -141,6 +141,7 @@ class TagChip extends StatefulWidget {
     this.onSelected,
     this.onPressed,
     this.onDeleted,
+    this.onEdit,
   });
 
   final String label;
@@ -164,6 +165,11 @@ class TagChip extends StatefulWidget {
   /// hovering (mouse) or after a touch interaction.
   final VoidCallback? onDeleted;
 
+  /// When non-null a hover/touch edit affordance is overlaid flush against
+  /// the pill's **left edge** — the mirror of [onDeleted]. It appears only
+  /// while hovering (mouse) or after a touch interaction.
+  final VoidCallback? onEdit;
+
   @override
   State<TagChip> createState() => _TagChipState();
 }
@@ -172,7 +178,8 @@ class _TagChipState extends State<TagChip> {
   bool get _interactive =>
       widget.onSelected != null ||
       widget.onPressed != null ||
-      widget.onDeleted != null;
+      widget.onDeleted != null ||
+      widget.onEdit != null;
 
   void _handleTap() {
     if (widget.onSelected != null) {
@@ -238,24 +245,36 @@ class _TagChipState extends State<TagChip> {
       child: pill,
     );
 
-    // Delete-able chip: overlay the hover-reveal × flush against the pill's
-    // right edge. Its own MouseRegion tracks the × independently for the
-    // reveal, so the pill itself stays constant on hover.
-    if (widget.onDeleted != null) {
+    // Delete-able and/or edit-able chip: overlay hover-reveal affordances.
+    // Edit goes on the LEFT edge; delete goes on the RIGHT edge — both
+    // reserve no layout space (they sit in a Stack on top of the pill).
+    if (widget.onDeleted != null || widget.onEdit != null) {
       return Stack(
         clipBehavior: Clip.none,
         children: [
           tap,
-          Positioned(
-            top: 0,
-            right: 0,
-            bottom: 0,
-            width: _kDeleteAffordanceWidth,
-            child: TagDeleteIcon(
-              background: background,
-              onDeleted: widget.onDeleted!,
+          if (widget.onEdit != null)
+            Positioned(
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: _kEditAffordanceWidth,
+              child: _TagEditAffordance(
+                background: background,
+                onEdit: widget.onEdit!,
+              ),
             ),
-          ),
+          if (widget.onDeleted != null)
+            Positioned(
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: _kDeleteAffordanceWidth,
+              child: TagDeleteIcon(
+                background: background,
+                onDeleted: widget.onDeleted!,
+              ),
+            ),
         ],
       );
     }
@@ -273,6 +292,9 @@ class _TagChipState extends State<TagChip> {
 /// The overlay is a thin strip (no reserved layout space, no rounded
 /// container): the cross inside it is a bare white × over the gradient scrim.
 const double _kDeleteAffordanceWidth = 22;
+
+/// Width of the edit affordance lane laid over a chip's left edge.
+const double _kEditAffordanceWidth = 22;
 
 /// The delete (×) affordance for a tag chip that supports removal.
 ///
@@ -369,6 +391,82 @@ class _TagDeleteIconState extends State<TagDeleteIcon> {
                     padding: const EdgeInsets.only(right: 6),
                     child: Icon(
                       Icons.clear,
+                      size: 12,
+                      color: Colors.white,
+                      shadows: const [
+                        Shadow(color: Colors.black54, blurRadius: 4),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The hover/touch edit (pencil) affordance for a tag chip that supports
+/// renaming.  Positioned flush against the **left** edge of the pill inside
+/// a [Stack] — mirrors [TagDeleteIcon].
+class _TagEditAffordance extends StatefulWidget {
+  const _TagEditAffordance({
+    required this.background,
+    required this.onEdit,
+  });
+
+  final Color background;
+  final VoidCallback onEdit;
+
+  @override
+  State<_TagEditAffordance> createState() => _TagEditAffordanceState();
+}
+
+class _TagEditAffordanceState extends State<_TagEditAffordance> {
+  bool _hovering = false;
+  bool _touchInteraction = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = _hovering || _touchInteraction;
+    return Listener(
+      onPointerDown: (event) {
+        if (event.kind != PointerDeviceKind.mouse) {
+          setState(() => _touchInteraction = true);
+        }
+      },
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        cursor: visible ? SystemMouseCursors.click : MouseCursor.defer,
+        child: GestureDetector(
+          onTap: widget.onEdit,
+          behavior: HitTestBehavior.opaque,
+          child: IgnorePointer(
+            ignoring: !visible,
+            child: AnimatedOpacity(
+              opacity: visible ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOut,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerRight,
+                    end: Alignment.centerLeft,
+                    colors: [
+                      widget.background,
+                      widget.background.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Icon(
+                      Icons.edit_outlined,
                       size: 12,
                       color: Colors.white,
                       shadows: const [
