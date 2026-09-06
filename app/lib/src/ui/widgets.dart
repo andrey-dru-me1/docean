@@ -199,10 +199,6 @@ class _TagChipState extends State<TagChip> {
 
     // Border and overlay background color are based on the FIRST segment's color.
     final firstColor = isSplit ? tagColorFor(widget.label.split('/').first) : color;
-    final borderColor = widget.selected
-        ? Color.lerp(firstColor, Colors.white, 0.42)!
-        : Color.lerp(firstColor, Colors.white, 0.12)!;
-
     // Overlay background used by edit/delete grims: lightened when selected.
     final background = widget.selected
         ? Color.lerp(firstColor, Colors.white, 0.38)!
@@ -234,41 +230,54 @@ class _TagChipState extends State<TagChip> {
         if (widget.selected) {
           blockColor = Color.lerp(blockColor, Colors.white, 0.38)!;
         }
+        // No `alignment` on the Container: with an alignment set, a bounded
+        // Container EXPANDS to its constraints and the pill would stretch to
+        // the full available width. Without it the block hugs its text.
+        // Flexible keeps the shrink-to-fit (ellipsis) behavior in genuinely
+        // narrow contexts. No `Flexible` wrapper is added here — it is
+        // applied when the row is assembled below.
         blockChildren.add(
-          Flexible(
-            child: Container(
-              color: blockColor,
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              child: Text(
-                segments[i],
-                style: labelStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+          Container(
+            color: blockColor,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            child: Text(
+              segments[i],
+              style: labelStyle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         );
       }
 
-      pill = AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: borderColor),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: IntrinsicHeight(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: blockChildren,
+      pill = Align(
+        // Align converts tight parent constraints into loose ones, so the
+        // pill hugs its content even inside stretch-happy parents; the
+        // Flexible segments still shrink (with ellipsis) when the available
+        // width is genuinely too small.
+        alignment: Alignment.centerLeft,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          // No border: a border would draw over the segment dividers and
+          // break the seamless split look.
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: IntrinsicHeight(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final b in blockChildren) Flexible(child: b),
+              ],
+            ),
           ),
         ),
       );
     } else {
-      // Single-segment label: exact same look as before.
+      // Single-segment label: exact same look as before, minus the border.
       pill = AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
@@ -276,7 +285,6 @@ class _TagChipState extends State<TagChip> {
         decoration: BoxDecoration(
           color: background,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: borderColor),
         ),
         child: Text(
           widget.label,

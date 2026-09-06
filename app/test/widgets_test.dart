@@ -75,13 +75,10 @@ void main() {
         final color = tagColorFor('finance');
         final pill = _pillDecoration(tester);
         expect(pill.borderRadius, BorderRadius.circular(999));
-        // Fully opaque: the resting pill is the tag's exact color and the
-        // ring is an opaque lightened shade — no translucency anywhere.
+        // Fully opaque: the resting pill is the tag's exact color — and no
+        // border (borders break the divided-pill look on hierarchical tags).
         expect(pill.color, color);
-        expect(
-          (pill.border! as Border).top.color,
-          Color.lerp(color, Colors.white, 0.12)!,
-        );
+        expect(pill.border, isNull);
 
         final chip = tester.widget<TagChip>(find.byType(TagChip));
         expect(chip.selected, isFalse);
@@ -100,14 +97,11 @@ void main() {
 
       final color = tagColorFor('finance');
       final pill = _pillDecoration(tester);
-      // Selection lightens the background and ring toward white (both fully
-      // opaque — never translucent).
+      // Selection lightens the background toward white (fully opaque — never
+      // translucent); no border.
       expect(pill.color, Color.lerp(color, Colors.white, 0.38)!);
       expect(pill.color!.a, 1.0);
-      expect(
-        (pill.border! as Border).top.color,
-        Color.lerp(color, Colors.white, 0.42)!,
-      );
+      expect(pill.border, isNull);
     });
 
     testWidgets(
