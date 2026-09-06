@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart'
     show DocumentService, SuggestionEntry;
+import '../features/tag_hierarchy.dart'
+    show suggestTagCompletions, validateTagPath, renamedTagsByDoc;
 import '../rust/domain.dart' show SuggestionKind;
 import 'document_preview_view.dart' show DocumentPreviewPanel;
 import 'widgets.dart' show TagChip;
@@ -571,29 +573,94 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     _applyTagsOptimistically(_doc.tags.where((e) => e != tag).toList());
   }
 
+  /// Open the rename-tag dialog for [oldPath] and, on confirmation, rename it
+  /// across **every** document that currently carries the exact old tag.
+  Future<void> _openRenameTagDialog(String oldPath) async {
+    var count = 0;
+    try {
+      final docs = await widget.documentService.listDocuments();
+      count = docs.where((d) => d.tags.contains(oldPath)).length;
+    } catch (_) {
+      // Best-effort: show 0 rather than blocking the dialog on failure.
+    }
+    if (!mounted) return;
+
+    final newPath = await showDialog<String>(
+      context: context,
+      builder: (_) => _RenameTagDialog(initialTag: oldPath, docCount: count),
+    );
+    if (newPath == null || !mounted) return;
+    final trimmed = newPath.trim();
+    if (trimmed.isEmpty || trimmed == oldPath) return;
+
+    try {
+      final docs = await widget.documentService.listDocuments();
+      final tagsByDoc = <String, Set<String>>{
+        for (final d in docs) d.id: d.tags.toSet(),
+      };
+      final changed = renamedTagsByDoc(tagsByDoc, oldPath, trimmed);
+      for (final entry in changed.entries) {
+        await widget.documentService.setTags(entry.key, entry.value.toList());
+      }
+
+      // Refresh the current document and the browse grid.
+      await _load();
+      widget.onMetaChanged?.call();
+
+      // Best-effort: complete the suggestion poll so the review card
+      // disappears after the rename (mirrors _persistTags post-persist).
+      try {
+        await widget.documentService.completeSuggestionPoll(
+          widget.document.id,
+          SuggestionKind.tags,
+        );
+        await _loadSuggestions();
+      } catch (_) {
+        // Poll failure must not block the rename.
+      }
+
+      if (!mounted) return;
+      final message = changed.isEmpty
+          ? 'No documents use this tag'
+          : 'Tag renamed in ${changed.length} document${changed.length == 1 ? '' : 's'}';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not rename tag: $e')),
+      );
+    }
+  }
+
   /// Tag names the add-tag composer can one-tap: the last suggestion run plus
   /// every tag already known to the repository, filtered to ones not yet on
-  /// this document.
-  Future<List<String>> _composerTagSuggestions() async {
+  /// this document.  Returns the filtered one-tap chips alongside the full
+  /// known-tag universe (unfiltered) used for fuzzy completion matching.
+  Future<({List<String> suggestions, List<String> allTags})>
+  _composerTagSuggestions() async {
     final known = <String>{
       ..._lastSuggestedTags,
       ...await widget.documentService.listTags(),
     };
+    final allTags = known.toList();
     final applied = _doc.tags.toSet();
-    return known.where((t) => !applied.contains(t)).toList();
+    final suggestions = known.where((t) => !applied.contains(t)).toList();
+    return (suggestions: suggestions, allTags: allTags);
   }
 
   /// Opens the compact add-tag composer: a text field to name a brand-new tag
   /// and a Wrap of "existing but not yet applied" tags (from the last
   /// [DocumentService.suggestTags] run, or [DocumentService.listTags]) that can
-  /// be applied instantly.
+  /// be applied instantly.  Live fuzzy completions are offered as the user
+  /// types.
   Future<void> _openAddTagComposer() async {
-    final suggestions = await _composerTagSuggestions();
+    final result = await _composerTagSuggestions();
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (_) => _AddTagComposerDialog(
-        suggestions: suggestions,
+        suggestions: result.suggestions,
+        allTags: result.allTags,
         onSubmit: (tag) => _addTag(tag),
       ),
     );
@@ -942,6 +1009,7 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
             key: ValueKey('tag-$tag'),
             label: tag,
             onDeleted: () => _removeTag(tag),
+            onEdit: () => _openRenameTagDialog(tag),
           ),
         // A plain "+" that opens the tag composer. A bare icon, no circle,
         // centered inside a box sized to the TagChip pills' height
@@ -1021,7 +1089,8 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
 
 /// The compact add-tag composer dialog: a text field to name a brand-new tag
 /// plus a Wrap of "existing but not yet applied" tags ([suggestions]) that can
-/// be applied with a single tap.
+/// be applied with a single tap.  A live fuzzy-completion section appears
+/// above the static suggestions as the user types.
 ///
 /// This is a self-contained [StatefulWidget] so the [TextEditingController]
 /// lives exactly as long as the dialog (created in [initState], disposed in
@@ -1030,12 +1099,17 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
 class _AddTagComposerDialog extends StatefulWidget {
   const _AddTagComposerDialog({
     required this.suggestions,
+    required this.allTags,
     required this.onSubmit,
   });
 
   /// Tag names (from suggestTags or the repository) not yet applied to the
   /// document, offered as one-tap chips.
   final List<String> suggestions;
+
+  /// Every tag known to the repository (unfiltered).  Used for fuzzy
+  /// completions when the user types in the text field.
+  final List<String> allTags;
 
   /// Called with a trimmed tag name when the user confirms (Add button, Enter,
   /// or tapping a suggestion chip).
@@ -1048,10 +1122,23 @@ class _AddTagComposerDialog extends StatefulWidget {
 class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
   late final TextEditingController _controller = TextEditingController();
 
+  /// The fuzzy completions for the current query (empty when the field is
+  /// blank).
+  List<String> _liveSuggestions = const [];
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onChanged(String value) {
+    final q = value.trim();
+    setState(() {
+      _liveSuggestions = q.isEmpty
+          ? const []
+          : suggestTagCompletions(q, widget.allTags);
+    });
   }
 
   void _submit(String raw) {
@@ -1075,6 +1162,7 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
                 child: SizedBox(
                   height: 40,
                   child: TextField(
+                    key: const ValueKey('add-tag-field'),
                     controller: _controller,
                     autofocus: true,
                     decoration: const InputDecoration(
@@ -1087,6 +1175,7 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
                         vertical: 8,
                       ),
                     ),
+                    onChanged: _onChanged,
                     onSubmitted: _submit,
                   ),
                 ),
@@ -1100,6 +1189,30 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
               ),
             ],
           ),
+          if (_liveSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Suggestions',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              key: const ValueKey('tag-suggestions'),
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final tag in _liveSuggestions)
+                  TagChip(
+                    key: ValueKey('tag-suggestion-$tag'),
+                    label: tag,
+                    onPressed: () {
+                      _controller.text = tag;
+                      _onChanged(tag);
+                    },
+                  ),
+              ],
+            ),
+          ],
           if (widget.suggestions.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
@@ -1126,6 +1239,88 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+/// A dialog that lets the user rename an existing tag across every document
+/// that carries the exact old tag path.
+class _RenameTagDialog extends StatefulWidget {
+  const _RenameTagDialog({
+    required this.initialTag,
+    required this.docCount,
+  });
+
+  /// The current tag path the user wants to rename.
+  final String initialTag;
+
+  /// How many documents currently use [initialTag] (best-effort count).
+  final int docCount;
+
+  @override
+  State<_RenameTagDialog> createState() => _RenameTagDialogState();
+}
+
+class _RenameTagDialogState extends State<_RenameTagDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialTag);
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onSave() {
+    final text = _controller.text.trim();
+    final err = validateTagPath(text);
+    if (err != null) {
+      setState(() => _error = err);
+      return;
+    }
+    Navigator.of(context).pop(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const ValueKey('rename-tag-dialog'),
+      title: const Text('Rename tag'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            key: const ValueKey('rename-tag-field'),
+            controller: _controller,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: 'Tag name',
+              prefixIcon: const Icon(Icons.tag, size: 18),
+              border: const OutlineInputBorder(),
+              errorText: _error,
+            ),
+            onSubmitted: (_) => _onSave(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Used by ${widget.docCount} document${widget.docCount == 1 ? '' : 's'}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey('rename-tag-save'),
+          onPressed: _onSave,
+          child: const Text('Save'),
         ),
       ],
     );

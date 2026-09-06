@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart'
     show BulkOrganizer, DocumentService, NoopBulkOrganizer;
+import '../features/tag_hierarchy.dart' show suggestTagCompletions;
 import 'document_preview_view.dart' show DocumentTilePreview;
 import 'document_view.dart' show DocumentSummary;
 import 'hierarchy_view.dart'
@@ -993,10 +994,22 @@ class _TagNameDialog extends StatefulWidget {
 class _TagNameDialogState extends State<_TagNameDialog> {
   late final TextEditingController _controller = TextEditingController();
 
+  /// Fuzzy completions for the current query (empty when the field is blank).
+  List<String> _liveSuggestions = const [];
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onChanged(String value) {
+    final q = value.trim();
+    setState(() {
+      _liveSuggestions = q.isEmpty
+          ? const []
+          : suggestTagCompletions(q, widget.tags ?? const []);
+    });
   }
 
   void _submit(String raw) {
@@ -1017,6 +1030,7 @@ class _TagNameDialogState extends State<_TagNameDialog> {
             children: [
               Expanded(
                 child: TextField(
+                  key: const ValueKey('tag-name-field'),
                   controller: _controller,
                   autofocus: true,
                   decoration: const InputDecoration(
@@ -1024,11 +1038,36 @@ class _TagNameDialogState extends State<_TagNameDialog> {
                     prefixIcon: Icon(Icons.tag, size: 18),
                     border: OutlineInputBorder(),
                   ),
+                  onChanged: _onChanged,
                   onSubmitted: _submit,
                 ),
               ),
             ],
           ),
+          if (_liveSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Suggestions',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              key: const ValueKey('tag-suggestions-bulk'),
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final tag in _liveSuggestions)
+                  TagChip(
+                    key: ValueKey('tag-suggestion-$tag'),
+                    label: tag,
+                    onPressed: () {
+                      _controller.text = tag;
+                      _onChanged(tag);
+                    },
+                  ),
+              ],
+            ),
+          ],
           if (widget.tags != null && widget.tags!.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
