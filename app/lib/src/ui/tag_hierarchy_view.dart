@@ -151,7 +151,7 @@ void _appendNode(
     required Set<String> rendered,
     required List<Widget> deferredDocs,
   }) {
-    for (final t in childTags(components.toSet(), tagsByDoc)) {
+    for (final t in childTags(components, tagsByDoc)) {
       final childComponents = [...components, t];
       final childKey = childComponents.join(_kPathSeparator);
       if (!rendered.add(childKey)) continue;
@@ -441,7 +441,7 @@ void _appendNode(
     final keys = <String>{};
     void walk(List<String> components) {
       if (!keys.add(components.join(_kPathSeparator))) return;
-      for (final t in childTags(components.toSet(), tagsByDoc)) {
+      for (final t in childTags(components, tagsByDoc)) {
         walk([...components, t]);
       }
     }

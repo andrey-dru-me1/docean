@@ -436,6 +436,60 @@ void main() {
     });
   });
 
+  group('childTags (parent grouping)', () {
+    // Walk p1 -> p2 -> p2/p2s1: children group by their parent — children of
+    // the LAST path tag (p2/p2s1) first, then children of earlier path tags
+    // (p2, then p1), top-level tags last.
+    test('groups by parent: last path tag first, top-level last', () {
+      final tagsByDoc = <String, Set<String>>{
+        'doc': {
+          'p1', 'p1/p1s2',                     // chain 1
+          'p2', 'p2/p2s1',                     // chain 2
+          'p2/p2s1/s3',                        // child of the deepest walked tag
+          'p1/p1s2/s4',                        // child of p1/p1s2
+        },
+      };
+      // Walk p1 -> p2 -> p2/p2s1 (3 components).
+      expect(
+        childTags(['p1', 'p2', 'p2/p2s1'], tagsByDoc),
+        // group 0 (parent p2/p2s1): s3; group 2 (parent p1): p1s2. The tag
+        // p1/p1s2/s4 is chain-blocked here — its parent p1/p1s2 has not been
+        // walked (reach it via p1 -> p1/p1s2 -> s4).
+        ['p2/p2s1/s3', 'p1/p1s2'],
+      );
+    });
+
+    test('top-level children come last', () {
+      final tagsByDoc = <String, Set<String>>{
+        'doc': {'p1', 'p1/p1s2', 'p2', 'p2/p2s1'},
+      };
+      // Walk p1 -> p2: group 0 (parent p2): p2s1; group 1 (parent p1): p1s2.
+      expect(
+        childTags(['p1', 'p2'], tagsByDoc),
+        ['p2/p2s1', 'p1/p1s2'],
+      );
+      // Walk p1 only: group 0 (parent p1): p1s2; top-level group: p2 last.
+      expect(
+        childTags(['p1'], tagsByDoc),
+        ['p1/p1s2', 'p2'],
+      );
+    });
+
+    test('count still breaks ties inside a group', () {
+      final tagsByDoc = <String, Set<String>>{
+        'a': {'study', 'study/mit', 'study/mit/ml', 'study/lecture'},
+        'b': {'study', 'study/mit', 'study/mit/cprog'},
+      };
+      // Walk study -> study/mit: group 0 (parent study/mit), count desc:
+      // ml and cprog both 1 -> alpha: cprog, ml; group 1 (parent study):
+      // lecture.
+      expect(
+        childTags(['study', 'study/mit'], tagsByDoc),
+        ['study/mit/cprog', 'study/mit/ml', 'study/lecture'],
+      );
+    });
+  });
+
   group('renamedTagsByDoc', () {
     test('spec example: rename seminar to mit/seminar', () {
       final tagsByDoc = <String, Set<String>>{

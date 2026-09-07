@@ -215,7 +215,7 @@ void main() {
     );
 
     testWidgets(
-      'expanding mit keeps its siblings (cprog, lecture, ml, seminar all visible)',
+      'expanding mit keeps its siblings, grouped by parent (cprog, ml, lecture, seminar)',
       (tester) async {
         await tester.pumpWidget(
           _wrap(DocumentsScreen(
@@ -233,17 +233,33 @@ void main() {
 
         // All four children of the mit walk are visible. Children are FULL
         // tag names (childTags returns tags, not bare segments).
-        for (final t in [
-          'study/mit/cprog',
-          'study/lecture',
-          'study/mit/ml',
-          'study/seminar',
-        ]) {
-          expect(
-            find.byKey(ValueKey(nodeKey(['study', 'study/mit', t]))),
-            findsOneWidget,
-          );
+        final cprog = find.byKey(
+          ValueKey(nodeKey(['study', 'study/mit', 'study/mit/cprog'])),
+        );
+        final ml = find.byKey(
+          ValueKey(nodeKey(['study', 'study/mit', 'study/mit/ml'])),
+        );
+        final lecture = find.byKey(
+          ValueKey(nodeKey(['study', 'study/lecture'])),
+        );
+        final seminar = find.byKey(
+          ValueKey(nodeKey(['study', 'study/seminar'])),
+        );
+        for (final f in [cprog, ml, lecture, seminar]) {
+          expect(f, findsOneWidget);
         }
+        // Grouped by parent: children of the LAST path tag (mit) first
+        // (cprog, ml — alpha within the group), then children of earlier
+        // path tags (study): lecture, seminar.
+        expect(
+          tester.getTopLeft(cprog).dy, lessThan(tester.getTopLeft(ml).dy),
+        );
+        expect(
+          tester.getTopLeft(ml).dy, lessThan(tester.getTopLeft(lecture).dy),
+        );
+        expect(
+          tester.getTopLeft(lecture).dy, lessThan(tester.getTopLeft(seminar).dy),
+        );
         // mit's children sit deeper than mit itself (chevron x grows).
         final mitChevron = tester.getTopLeft(
           find.descendant(

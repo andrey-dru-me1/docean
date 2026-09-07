@@ -304,21 +304,38 @@ bool docAtPath(Set<String> docTags, Set<String> components) =>
 /// becomes listable as soon as `p2` is in the path. Children are NOT
 /// swallowed: both `p2` and `p2/p2s1` may appear as children of `p1` when a
 /// document carries both — a tag may be displayed on each depth level.
-/// Sorted by remaining-document count desc, then last segment.
-List<String> childTags(Set<String> components, TagsByDoc tagsByDoc) {
+///
+/// [components] is the ORDERED walk (deepest last); the result is grouped by
+/// each tag's parent: children of the LAST path tag first, then children of
+/// the earlier path tags (deeper first), and top-level tags (no parent) last.
+/// Within a group: remaining-document count desc, then last segment.
+List<String> childTags(List<String> components, TagsByDoc tagsByDoc) {
+  final compSet = components.toSet();
   final seen = <String>{};
   final result = <String>[];
   for (final entry in tagsByDoc.entries) {
-    if (!entry.value.containsAll(components)) continue;
+    if (!entry.value.containsAll(compSet)) continue;
     for (final t in entry.value) {
-      if (components.contains(t)) continue;
-      if (!implicitAncestors(t).every(components.contains)) continue;
+      if (compSet.contains(t)) continue;
+      if (!implicitAncestors(t).every(compSet.contains)) continue;
       if (seen.add(t)) result.add(t);
     }
   }
   int remainingCount(String t) =>
-      docsContaining({...components, t}, tagsByDoc).length;
+      docsContaining({...compSet, t}, tagsByDoc).length;
+
+  // Group index by the tag's parent: 0 = parent is the LAST path tag, 1 =
+  // parent is the second-to-last, ...; top-level tags (no parent) sort last.
+  int groupOf(String t) {
+    final parent = parentOf(t);
+    if (parent.isEmpty) return components.length;
+    // The no-skip rule guarantees the parent is on the walked path.
+    return components.length - 1 - components.lastIndexOf(parent);
+  }
+
   result.sort((a, b) {
+    final byGroup = groupOf(a).compareTo(groupOf(b));
+    if (byGroup != 0) return byGroup;
     final byCount = remainingCount(b).compareTo(remainingCount(a));
     return byCount != 0 ? byCount : lastSegmentOf(a).compareTo(lastSegmentOf(b));
   });
