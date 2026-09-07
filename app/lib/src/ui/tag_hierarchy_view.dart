@@ -49,7 +49,7 @@ class TagHierarchyView extends StatefulWidget {
 const double _kTagRowHeight = 28;
 
 /// Width of one gutter column (one ancestor level).
-const double _kGutterColumnWidth = 16;
+const double _kGutterColumnWidth = 30;
 
 class _TagHierarchyViewState extends State<TagHierarchyView> {
   /// Expanded tag paths, keyed by FULL path so sub-tags stay expanded across
@@ -130,26 +130,17 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     List<Widget>? deferredDocs,
   }) {
     final subs = directSubTags(path, tagsByDoc);
-    var anyChildExpanded = false;
     for (final sub in subs) {
       final child = '$path/$sub';
-      if (!_expandedTagPaths.contains(child)) continue;
-      // Only EXPANDED sub-tags keep their navigational row; everything else
-      // is rendered once, inside this tag's own labeled section below.
-      anyChildExpanded = true;
       rows.add(_buildTagRow(child, depth, tagsByDoc));
-      _appendSubtree(rows, child, depth + 1, tagsByDoc);
-    }
-    final ownDepth = depth + (anyChildExpanded ? 1 : 0);
-    for (final sub in subs) {
-      final child = '$path/$sub';
-      if (_expandedTagPaths.contains(child)) continue;
-      rows.add(_buildSectionRow(path: child, depth: ownDepth, tagsByDoc: tagsByDoc));
+      if (_expandedTagPaths.contains(child)) {
+        _appendSubtree(rows, child, depth + 1, tagsByDoc);
+      }
     }
     for (final id in directlyAssignedDocIds(path, tagsByDoc)) {
       final doc = _byId[id];
       if (doc != null) {
-        final row = _buildDocumentRow(doc, depth: ownDepth, ownerPath: path);
+        final row = _buildDocumentRow(doc, depth: depth, ownerPath: path);
         if (deferredDocs != null) {
           deferredDocs.add(row);
         } else {
@@ -157,45 +148,6 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
         }
       }
     }
-  }
-
-  /// A sub-tag row inside a section: colorful full-path text with the
-  /// collapse chevron on EVERY row (leaves too — expanding a leaf reveals
-  /// its directly-assigned documents), no count badge. Tapping toggles
-  /// expansion like any other row.
-  Widget _buildSectionRow({
-    required String path,
-    required int depth,
-    required TagsByDoc tagsByDoc,
-  }) {
-    return GestureDetector(
-      key: ValueKey('tag-section-$path'),
-      onTap: () => _toggleExpanded(path),
-      behavior: HitTestBehavior.opaque,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: SizedBox(
-          height: _kTagRowHeight,
-          child: Row(
-            children: [
-              _buildGutter(path, depth),
-              SizedBox(width: (depth * 20).toDouble()),
-              AnimatedRotation(
-                turns: _expandedTagPaths.contains(path) ? 0.25 : 0,
-                duration: const Duration(milliseconds: 150),
-                child: Icon(
-                  Icons.expand_more,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Expanded(child: _buildColorfulPath(path)),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildTagRow(String path, int depth, TagsByDoc tagsByDoc) {
@@ -215,8 +167,6 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
             children: [
               // IDE-style ancestor gutter: one 16px column per ancestor level.
               _buildGutter(path, depth),
-              // Content indent after the gutter (depth * 20, as before).
-              SizedBox(width: (depth * 20).toDouble()),
               AnimatedRotation(
                 turns: expanded ? 0.25 : 0,
                 duration: const Duration(milliseconds: 150),
@@ -384,7 +334,6 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
                   color: scheme.onSurfaceVariant,
                 ),
               ),
-              SizedBox(width: (depth * 20).toDouble()),
               Expanded(
                 child: Text(
                   doc.title,
