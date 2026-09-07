@@ -477,7 +477,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(ValueKey(nodeKey(['study', 'study/mit']))),
-            matching: find.textContaining('study / mit'),
+            matching: find.textContaining('mit'),
           ),
           findsOneWidget,
         );

@@ -228,37 +228,22 @@ void _appendNode(
     );
   }
 
-  /// The colorful spans of the path: component i rendered with its LAST
-  /// segment, tinted with that tag's own color (color = [tagColorFor] of the
-  /// full component tag), joined by a muted ` / `.
+  /// The row's appearance: ONLY the last tag of the path, tinted with that
+  /// tag's own color (the walk prefix stays visible through the gutter
+  /// pills/guide lines instead). Appearance only — behavior (keys, toggling,
+  /// ordering) is untouched.
   List<TextSpan> _pathSpans(List<String> components) {
-    final scheme = Theme.of(context).colorScheme;
-    final spans = <TextSpan>[];
-    for (var i = 0; i < components.length; i++) {
-      if (i > 0) {
-        spans.add(
-          TextSpan(
-            text: ' / ',
-            style: TextStyle(
-              color: scheme.outline,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        );
-      }
-      spans.add(
-        TextSpan(
-          text: lastSegmentOf(components[i]),
-          style: TextStyle(
-            color: tagColorFor(components[i]),
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-          ),
+    final last = components.last;
+    return [
+      TextSpan(
+        text: lastSegmentOf(last),
+        style: TextStyle(
+          color: tagColorFor(last),
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
         ),
-      );
-    }
-    return spans;
+      ),
+    ];
   }
 
   /// The row's FULL path rendered as colorful text (see [_pathSpans]).
