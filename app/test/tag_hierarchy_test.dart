@@ -380,6 +380,62 @@ void main() {
     });
   });
 
+  group('derivedSubTags (ancestor-prefix sub-tags)', () {
+    // The spec example: t1/t2/t3 produces the direct children of its own
+    // prefixes — t1/t2's and t1's other branches — minus path components.
+    test('t1/t2/t3 yields the other branches of every prefix, minus components', () {
+      final tagsByDoc = <String, Set<String>>{
+        'a': {
+          't1/t2/t3/s1', 't1/t2/t3/s2',   // direct children of t1/t2/t3
+          't1/t2/s3', 't1/t2/s4',          // children of t1/t2
+          't1/s5', 't1/s6',                // children of t1
+        },
+        'b': {'t1/t2/t3'},                 // path itself
+      };
+      // derivedSubTags excludes the direct sub-tags of the path (they come
+      // from directSubTags) and the path components t2/t3.
+      expect(
+        derivedSubTags('t1/t2/t3', tagsByDoc),
+        unorderedEquals(['t1/t2/s3', 't1/t2/s4', 't1/s5', 't1/s6']),
+      );
+    });
+
+    test('excludes the path components (no recursion)', () {
+      final tagsByDoc = <String, Set<String>>{
+        'a': {'t1/t2/t3', 't1/t2/x', 't1/y', 't1/t2'},
+      };
+      // t2 (child of t1) and t3 (child of t1/t2) are the path components and
+      // must NOT surface as derived subtags.
+      expect(
+        derivedSubTags('t1/t2/t3', tagsByDoc),
+        unorderedEquals(['t1/t2/x', 't1/y']),
+      );
+    });
+
+    test('top-level path has no prefixes', () {
+      expect(derivedSubTags('study', const {}), isEmpty);
+      expect(
+        derivedSubTags('study', {
+          'a': {'study/x'},
+        }),
+        isEmpty,
+      );
+    });
+
+    test('dedupes across prefixes', () {
+      final tagsByDoc = <String, Set<String>>{
+        'a': {'t1/t2/t3', 't1/t2/x', 't1/x'},
+      };
+      // 't1/x' is a child of t1 only — no cross-prefix dup here; but if the
+      // same segment exists under two prefixes with different parents they
+      // are distinct full paths, both kept.
+      expect(
+        derivedSubTags('t1/t2/t3', tagsByDoc),
+        unorderedEquals(['t1/t2/x', 't1/x']),
+      );
+    });
+  });
+
   group('renamedTagsByDoc', () {
     test('spec example: rename seminar to mit/seminar', () {
       final tagsByDoc = <String, Set<String>>{

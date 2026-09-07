@@ -204,6 +204,44 @@ List<String> directSubTags(String path, TagsByDoc tagsByDoc) {
   return [...dirtags, ...leaves];
 }
 
+/// The sub-tags of every **proper ancestor prefix** of [path], returned as
+/// FULL child paths — the other branches of every directory the path travels
+/// through.
+///
+/// For `t1/t2/t3` this yields the direct children of `t1/t2` and of `t1`
+/// (but NOT of `t1/t2/t3` itself — those come from [directSubTags]), e.g.
+/// `t1/t2/s3`, `t1/t2/s4`, `t1/s5`, `t1/s6`. Sub-tags whose last segment is
+/// one of [path]'s own components (`t3`, `t2`) are excluded, so the tree
+/// never re-lists the very tags being navigated — that would recurse forever.
+///
+/// Deduplicated across prefixes; top-level paths (no `/`) yield nothing.
+List<String> derivedSubTags(String path, TagsByDoc tagsByDoc) {
+  final components = path.split('/');
+  if (components.length < 2) return const [];
+  final exclude = <String>{
+    for (var i = 1; i < components.length; i++) components[i],
+  };
+  final prefixes = <String>[];
+  var p = path;
+  while (true) {
+    final slash = p.lastIndexOf('/');
+    if (slash <= 0) break;
+    p = p.substring(0, slash);
+    prefixes.add(p);
+  }
+  final seen = <String>{};
+  final result = <String>[];
+  for (final prefix in prefixes) {
+    for (final seg in directSubTags(prefix, tagsByDoc)) {
+      if (exclude.contains(seg)) continue;
+      if (seen.add('$prefix/$seg')) {
+        result.add('$prefix/$seg');
+      }
+    }
+  }
+  return result;
+}
+
 /// All top-level segments across [tagsByDoc], with the same sort rule as
 /// [directSubTags]: dirtags first (containedCount desc, then name asc), then
 /// leaves (name asc).
@@ -230,6 +268,61 @@ List<String> topLevelTags(TagsByDoc tagsByDoc) {
   });
   leaves.sort();
   return [...dirtags, ...leaves];
+}
+
+/// Docs whose materialized tag set contains every tag of [components].
+///
+/// Paths in the hierarchical tag view are MIXED: a path's components are tag
+/// names that need not form a chain (`p1`, `p2/p2s1`, ...). A document is
+/// "inside" the path when its tag set is a superset of the path's components.
+Set<String> docsContaining(Set<String> components, TagsByDoc tagsByDoc) {
+  final result = <String>{};
+  for (final entry in tagsByDoc.entries) {
+    if (entry.value.containsAll(components)) {
+      result.add(entry.key);
+    }
+  }
+  return result;
+}
+
+/// Whether a document sits DIRECTLY at the path: its materialized tag set is
+/// EXACTLY [components] — all the path's tags and nothing else. (With
+/// materialization the set already includes every ancestor of its own
+/// hierarchical tags, so "all of the tags attached to the document" means
+/// set equality.)
+bool docAtPath(Set<String> docTags, Set<String> components) =>
+    docTags.length == components.length && docTags.containsAll(components);
+
+/// Distinct tags that EXTEND [components]: every tag `t` (not already in
+/// [components]) carried by a document whose tag set contains all of
+/// [components], and whose whole parent chain is ALREADY in [components].
+///
+/// The chain rule forbids level-skipping: with the tag `t1/t2/t3` around,
+/// `t3` is not listed under `t1` (that would expose the path `t1/t3` and
+/// skip `t2`) — it only appears once `t1/t2` is walked. Mixed paths still
+/// work: under `p1`, the child `p2` (top-level) is fine, and `p2/p2s1`
+/// becomes listable as soon as `p2` is in the path. Children are NOT
+/// swallowed: both `p2` and `p2/p2s1` may appear as children of `p1` when a
+/// document carries both — a tag may be displayed on each depth level.
+/// Sorted by remaining-document count desc, then last segment.
+List<String> childTags(Set<String> components, TagsByDoc tagsByDoc) {
+  final seen = <String>{};
+  final result = <String>[];
+  for (final entry in tagsByDoc.entries) {
+    if (!entry.value.containsAll(components)) continue;
+    for (final t in entry.value) {
+      if (components.contains(t)) continue;
+      if (!implicitAncestors(t).every(components.contains)) continue;
+      if (seen.add(t)) result.add(t);
+    }
+  }
+  int remainingCount(String t) =>
+      docsContaining({...components, t}, tagsByDoc).length;
+  result.sort((a, b) {
+    final byCount = remainingCount(b).compareTo(remainingCount(a));
+    return byCount != 0 ? byCount : lastSegmentOf(a).compareTo(lastSegmentOf(b));
+  });
+  return result;
 }
 
 /// Docs directly assigned to [path]: the doc carries the exact tag AND no

@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import '../features/tag_hierarchy.dart'
     show
         TagsByDoc,
-        containedCount,
-        directSubTags,
-        directlyAssignedDocIds,
-        isDirtag,
+        childTags,
+        docAtPath,
+        docsContaining,
         isValidTagPath,
         lastSegmentOf,
         parentOf,
@@ -51,6 +50,11 @@ const double _kTagRowHeight = 28;
 /// Width of one gutter column (one ancestor level).
 const double _kGutterColumnWidth = 30;
 
+/// Joins a path's component tag names into the expansion/row key. A control
+/// character on purpose: validated tag names can never contain one, so the
+/// join is unambiguous even though component names themselves contain `/`.
+const String _kPathSeparator = '\u0000';
+
 class _TagHierarchyViewState extends State<TagHierarchyView> {
   /// Expanded tag paths, keyed by FULL path so sub-tags stay expanded across
   /// parent collapse/expand cycles.
@@ -83,8 +87,12 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
       return const EmptyState(icon: Icons.tag, title: 'No tags yet');
     }
     final rows = <Widget>[];
+    // One rendered-set for the WHOLE tree: the same walk can never be laid
+    // out twice. Paths are ORDER-SENSITIVE component walks — the same tag set
+    // reached via a different order is a different (also valid) walk.
+    final rendered = <String>{};
     for (final top in topLevelTags(tagsByDoc)) {
-      _appendNode(rows, top, 0, tagsByDoc);
+      _appendNode(rows, [top], tagsByDoc, rendered: rendered);
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -101,63 +109,96 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     );
   }
 
-  /// Appends [path]'s node row; when expanded, renders its subtag subtree via
-  /// [_appendSubtree].
-  void _appendNode(
+  /// Appends the node row for [components]; when expanded, renders its
+/// children via [_appendChildren] and defers its own documents below them.
+void _appendNode(
     List<Widget> rows,
-    String path,
-    int depth,
-    TagsByDoc tagsByDoc,
-  ) {
-    rows.add(_buildTagRow(path, depth, tagsByDoc));
-    if (!_expandedTagPaths.contains(path)) return;
+    List<String> components,
+    TagsByDoc tagsByDoc, {
+    required Set<String> rendered,
+  }) {
+    final pathKey = components.join(_kPathSeparator);
+    if (!rendered.add(pathKey)) return;
+    rows.add(_buildTagRow(components, pathKey, tagsByDoc));
+    if (!_expandedTagPaths.contains(pathKey)) return;
     // The ROOT expanded tag's own files move below every subtag section;
     // files of nested expanded directories stay right below their own
-    // section (deferDocs: false on the recursion).
+    // children (nested nodes pass a FRESH deferred list, landing inline).
     final deferredDocs = <Widget>[];
-    _appendSubtree(
-      rows, path, depth + 1, tagsByDoc,
-      deferredDocs: deferredDocs,
+    _appendChildren(
+      rows, components, pathKey, tagsByDoc,
+      rendered: rendered, deferredDocs: deferredDocs,
     );
     rows.addAll(deferredDocs);
   }
 
-  void _appendSubtree(
+  /// The child rows (and directly-assigned documents) of the EXPANDED node
+  /// [components].
+  ///
+  /// Children are the tags that EXTEND the path: every tag carried by a
+  /// document whose tag set contains all the path's components — NOT just
+  /// prefix-tree subtags. Siblings therefore stay visible when one child is
+  /// expanded, the same tag may appear on several depth levels, and mixed
+  /// paths (`p1/p2/p2s1/p1s2`) are walkable. A document is listed under the
+  /// path only when its materialized tag set is EXACTLY the path's component
+  /// set. Nested nodes defer with a fresh list so their files land inline;
+  /// the root's list accumulates below everything.
+  void _appendChildren(
     List<Widget> rows,
-    String path,
-    int depth,
+    List<String> components,
+    String pathKey,
     TagsByDoc tagsByDoc, {
-    List<Widget>? deferredDocs,
+    required Set<String> rendered,
+    required List<Widget> deferredDocs,
   }) {
-    final subs = directSubTags(path, tagsByDoc);
-    for (final sub in subs) {
-      final child = '$path/$sub';
-      rows.add(_buildTagRow(child, depth, tagsByDoc));
-      if (_expandedTagPaths.contains(child)) {
-        _appendSubtree(rows, child, depth + 1, tagsByDoc);
+    for (final t in childTags(components.toSet(), tagsByDoc)) {
+      final childComponents = [...components, t];
+      final childKey = childComponents.join(_kPathSeparator);
+      if (!rendered.add(childKey)) continue;
+      rows.add(_buildTagRow(childComponents, childKey, tagsByDoc));
+      if (_expandedTagPaths.contains(childKey)) {
+        final nestedDeferred = <Widget>[];
+        _appendChildren(
+          rows, childComponents, childKey, tagsByDoc,
+          rendered: rendered, deferredDocs: nestedDeferred,
+        );
+        rows.addAll(nestedDeferred);
       }
     }
-    for (final id in directlyAssignedDocIds(path, tagsByDoc)) {
+    final comps = components.toSet();
+    for (final id in docsContaining(comps, tagsByDoc)) {
+      final docTags = tagsByDoc[id];
       final doc = _byId[id];
-      if (doc != null) {
-        final row = _buildDocumentRow(doc, depth: depth, ownerPath: path);
-        if (deferredDocs != null) {
-          deferredDocs.add(row);
-        } else {
-          rows.add(row);
-        }
+      if (doc == null || docTags == null || !docAtPath(docTags, comps)) {
+        continue;
       }
+      deferredDocs.add(
+        _buildDocumentRow(
+          doc,
+          depth: components.length,
+          ownerComponents: components,
+          pathKey: pathKey,
+        ),
+      );
     }
   }
 
-  Widget _buildTagRow(String path, int depth, TagsByDoc tagsByDoc) {
+  /// A tag row for the path [components] (walk key [pathKey]): colorful
+  /// per-component text, IDE gutter, chevron, and a badge with the number of
+  /// documents reachable through this directory.
+  Widget _buildTagRow(
+    List<String> components,
+    String pathKey,
+    TagsByDoc tagsByDoc,
+  ) {
     final scheme = Theme.of(context).colorScheme;
-    final expanded = _expandedTagPaths.contains(path);
-    final isDir = isDirtag(path, _allTagPaths(tagsByDoc));
+    final expanded = _expandedTagPaths.contains(pathKey);
+    final depth = components.length - 1;
+    final count = docsContaining(components.toSet(), tagsByDoc).length;
 
     return GestureDetector(
-      key: ValueKey('tag-node-$path'),
-      onTap: () => _toggleExpanded(path),
+      key: ValueKey('tag-node-$pathKey'),
+      onTap: () => _toggleExpanded(pathKey),
       behavior: HitTestBehavior.opaque,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -165,8 +206,8 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
           height: _kTagRowHeight,
           child: Row(
             children: [
-              // IDE-style ancestor gutter: one 16px column per ancestor level.
-              _buildGutter(path, depth),
+              _buildGutter(components, depth),
+              SizedBox(width: (depth * 20).toDouble()),
               AnimatedRotation(
                 turns: expanded ? 0.25 : 0,
                 duration: const Duration(milliseconds: 150),
@@ -177,14 +218,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
                 ),
               ),
               const SizedBox(width: 4),
-              Expanded(child: _buildColorfulPath(path)),
-              if (isDir) ...[
-                const SizedBox(width: 8),
-                _CountBadge(
-                  key: ValueKey('tag-count-$path'),
-                  count: containedCount(path, tagsByDoc),
-                ),
-              ],
+              Expanded(child: _buildColorfulPath(components)),
+              const SizedBox(width: 8),
+              _CountBadge(key: ValueKey('tag-count-$pathKey'), count: count),
             ],
           ),
         ),
@@ -192,13 +228,13 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     );
   }
 
-  /// The colorful spans of [path]: segment i tinted with the color of its
-  /// cumulative prefix (`study`, `study/mit`, ...), joined by a muted ` / `.
-  List<TextSpan> _pathSpans(String path) {
+  /// The colorful spans of the path: component i rendered with its LAST
+  /// segment, tinted with that tag's own color (color = [tagColorFor] of the
+  /// full component tag), joined by a muted ` / `.
+  List<TextSpan> _pathSpans(List<String> components) {
     final scheme = Theme.of(context).colorScheme;
-    final segments = path.split('/');
     final spans = <TextSpan>[];
-    for (var i = 0; i < segments.length; i++) {
+    for (var i = 0; i < components.length; i++) {
       if (i > 0) {
         spans.add(
           TextSpan(
@@ -213,9 +249,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
       }
       spans.add(
         TextSpan(
-          text: segments[i],
+          text: lastSegmentOf(components[i]),
           style: TextStyle(
-            color: tagColorFor(segments.sublist(0, i + 1).join('/')),
+            color: tagColorFor(components[i]),
             fontSize: 12.5,
             fontWeight: FontWeight.w600,
           ),
@@ -226,24 +262,26 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   }
 
   /// The row's FULL path rendered as colorful text (see [_pathSpans]).
-  Widget _buildColorfulPath(String path) {
+  Widget _buildColorfulPath(List<String> components) {
     return Text.rich(
-      TextSpan(style: const TextStyle(height: 1), children: _pathSpans(path)),
+      TextSpan(style: const TextStyle(height: 1), children: _pathSpans(components)),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
   }
 
-  /// The IDE-style gutter shown left of the chevron for sub-tag rows
-  /// (depth > 0): one `_kGutterColumnWidth`-wide column per ancestor level,
-  /// each drawing a 2px vertical guide line tinted with that ancestor's own
-  /// color; the LAST column (the direct parent) additionally shows a rotated
-  /// pill naming the parent's last segment. Total width = depth × column width.
-  Widget _buildGutter(String path, int depth, {Widget? lastColumn}) {
+  /// The IDE-style gutter shown left of the chevron for nested rows
+  /// (depth > 0): one `_kGutterColumnWidth`-wide column per walk ancestor
+  /// level, each drawing a 2px vertical guide line tinted with that walk
+  /// ancestor tag's own color. The LAST column shows the row tag's REAL
+  /// parent as a rotated pill — NOT the walk parent: in mixed walks they
+  /// differ, and for `p1/p2/p2s1/p1s2` the pill of the `p1s2` row is `p1`.
+  /// Rows whose tag is top-level have no real parent — the column keeps only
+  /// its guide line.
+  Widget _buildGutter(List<String> components, int depth, {Widget? lastColumn}) {
     if (depth == 0) return const SizedBox.shrink();
-    final segments = path.split('/');
-    final parentPath = parentOf(path);
-    final parentLabel = lastSegmentOf(parentPath);
+    final rowTag = components.last;
+    final realParent = parentOf(rowTag);
 
     return SizedBox(
       width: (depth * _kGutterColumnWidth).toDouble(),
@@ -263,40 +301,40 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
                     child: Container(
                       key: ValueKey('tag-guide-$i'),
                       width: 2,
-                      // Doc rows may be deeper than their owner tag's chain;
-                      // clamp the color index to the last known segment.
+                      // Document rows may be deeper than their owner tag's
+                      // chain; clamp the color index to the last component.
                       color: tagColorFor(
-                        segments
-                            .sublist(0, i.clamp(1, segments.length))
-                            .join('/'),
+                        components[i.clamp(1, components.length) - 1],
                       ).withValues(alpha: 0.45),
                     ),
                   ),
                   if (i == depth)
                     Center(
                       child: lastColumn ??
-                          RotatedBox(
-                            quarterTurns: 1,
-                            child: Container(
-                              key: ValueKey('tag-parent-pill-$parentPath'),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 2,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: tagColorFor(parentPath),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                parentLabel,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  height: 1,
-                                ),
-                              ),
-                            ),
-                          ),
+                          (realParent.isEmpty
+                              ? null
+                              : RotatedBox(
+                                  quarterTurns: 1,
+                                  child: Container(
+                                    key: ValueKey('tag-parent-pill-$realParent'),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 2,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: tagColorFor(realParent),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      lastSegmentOf(realParent),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        height: 1,
+                                      ),
+                                    ),
+                                  ),
+                                )),
                     ),
                 ],
               ),
@@ -312,11 +350,12 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   Widget _buildDocumentRow(
     DocumentSummary doc, {
     required int depth,
-    required String ownerPath,
+    required List<String> ownerComponents,
+    required String pathKey,
   }) {
     final scheme = Theme.of(context).colorScheme;
     return GestureDetector(
-      key: ValueKey('tag-doc-${doc.id}'),
+      key: ValueKey('tag-doc-${doc.id}@$pathKey'),
       onTap: () => widget.onOpenDocument(doc),
       behavior: HitTestBehavior.opaque,
       child: MouseRegion(
@@ -326,7 +365,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
           child: Row(
             children: [
               _buildGutter(
-                ownerPath,
+                ownerComponents,
                 depth,
                 lastColumn: Icon(
                   Icons.description_outlined,
@@ -334,6 +373,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
                   color: scheme.onSurfaceVariant,
                 ),
               ),
+              SizedBox(width: (depth * 20).toDouble()),
               Expanded(
                 child: Text(
                   doc.title,
@@ -388,26 +428,28 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
         _expandedTagPaths.clear();
         _allExpanded = false;
       } else {
-        _expandedTagPaths.addAll(_allTagPaths(_tagsByDoc));
+        _expandedTagPaths.addAll(_allPathKeys(_tagsByDoc));
         _allExpanded = true;
       }
     });
   }
 
-  /// Union of every tag path (including derived ancestors) on the current
-  /// document set, used for dirtag detection.
-  Set<String> _allTagPaths(TagsByDoc tagsByDoc) {
-    final paths = <String>{for (final tags in tagsByDoc.values) ...tags};
-    for (final tags in tagsByDoc.values) {
-      for (final t in tags) {
-        var p = t;
-        while (p.contains('/')) {
-          p = p.substring(0, p.lastIndexOf('/'));
-          paths.add(p);
-        }
+  /// Expansion keys of EVERY walk in the lattice: the roots and, recursively,
+  /// each walk extended by one child tag. Walks are finite — every step adds
+  /// a tag that is not already in the path.
+  Set<String> _allPathKeys(TagsByDoc tagsByDoc) {
+    final keys = <String>{};
+    void walk(List<String> components) {
+      if (!keys.add(components.join(_kPathSeparator))) return;
+      for (final t in childTags(components.toSet(), tagsByDoc)) {
+        walk([...components, t]);
       }
     }
-    return paths;
+
+    for (final top in topLevelTags(tagsByDoc)) {
+      walk([top]);
+    }
+    return keys;
   }
 }
 
