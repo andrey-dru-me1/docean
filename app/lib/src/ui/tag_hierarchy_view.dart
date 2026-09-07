@@ -53,11 +53,14 @@ const double _kGutterColumnWidth = 30;
 /// Vertical gap between adjacent gutter segments (where the color changes).
 const double _kGutterGap = 3;
 
+/// Opacity of gutter lines and serifs (pills and badges stay full).
+const double _kGutterLineOpacity = 0.55;
+
 /// Thickness of the horizontal serif strokes framing each segment.
 const double _kSerifThickness = 2;
 
 /// Horizontal half-width of a serif stroke (serif total width = 2 × this).
-const double _kSerifHalfWidth = 4;
+const double _kSerifHalfWidth = 3;
 
 /// Joins a path's component tag names into the expansion/row key. A control
 /// character on purpose: validated tag names can never contain one, so the
@@ -594,18 +597,24 @@ class _GutterBody extends StatelessWidget {
       child: Stack(
         children: [
           // Serifs: short horizontal strokes at the segment's top and
-          // bottom, centered on the line.
+          // bottom, centered on the line — same softening as the line.
           Positioned(
             left: (_kGutterColumnWidth / 2) - _kSerifHalfWidth,
             width: _kSerifHalfWidth * 2,
             top: lineInset - _kSerifThickness,
-            child: Container(height: _kSerifThickness, color: seg.color),
+            child: Container(
+              height: _kSerifThickness,
+              color: seg.color.withValues(alpha: _kGutterLineOpacity),
+            ),
           ),
           Positioned(
             left: (_kGutterColumnWidth / 2) - _kSerifHalfWidth,
             width: _kSerifHalfWidth * 2,
             bottom: lineInset - _kSerifThickness,
-            child: Container(height: _kSerifThickness, color: seg.color),
+            child: Container(
+              height: _kSerifThickness,
+              color: seg.color.withValues(alpha: _kGutterLineOpacity),
+            ),
           ),
           // The vertical line between the serifs.
           Positioned(
@@ -615,7 +624,7 @@ class _GutterBody extends StatelessWidget {
             child: Container(
               key: ValueKey('tag-guide-$index-${seg.color.toARGB32()}'),
               width: 2,
-              color: seg.color,
+              color: seg.color.withValues(alpha: _kGutterLineOpacity),
             ),
           ),
           if (marker != null)
