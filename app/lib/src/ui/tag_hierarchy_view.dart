@@ -55,6 +55,49 @@ const double _kGutterColumnWidth = 30;
 /// join is unambiguous even though component names themselves contain `/`.
 const String _kPathSeparator = '\u0000';
 
+/// One gutter SEGMENT: a vertical slice of a container's gutter with a
+/// single color and a single marker (rotated pill OR document icon OR
+/// nothing). Segments stack top-to-bottom inside the container's gutter.
+class _GutterSegment {
+  const _GutterSegment._({
+    required this.color,
+    required this.height,
+    this.pillLabel,
+    this.isDocIcon = false,
+  });
+
+  /// A segment with a rotated pill marker.
+  factory _GutterSegment.pill({
+    required Color color,
+    required String label,
+    required int height,
+  }) =>
+      _GutterSegment._(color: color, height: height, pillLabel: label);
+
+  /// A segment with a document-icon marker.
+  factory _GutterSegment.docIcon({required Color color, required int height}) =>
+      _GutterSegment._(color: color, height: height, isDocIcon: true);
+
+  /// A neutral segment with no marker (top-level tag rows).
+  factory _GutterSegment.neutral({
+    required Color color,
+    required int height,
+  }) =>
+      _GutterSegment._(color: color, height: height);
+
+  /// Segment color.
+  final Color color;
+
+  /// Rotated pill label; null when the segment has no pill.
+  final String? pillLabel;
+
+  /// Whether the marker is a document icon instead of a pill.
+  final bool isDocIcon;
+
+  /// Height in ROW units.
+  final int height;
+}
+
 class _TagHierarchyViewState extends State<TagHierarchyView> {
   /// Expanded tag paths, keyed by FULL path so sub-tags stay expanded across
   /// parent collapse/expand cycles.
@@ -95,6 +138,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
       _appendNode(rows, [top], tagsByDoc, rendered: rendered);
     }
     return Column(
+      key: const ValueKey('tag-hierarchy-view'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildHeader(context),
@@ -109,9 +153,11 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     );
   }
 
-  /// Appends the node row for [components]; when expanded, renders its
-/// children via [_appendChildren] and defers its own documents below them.
-void _appendNode(
+  /// Appends the node row for [components]; when expanded, its body is built
+  /// via [_buildExpandedBody] and attached under the row: the gutter runs
+  /// (with rotated pills spanning their row groups) live in column 1, the
+  /// child rows in column 2.
+  void _appendNode(
     List<Widget> rows,
     List<String> components,
     TagsByDoc tagsByDoc, {
@@ -125,67 +171,138 @@ void _appendNode(
     // files of nested expanded directories stay right below their own
     // children (nested nodes pass a FRESH deferred list, landing inline).
     final deferredDocs = <Widget>[];
-    _appendChildren(
-      rows, components, pathKey, tagsByDoc,
-      rendered: rendered, deferredDocs: deferredDocs,
+    final body = _buildExpandedBody(
+      components, pathKey, tagsByDoc,
+      rendered: rendered, deferredDocs: deferredDocs, deferDocs: true,
     );
+    rows.add(body);
     rows.addAll(deferredDocs);
   }
 
-  /// The child rows (and directly-assigned documents) of the EXPANDED node
-  /// [components].
+  /// Builds the EXPANSION BODY ("container") of [components]: a two-column
+  /// widget whose left column is ONE gutter (a guide line in the parent
+  /// tag's color, with the rotated parent pill spanning the group's rows)
+  /// and whose right column holds the child rows. Nested expanded subtags
+  /// contribute their OWN containers into the rows column — containers nest
+  /// inside one another, shifting one gutter width per level.
   ///
-  /// Children are the tags that EXTEND the path: every tag carried by a
-  /// document whose tag set contains all the path's components — NOT just
-  /// prefix-tree subtags. Siblings therefore stay visible when one child is
-  /// expanded, the same tag may appear on several depth levels, and mixed
-  /// paths (`p1/p2/p2s1/p1s2`) are walkable. A document is listed under the
-  /// path only when its materialized tag set is EXACTLY the path's component
-  /// set. Nested nodes defer with a fresh list so their files land inline;
-  /// the root's list accumulates below everything.
-  void _appendChildren(
-    List<Widget> rows,
+  /// Deferred documents of THIS node land in [deferredDocs] (the caller
+  /// places them after the container); they reserve row slots in the
+  /// container's pill span so the pill stretches over them too.
+  _GutterBody _buildExpandedBody(
     List<String> components,
     String pathKey,
     TagsByDoc tagsByDoc, {
     required Set<String> rendered,
-    required List<Widget> deferredDocs,
+    bool deferDocs = false,
+    List<Widget>? deferredDocs,
   }) {
-    for (final t in childTags(components, tagsByDoc)) {
-      final childComponents = [...components, t];
-      final childKey = childComponents.join(_kPathSeparator);
-      if (!rendered.add(childKey)) continue;
-      rows.add(_buildTagRow(childComponents, childKey, tagsByDoc));
-      if (_expandedTagPaths.contains(childKey)) {
-        final nestedDeferred = <Widget>[];
-        _appendChildren(
-          rows, childComponents, childKey, tagsByDoc,
-          rendered: rendered, deferredDocs: nestedDeferred,
-        );
-        rows.addAll(nestedDeferred);
-      }
+    final bodyRows = <Widget>[];
+
+    // Direct children of the walked path, grouped by their parent tag
+    // (deepest path tag first, top-level last — mirroring childTags'
+    // grouping contract). Each group is ONE gutter run; its pill is the
+    // group's parent tag, colored and centered over the group's rows.
+    final children = childTags(components, tagsByDoc);
+    final groups = <String, List<String>>{};
+    for (final t in children) {
+      groups.putIfAbsent(parentOf(t), () => []).add(t);
     }
+    final orderedParents = <String>[];
+    for (var i = components.length - 1; i >= 0; i--) {
+      if (groups.containsKey(components[i])) orderedParents.add(components[i]);
+    }
+    if (groups.containsKey('')) orderedParents.add('');
+
+    // One segment per row-group: parent-subtags group (parent's color +
+    // pill), every other subtag group (common parent's color + pill),
+    // top-level group (neutral, no marker), documents (neutral + doc icon).
+    final segments = <_GutterSegment>[];
+
+    var totalRows = 0;
+    for (final parent in orderedParents) {
+      final groupTags = groups[parent]!;
+      final groupColor = parent.isEmpty
+          ? Theme.of(context).colorScheme.outlineVariant
+          : tagColorFor(parent);
+      var groupHeight = 0;
+      for (final t in groupTags) {
+        final childComponents = [...components, t];
+        final childKey = childComponents.join(_kPathSeparator);
+        if (!rendered.add(childKey)) {
+          bodyRows.add(SizedBox(height: _kTagRowHeight));
+          groupHeight++;
+          continue;
+        }
+        bodyRows.add(_buildTagRow(childComponents, childKey, tagsByDoc));
+        groupHeight++;
+        if (_expandedTagPaths.contains(childKey)) {
+          // The nested container goes into the rows column of THIS
+          // container: a whole new gutter+rows unit, parallel to and right
+          // of this container's gutter.
+          final nestedDeferred = <Widget>[];
+          final nestedBody = _buildExpandedBody(
+            childComponents, childKey, tagsByDoc,
+            rendered: rendered, deferredDocs: nestedDeferred,
+          );
+          bodyRows.add(nestedBody);
+          groupHeight += nestedBody.totalRows;
+          deferredDocs?.addAll(nestedDeferred);
+        }
+      }
+      segments.add(
+        parent.isEmpty
+            ? _GutterSegment.neutral(
+                color: groupColor, height: groupHeight)
+            : _GutterSegment.pill(
+                color: groupColor,
+                label: lastSegmentOf(parent),
+                height: groupHeight,
+              ),
+      );
+      totalRows += groupHeight;
+    }
+
+    // Directly-assigned documents of THIS path: one neutral segment with a
+    // doc-icon marker. The ROOT node's docs defer to the caller.
     final comps = components.toSet();
+    var docsHeight = 0;
     for (final id in docsContaining(comps, tagsByDoc)) {
       final docTags = tagsByDoc[id];
       final doc = _byId[id];
       if (doc == null || docTags == null || !docAtPath(docTags, comps)) {
         continue;
       }
-      deferredDocs.add(
-        _buildDocumentRow(
-          doc,
-          depth: components.length,
-          ownerComponents: components,
-          pathKey: pathKey,
+      final row = _buildDocumentRow(
+        doc,
+        key: ValueKey('tag-doc-${doc.id}@$pathKey'),
+      );
+      if (deferDocs && deferredDocs != null) {
+        deferredDocs.add(row);
+      } else {
+        bodyRows.add(row);
+        docsHeight++;
+      }
+    }
+    if (docsHeight > 0) {
+      segments.add(
+        _GutterSegment.docIcon(
+          color: Theme.of(context).colorScheme.outlineVariant,
+          height: docsHeight,
         ),
       );
+      totalRows += docsHeight;
     }
+
+    return _GutterBody(
+      segments: segments,
+      rows: bodyRows,
+      totalRows: totalRows,
+    );
   }
 
-  /// A tag row for the path [components] (walk key [pathKey]): colorful
-  /// per-component text, IDE gutter, chevron, and a badge with the number of
-  /// documents reachable through this directory.
+  /// A tag row for the path [components] (walk key [pathKey]): the LAST tag
+  /// name in its own color, IDE gutter, chevron, and a count badge.
   Widget _buildTagRow(
     List<String> components,
     String pathKey,
@@ -206,8 +323,7 @@ void _appendNode(
           height: _kTagRowHeight,
           child: Row(
             children: [
-              _buildGutter(components, depth),
-              SizedBox(width: (depth * 20).toDouble()),
+              // SizedBox(width: (depth * 20).toDouble()),
               AnimatedRotation(
                 turns: expanded ? 0.25 : 0,
                 duration: const Duration(milliseconds: 150),
@@ -257,99 +373,14 @@ void _appendNode(
     );
   }
 
-  /// The IDE-style gutter shown left of the chevron for nested rows
-  /// (depth > 0): one `_kGutterColumnWidth`-wide column per walk ancestor
-  /// level. Outer columns repeat the level's OWN color (the walk ancestor at
-  /// that level); the LAST (rightmost) column carries the row tag's real
-  /// parent color — the same tag the rotated pill names — so the rightmost
-  /// line always mirrors the pill. Rows without a colored parent at a level
-  /// (document rows beyond the owner chain, or a top-level row tag) fall
-  /// back to the theme's `outlineVariant`.
-  Widget _buildGutter(List<String> components, int depth, {Widget? lastColumn}) {
-    if (depth == 0) return const SizedBox.shrink();
-    final rowTag = components.last;
-    final realParent = parentOf(rowTag);
-    final fallback = Theme.of(context).colorScheme.outlineVariant;
-    // Color per column: levels 1..depth-1 repeat the walk ancestor at that
-    // level; the last column is the row's real parent (the pill's tag).
-    Color lineColor(int level) {
-      if (level == depth) {
-        return realParent.isEmpty ? fallback : tagColorFor(realParent);
-      }
-      return level <= components.length
-          ? tagColorFor(components[level - 1])
-          : fallback;
-    }
-
-    return SizedBox(
-      width: (depth * _kGutterColumnWidth).toDouble(),
-      height: double.infinity,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 1; i <= depth; i++)
-            SizedBox(
-              width: _kGutterColumnWidth,
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: (_kGutterColumnWidth - 2) / 2,
-                    top: 0,
-                    bottom: 0,
-                    child: Container(
-                      key: ValueKey('tag-guide-$i'),
-                      width: 2,
-                      color: lineColor(i).withValues(alpha: 0.45),
-                    ),
-                  ),
-                  if (i == depth)
-                    Center(
-                      child: lastColumn ??
-                          (realParent.isEmpty
-                              ? null
-                              : RotatedBox(
-                                  quarterTurns: 1,
-                                  child: Container(
-                                    key: ValueKey('tag-parent-pill-$realParent'),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 2,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: tagColorFor(realParent),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      lastSegmentOf(realParent),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9,
-                                        height: 1,
-                                      ),
-                                    ),
-                                  ),
-                                )),
-                    ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// A directly-assigned document row. Its icon sits in the gutter's LAST
-  /// column — the same spot where tag rows show their rotated parent pill —
-  /// with the ancestor guide lines continuing behind it.
+  /// A directly-assigned document row inside a container's rows column.
   Widget _buildDocumentRow(
     DocumentSummary doc, {
-    required int depth,
-    required List<String> ownerComponents,
-    required String pathKey,
+    Key? key,
   }) {
     final scheme = Theme.of(context).colorScheme;
     return GestureDetector(
-      key: ValueKey('tag-doc-${doc.id}@$pathKey'),
+      key: key,
       onTap: () => widget.onOpenDocument(doc),
       behavior: HitTestBehavior.opaque,
       child: MouseRegion(
@@ -358,16 +389,12 @@ void _appendNode(
           height: _kTagRowHeight,
           child: Row(
             children: [
-              _buildGutter(
-                ownerComponents,
-                depth,
-                lastColumn: Icon(
-                  Icons.description_outlined,
-                  size: 14,
-                  color: scheme.onSurfaceVariant,
-                ),
+              Icon(
+                Icons.description_outlined,
+                size: 14,
+                color: scheme.onSurfaceVariant,
               ),
-              SizedBox(width: (depth * 20).toDouble()),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   doc.title,
@@ -460,8 +487,123 @@ class _CountBadge extends StatelessWidget {
     return Text(
       '$count',
       style: TextStyle(
-        fontSize: 10,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
         color: scheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+/// One container: column 1 is the gutter — a single vertical line split into
+/// stacked [_GutterSegment]s (one per row group: parent subtags in the
+/// parent's color with a rotated pill, other subtag groups in their common
+/// parent's color with pills, top-level tags neutral, documents neutral with
+/// a document icon) — column 2 is the child rows, including whole nested
+/// containers (each nested container brings its OWN gutter column, appearing
+/// one step right of the parent's).
+class _GutterBody extends StatelessWidget {
+  const _GutterBody({
+    required this.segments,
+    required this.rows,
+    required this.totalRows,
+  });
+
+  /// Stacked gutter segments, top to bottom.
+  final List<_GutterSegment> segments;
+
+  /// The container's rows (child rows and nested containers).
+  final List<Widget> rows;
+
+  /// Total height of the container in ROW units.
+  final int totalRows;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: totalRows * _kTagRowHeight,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: _kGutterColumnWidth.toDouble(),
+            child: Column(
+              children: [
+                for (var i = 0; i < segments.length; i++)
+                  _segment(context, i, segments[i]),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: rows,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// One gutter segment: a full-width cell with a centered vertical line and
+  /// the segment's marker (pill, doc icon, or nothing) in its middle.
+  Widget _segment(BuildContext context, int index, _GutterSegment seg) {
+    final height = seg.height * _kTagRowHeight;
+    final line = Container(
+      key: ValueKey('tag-guide-$index-${seg.color.toARGB32()}'),
+      width: 2,
+      color: seg.color.withValues(alpha: 0.45),
+    );
+    Widget? marker;
+    if (seg.pillLabel != null) {
+      marker = RotatedBox(
+        quarterTurns: 1,
+        child: Container(
+          key: ValueKey('tag-parent-pill-${seg.pillLabel}-$index'),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+          decoration: BoxDecoration(
+            color: seg.color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            seg.pillLabel!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 9,
+              height: 1,
+            ),
+          ),
+        ),
+      );
+    } else if (seg.isDocIcon) {
+      marker = Icon(
+        Icons.description_outlined,
+        size: 14,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      );
+    }
+    return SizedBox(
+      height: height,
+      child: Stack(
+        children: [
+          Positioned(
+            left: (_kGutterColumnWidth - 2) / 2,
+            top: 0,
+            bottom: 0,
+            child: line,
+          ),
+          if (marker != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: marker,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
