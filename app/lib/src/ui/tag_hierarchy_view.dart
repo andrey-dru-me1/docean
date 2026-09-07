@@ -50,6 +50,15 @@ const double _kTagRowHeight = 28;
 /// Width of one gutter column (one ancestor level).
 const double _kGutterColumnWidth = 30;
 
+/// Vertical gap between adjacent gutter segments (where the color changes).
+const double _kGutterGap = 3;
+
+/// Thickness of the horizontal serif strokes framing each segment.
+const double _kSerifThickness = 2;
+
+/// Horizontal half-width of a serif stroke (serif total width = 2 × this).
+const double _kSerifHalfWidth = 4;
+
 /// Joins a path's component tag names into the expansion/row key. A control
 /// character on purpose: validated tag names can never contain one, so the
 /// join is unambiguous even though component names themselves contain `/`.
@@ -310,7 +319,6 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   ) {
     final scheme = Theme.of(context).colorScheme;
     final expanded = _expandedTagPaths.contains(pathKey);
-    final depth = components.length - 1;
     final count = docsContaining(components.toSet(), tagsByDoc).length;
 
     return GestureDetector(
@@ -550,11 +558,7 @@ class _GutterBody extends StatelessWidget {
   /// the segment's marker (pill, doc icon, or nothing) in its middle.
   Widget _segment(BuildContext context, int index, _GutterSegment seg) {
     final height = seg.height * _kTagRowHeight;
-    final line = Container(
-      key: ValueKey('tag-guide-$index-${seg.color.toARGB32()}'),
-      width: 2,
-      color: seg.color.withValues(alpha: 0.45),
-    );
+    const lineInset = _kGutterGap;
     Widget? marker;
     if (seg.pillLabel != null) {
       marker = RotatedBox(
@@ -589,22 +593,38 @@ class _GutterBody extends StatelessWidget {
       height: height,
       child: Stack(
         children: [
+          // Serifs: short horizontal strokes at the segment's top and
+          // bottom, centered on the line.
+          Positioned(
+            left: (_kGutterColumnWidth / 2) - _kSerifHalfWidth,
+            width: _kSerifHalfWidth * 2,
+            top: lineInset - _kSerifThickness,
+            child: Container(height: _kSerifThickness, color: seg.color),
+          ),
+          Positioned(
+            left: (_kGutterColumnWidth / 2) - _kSerifHalfWidth,
+            width: _kSerifHalfWidth * 2,
+            bottom: lineInset - _kSerifThickness,
+            child: Container(height: _kSerifThickness, color: seg.color),
+          ),
+          // The vertical line between the serifs.
           Positioned(
             left: (_kGutterColumnWidth - 2) / 2,
-            top: 0,
-            bottom: 0,
-            child: line,
+            top: lineInset,
+            bottom: lineInset,
+            child: Container(
+              key: ValueKey('tag-guide-$index-${seg.color.toARGB32()}'),
+              width: 2,
+              color: seg.color,
+            ),
           ),
           if (marker != null)
             Positioned.fill(
               child: IgnorePointer(
-                child: Center(
-                  child: marker,
-                ),
+                child: Center(child: marker),
               ),
             ),
         ],
       ),
     );
-  }
-}
+  }}
