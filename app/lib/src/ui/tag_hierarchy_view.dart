@@ -218,7 +218,9 @@ void _appendNode(
                 ),
               ),
               const SizedBox(width: 4),
-              Expanded(child: _buildColorfulPath(components)),
+              // Hug the path and keep the count right after it (small gap);
+              // Flexible still shrinks the path in genuinely narrow panes.
+              Flexible(child: _buildColorfulPath(components)),
               const SizedBox(width: 8),
               _CountBadge(key: ValueKey('tag-count-$pathKey'), count: count),
             ],
@@ -257,16 +259,27 @@ void _appendNode(
 
   /// The IDE-style gutter shown left of the chevron for nested rows
   /// (depth > 0): one `_kGutterColumnWidth`-wide column per walk ancestor
-  /// level, each drawing a 2px vertical guide line tinted with that walk
-  /// ancestor tag's own color. The LAST column shows the row tag's REAL
-  /// parent as a rotated pill — NOT the walk parent: in mixed walks they
-  /// differ, and for `p1/p2/p2s1/p1s2` the pill of the `p1s2` row is `p1`.
-  /// Rows whose tag is top-level have no real parent — the column keeps only
-  /// its guide line.
+  /// level. Outer columns repeat the level's OWN color (the walk ancestor at
+  /// that level); the LAST (rightmost) column carries the row tag's real
+  /// parent color — the same tag the rotated pill names — so the rightmost
+  /// line always mirrors the pill. Rows without a colored parent at a level
+  /// (document rows beyond the owner chain, or a top-level row tag) fall
+  /// back to the theme's `outlineVariant`.
   Widget _buildGutter(List<String> components, int depth, {Widget? lastColumn}) {
     if (depth == 0) return const SizedBox.shrink();
     final rowTag = components.last;
     final realParent = parentOf(rowTag);
+    final fallback = Theme.of(context).colorScheme.outlineVariant;
+    // Color per column: levels 1..depth-1 repeat the walk ancestor at that
+    // level; the last column is the row's real parent (the pill's tag).
+    Color lineColor(int level) {
+      if (level == depth) {
+        return realParent.isEmpty ? fallback : tagColorFor(realParent);
+      }
+      return level <= components.length
+          ? tagColorFor(components[level - 1])
+          : fallback;
+    }
 
     return SizedBox(
       width: (depth * _kGutterColumnWidth).toDouble(),
@@ -286,11 +299,7 @@ void _appendNode(
                     child: Container(
                       key: ValueKey('tag-guide-$i'),
                       width: 2,
-                      // Document rows may be deeper than their owner tag's
-                      // chain; clamp the color index to the last component.
-                      color: tagColorFor(
-                        components[i.clamp(1, components.length) - 1],
-                      ).withValues(alpha: 0.45),
+                      color: lineColor(i).withValues(alpha: 0.45),
                     ),
                   ),
                   if (i == depth)
@@ -438,7 +447,8 @@ void _appendNode(
   }
 }
 
-/// A small right-aligned pill showing a contained-document count.
+/// A bare count number shown right after a directory's name — no background
+/// pill, just a small muted digit.
 class _CountBadge extends StatelessWidget {
   const _CountBadge({super.key, required this.count});
 
@@ -447,20 +457,11 @@ class _CountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Text(
-        '$count',
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w600,
-          color: scheme.onSurfaceVariant,
-        ),
+    return Text(
+      '$count',
+      style: TextStyle(
+        fontSize: 10,
+        color: scheme.onSurfaceVariant,
       ),
     );
   }
