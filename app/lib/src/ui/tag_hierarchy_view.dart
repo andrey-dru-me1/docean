@@ -54,7 +54,7 @@ const double _kGutterColumnWidth = 30;
 const double _kGutterGap = 3;
 
 /// Opacity of gutter lines and serifs (pills and badges stay full).
-const double _kGutterLineOpacity = 0.55;
+const double _kGutterLineOpacity = 0.6;
 
 /// Thickness of the horizontal serif strokes framing each segment.
 const double _kSerifThickness = 2;
@@ -389,7 +389,6 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     DocumentSummary doc, {
     Key? key,
   }) {
-    final scheme = Theme.of(context).colorScheme;
     return GestureDetector(
       key: key,
       onTap: () => widget.onOpenDocument(doc),
@@ -400,18 +399,19 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
           height: _kTagRowHeight,
           child: Row(
             children: [
-              Icon(
-                Icons.description_outlined,
-                size: 14,
-                color: scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
+              // Link-style title: primary color + underline signals
+              // clickability (the doc icon in the gutter already marks it).
+              Flexible(
                 child: Text(
                   doc.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        decoration: TextDecoration.underline,
+                        decorationColor:
+                            Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
+                      ),
                 ),
               ),
             ],
