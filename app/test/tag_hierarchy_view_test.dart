@@ -21,7 +21,7 @@ DocumentSummary _doc(
 /// qsort[study/seminar, study/mit/cprog]
 /// notes[idea]   (plain top-level leaf)
 /// memo[todo]    (plain top-level leaf)
-FakeDocumentService _treeService({bool withNestedFiles = false, bool withRootFile = false}) =>
+FakeDocumentService _treeService({bool withNestedFiles = false, bool withRootFile = false, bool withUniform = false}) =>
     FakeDocumentService(
       documents: [
         _doc('knn', 'KNN notes', tags: const ['study/lecture', 'study/mit/ml']),
@@ -32,6 +32,8 @@ FakeDocumentService _treeService({bool withNestedFiles = false, bool withRootFil
           _doc('mit-notes', 'MIT notes', tags: const ['study/mit']),
         if (withRootFile)
           _doc('study-doc', 'Study doc', tags: const ['study']),
+        if (withUniform)
+          _doc('deep', 'Deep doc', tags: const ['a/b/c']),
       ],
       tags: const [
         'study/lecture',
@@ -294,26 +296,37 @@ void main() {
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
 
-        // qsort: study -> mit -> cprog -> seminar.
-        for (final comps in [
-          ['study'],
-          ['study', 'study/mit'],
-          ['study', 'study/mit', 'study/mit/cprog'],
-          ['study', 'study/mit', 'study/mit/cprog', 'study/seminar'],
-        ]) {
-          await _tapNode(tester, comps);
-        }
+        // qsort is the only doc contained under study/mit/cprog → that
+        // subtree collapses at cprog: the row lists qsort's remaining tag
+        // (seminar) and expanding shows the doc link directly.
+        await _tapNode(tester, ['study']);
+        await _tapNode(tester, ['study', 'study/mit']);
+        await _tapNode(tester, ['study', 'study/mit', 'study/mit/cprog']);
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey(nodeKey(
+              ['study', 'study/mit', 'study/mit/cprog'],
+            ))),
+            matching: find.textContaining('seminar'),
+          ),
+          findsOneWidget,
+        );
         expect(
           find.byKey(ValueKey(docRowKey(
             'qsort',
-            ['study', 'study/mit', 'study/mit/cprog', 'study/seminar'],
+            ['study', 'study/mit', 'study/mit/cprog'],
           ))),
           findsOneWidget,
         );
+        // No child directory rows inside the collapsed cprog subtree.
+        expect(
+          find.byKey(ValueKey(nodeKey(
+            ['study', 'study/mit', 'study/mit/cprog', 'study/seminar'],
+          ))),
+          findsNothing,
+        );
 
-        // The seminar row's rotated gutter pill names its REAL parent
-        // (study): a pill keyed tag-parent-pill-study-<run> spanning the
-        // study-group rows exists at x = level-1 gutter column.
+        // A pill keyed tag-parent-pill-study-<run> exists (study-group rows).
         final studyPills = find.byWidgetPredicate(
           (w) =>
               w.key is ValueKey<String> &&
@@ -321,16 +334,12 @@ void main() {
         );
         expect(studyPills, findsWidgets);
 
-        // knn: study -> mit -> ml -> lecture (walk deepens; the nested
-        // body's rows are laid out inside the parent body's row slot).
+        // knn symmetric: collapses at ml with 'lecture' as remaining tag.
         await _tapNode(tester, ['study', 'study/mit', 'study/mit/ml']);
-        await _tapNode(tester, [
-          'study', 'study/mit', 'study/mit/ml', 'study/lecture',
-        ]);
         expect(
           find.byKey(ValueKey(docRowKey(
             'knn',
-            ['study', 'study/mit', 'study/mit/ml', 'study/lecture'],
+            ['study', 'study/mit', 'study/mit/ml'],
           ))),
           findsOneWidget,
         );
@@ -380,6 +389,45 @@ void main() {
           find.byKey(ValueKey(nodeKey(['study', 'study/lecture']))),
         );
         expect(lecture.dy, lessThan(studyDoc.dy));
+      },
+    );
+
+    testWidgets(
+      'uniform deep path collapses to one row with remaining tags',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(DocumentsScreen(
+            documentService: _treeService(withUniform: true),
+            onOpenDocument: (_) {},
+          )),
+        );
+        await tester.pumpAndSettle();
+        await _toggleToTags(tester);
+
+        // 'a' contains only doc 'deep' (set a, a/b, a/b/c) → uniform:
+        // the collapsed row lists the remaining tags b, c; NO child
+        // directory rows for a/b or a/b/c exist.
+        final aRow = find.byKey(ValueKey(nodeKey(['a'])));
+        expect(aRow, findsOneWidget);
+        expect(
+          find.descendant(
+            of: aRow,
+            matching: find.textContaining('a, b, c'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(ValueKey(nodeKey(['a', 'a/b']))),
+          findsNothing,
+        );
+
+        // Expanding the collapsed row lists the document links directly.
+        await tester.tap(aRow);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(ValueKey(docRowKey('deep', ['a']))),
+          findsOneWidget,
+        );
       },
     );
 
@@ -447,18 +495,19 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('tag-tree-toggle-all')));
       await tester.pumpAndSettle();
 
-      // Both documents reachable through their full walks.
+      // Both documents reachable — their uniform subtrees collapse at the
+      // ml/cprog level (each is the single contained doc below it).
       expect(
         find.byKey(ValueKey(docRowKey(
           'knn',
-          ['study', 'study/mit', 'study/mit/ml', 'study/lecture'],
+          ['study', 'study/mit', 'study/mit/ml'],
         ))),
         findsOneWidget,
       );
       expect(
         find.byKey(ValueKey(docRowKey(
           'qsort',
-          ['study', 'study/mit', 'study/mit/cprog', 'study/seminar'],
+          ['study', 'study/mit', 'study/mit/cprog'],
         ))),
         findsOneWidget,
       );

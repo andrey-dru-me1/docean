@@ -165,30 +165,115 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     );
   }
 
-  /// Appends the node row for [components]; when expanded, its body is built
-  /// via [_buildExpandedBody] and attached under the row: the gutter runs
-  /// (with rotated pills spanning their row groups) live in column 1, the
-  /// child rows in column 2.
+  /// Appends the top-level node for [components]; the node's own files are
+  /// deferred below its expansion (they land after the whole subtree).
   void _appendNode(
     List<Widget> rows,
     List<String> components,
     TagsByDoc tagsByDoc, {
     required Set<String> rendered,
   }) {
+    final deferred = <Widget>[];
+    _appendTagNode(
+      rows, components, tagsByDoc,
+      rendered: rendered,
+      deferredDocs: deferred,
+      deferOwnDocs: true,
+    );
+    rows.addAll(deferred);
+  }
+
+  /// Appends the row (and expansion content) for one tag node at ANY level —
+  /// top-level roots and nested children alike, so a uniform subtree collapses
+  /// identically no matter where it sits. Returns the number of row units
+  /// added, or null when this walk was already rendered elsewhere (the caller
+  /// reserves a spacer).
+  ///
+  /// UNIFORM SUBTREE: all docs contained below the path share one tag set
+  /// (e.g. `study/mit` holding a single doc tagged study+lecture+mit+ml). The
+  /// collapsed row lists the docs' remaining tags (minus the walked path —
+  /// the gutter pills already show those), each in its own color, comma-
+  /// separated; expanding lists the contained documents directly — the
+  /// intermediate tag levels carry no information for a uniform set.
+  int? _appendTagNode(
+    List<Widget> out,
+    List<String> components,
+    TagsByDoc tagsByDoc, {
+    required Set<String> rendered,
+    List<Widget>? deferredDocs,
+    bool deferOwnDocs = false,
+  }) {
     final pathKey = components.join(_kPathSeparator);
-    if (!rendered.add(pathKey)) return;
-    rows.add(_buildTagRow(components, pathKey, tagsByDoc));
-    if (!_expandedTagPaths.contains(pathKey)) return;
-    // The ROOT expanded tag's own files move below every subtag section;
-    // files of nested expanded directories stay right below their own
-    // children (nested nodes pass a FRESH deferred list, landing inline).
-    final deferredDocs = <Widget>[];
+    if (!rendered.add(pathKey)) return null;
+
+    final contained = _containedDocs(components, tagsByDoc);
+    final first = contained.isEmpty ? null : tagsByDoc[contained.first]!;
+    final uniform = first != null &&
+        contained.every((id) {
+          final s = tagsByDoc[id]!;
+          return s.length == first.length && s.containsAll(first);
+        });
+    if (uniform) {
+      final walked = components.toSet();
+      final remaining = first
+          .where((t) => !walked.contains(t) && !t.contains(':'))
+          .toList()
+        ..sort();
+      out.add(
+        _buildTagRow(
+          components,
+          pathKey,
+          tagsByDoc,
+          extraTagSpans:
+              [for (final t in remaining) _pathSpans([t], separatorPrefix: ', ')],
+        ),
+      );
+      if (!_expandedTagPaths.contains(pathKey)) return 1;
+      final docRows = [
+        for (final id in contained)
+          _buildDocumentRow(
+            _byId[id]!,
+            key: ValueKey('tag-doc-$id@$pathKey'),
+          ),
+      ];
+      out.add(
+        _GutterBody(
+          segments: [
+            _GutterSegment.docIcon(
+              color: Theme.of(context).colorScheme.outlineVariant,
+              height: docRows.length,
+            ),
+          ],
+          rows: docRows,
+          totalRows: docRows.length,
+        ),
+      );
+      return 1 + docRows.length;
+    }
+
+    out.add(_buildTagRow(components, pathKey, tagsByDoc));
+    if (!_expandedTagPaths.contains(pathKey)) return 1;
+    var count = 1;
+    final nestedDeferred = deferredDocs ?? <Widget>[];
     final body = _buildExpandedBody(
       components, pathKey, tagsByDoc,
-      rendered: rendered, deferredDocs: deferredDocs, deferDocs: true,
+      rendered: rendered,
+      deferredDocs: nestedDeferred,
+      deferDocs: deferOwnDocs,
     );
-    rows.add(body);
-    rows.addAll(deferredDocs);
+    out.add(body);
+    count += body.totalRows;
+    return count;
+  }
+
+  /// Docs CONTAINED by [components]: their tag sets include every walked
+  /// component (directly at the path or at any depth below it).
+  Set<String> _containedDocs(List<String> components, TagsByDoc tagsByDoc) {
+    final comps = components.toSet();
+    return {
+      for (final entry in tagsByDoc.entries)
+        if (entry.value.containsAll(comps)) entry.key,
+    };
   }
 
   /// Builds the EXPANSION BODY ("container") of [components]: a two-column
@@ -240,27 +325,20 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
       var groupHeight = 0;
       for (final t in groupTags) {
         final childComponents = [...components, t];
-        final childKey = childComponents.join(_kPathSeparator);
-        if (!rendered.add(childKey)) {
+        // Shared node handling: a uniform subtree collapses at ANY level,
+        // and an expanded one contributes its whole container into this
+        // container's rows column (parallel gutter, one step right).
+        final added = _appendTagNode(
+          bodyRows, childComponents, tagsByDoc,
+          rendered: rendered,
+          deferredDocs: deferredDocs ?? <Widget>[],
+        );
+        if (added == null) {
           bodyRows.add(SizedBox(height: _kTagRowHeight));
           groupHeight++;
           continue;
         }
-        bodyRows.add(_buildTagRow(childComponents, childKey, tagsByDoc));
-        groupHeight++;
-        if (_expandedTagPaths.contains(childKey)) {
-          // The nested container goes into the rows column of THIS
-          // container: a whole new gutter+rows unit, parallel to and right
-          // of this container's gutter.
-          final nestedDeferred = <Widget>[];
-          final nestedBody = _buildExpandedBody(
-            childComponents, childKey, tagsByDoc,
-            rendered: rendered, deferredDocs: nestedDeferred,
-          );
-          bodyRows.add(nestedBody);
-          groupHeight += nestedBody.totalRows;
-          deferredDocs?.addAll(nestedDeferred);
-        }
+        groupHeight += added;
       }
       segments.add(
         parent.isEmpty
@@ -318,8 +396,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   Widget _buildTagRow(
     List<String> components,
     String pathKey,
-    TagsByDoc tagsByDoc,
-  ) {
+    TagsByDoc tagsByDoc, {
+    List<List<TextSpan>> extraTagSpans = const [],
+  }) {
     final scheme = Theme.of(context).colorScheme;
     final expanded = _expandedTagPaths.contains(pathKey);
     final count = docsContaining(components.toSet(), tagsByDoc).length;
@@ -347,7 +426,19 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
               const SizedBox(width: 4),
               // Hug the path and keep the count right after it (small gap);
               // Flexible still shrinks the path in genuinely narrow panes.
-              Flexible(child: _buildColorfulPath(components)),
+              Flexible(
+                child: Text.rich(
+                  TextSpan(
+                    style: const TextStyle(height: 1),
+                    children: [
+                      ..._pathSpans(components),
+                      for (final extra in extraTagSpans) ...extra,
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               const SizedBox(width: 8),
               _CountBadge(key: ValueKey('tag-count-$pathKey'), count: count),
             ],
@@ -361,11 +452,14 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   /// tag's own color (the walk prefix stays visible through the gutter
   /// pills/guide lines instead). Appearance only — behavior (keys, toggling,
   /// ordering) is untouched.
-  List<TextSpan> _pathSpans(List<String> components) {
+  List<TextSpan> _pathSpans(
+    List<String> components, {
+    String separatorPrefix = '',
+  }) {
     final last = components.last;
     return [
       TextSpan(
-        text: lastSegmentOf(last),
+        text: '$separatorPrefix${lastSegmentOf(last)}',
         style: TextStyle(
           color: tagColorFor(last),
           fontSize: 12.5,
@@ -373,15 +467,6 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
         ),
       ),
     ];
-  }
-
-  /// The row's FULL path rendered as colorful text (see [_pathSpans]).
-  Widget _buildColorfulPath(List<String> components) {
-    return Text.rich(
-      TextSpan(style: const TextStyle(height: 1), children: _pathSpans(components)),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
   }
 
   /// A directly-assigned document row inside a container's rows column.
