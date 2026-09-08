@@ -926,7 +926,8 @@ mod tests {
         let dir = FakeDir::new();
         let bytes = b"backfill under a folder".to_vec();
 
-        // Doc without file_name, but with a main_path stamped (from props.rs).
+        // Doc without file_name, but with a main_path stamped (by an earlier
+        // adoption or manual edit).
         seed_doc(
             &repo,
             "Draft",

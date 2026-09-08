@@ -46,7 +46,7 @@ FakeDocumentService _treeService({bool withNestedFiles = false, bool withRootFil
     );
 
 Future<void> _toggleToTags(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.sell));
+  await tester.tap(find.byIcon(Icons.account_tree));
   await tester.pumpAndSettle();
 }
 

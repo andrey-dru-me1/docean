@@ -541,13 +541,6 @@ fn auto_org_reorganize_one_impl(
         crate::api::search::search_set_metadata(document_id.clone(), fresh.tags, paths);
     }
 
-    // Property/scope processing: detect (or create) the document's scope and
-    // assign its main hierarchy path. Best-effort — a failure here never fails
-    // the reorganize pass (the plan itself is already applied above).
-    if let Err(e) = crate::props::process_document(repo, &document_id) {
-        eprintln!("auto_org: props processing failed for {document_id}: {e}");
-    }
-
     Ok(counts.any())
 }
 
