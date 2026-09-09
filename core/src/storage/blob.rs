@@ -102,8 +102,8 @@ mod tests {
     #[test]
     fn hash_is_sha256_hex() {
         assert_eq!(
-            hash_bytes(b"docer"),
-            "fb4792b8f09dabca181bda35fa41a93ce21cc7e94bf0733ab5e19f13c52a8f52"
+            hash_bytes(b"docean"),
+            "a684100ce08779244b8af5732fd0372d38d6a55f99bfb8451221fd4462541126"
         );
     }
 
@@ -133,7 +133,7 @@ mod tests {
 
     fn temp_root() -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("docer-blob-{}", std::process::id()));
+        p.push(format!("docean-blob-{}", std::process::id()));
         fs::create_dir_all(&p).unwrap();
         p
     }

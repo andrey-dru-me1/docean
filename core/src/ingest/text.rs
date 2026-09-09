@@ -1,4 +1,4 @@
-//! Text extraction for the document formats docer ingests.
+//! Text extraction for the document formats docean ingests.
 //!
 //! Each extractor takes the raw file bytes and returns a [`ExtractedText`]:
 //! the plain-text body plus a short extractor identifier (stored as

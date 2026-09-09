@@ -4,16 +4,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:docer/src/app.dart';
-import 'package:docer/src/rust/api/auto_org.dart'
+import 'package:docean/src/app.dart';
+import 'package:docean/src/rust/api/auto_org.dart'
     show autoOrgDefaultConfig, autoOrgOrganize, autoOrgReorganizeOne;
-import 'package:docer/src/rust/api/search.dart'
+import 'package:docean/src/rust/api/search.dart'
     show SearchMode, SearchRequestDto, searchIndexDocument, searchQuery;
-import 'package:docer/src/rust/api/storage.dart' show openRepository;
-import 'package:docer/src/rust/domain.dart' show Document, NodeKind;
-import 'package:docer/src/rust/frb_generated.dart';
+import 'package:docean/src/rust/api/storage.dart' show openRepository;
+import 'package:docean/src/rust/domain.dart' show Document, NodeKind;
+import 'package:docean/src/rust/frb_generated.dart';
 
-/// Real end-to-end tests: load the native `docer-core` library and exercise the
+/// Real end-to-end tests: load the native `docean-core` library and exercise the
 /// search + chat + provider UI through the bridge.
 ///
 /// Run on a desktop target, e.g. `flutter test integration_test -d macos`.
@@ -25,7 +25,7 @@ void main() {
   testWidgets('shell shows the engine status chip', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const DocerApp());
+    await tester.pumpWidget(const DoceanApp());
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Engine OK'), findsOneWidget);
@@ -55,7 +55,7 @@ void main() {
     'auto-org bridge reuses one repository handle across sequential calls',
     (tester) async {
       final root =
-          '${Directory.systemTemp.path}/docer-it-${DateTime.now().microsecondsSinceEpoch}';
+          '${Directory.systemTemp.path}/docean-it-${DateTime.now().microsecondsSinceEpoch}';
       final repo = await openRepository(root: root);
       final text =
           'quarterly invoice for office supplies from acme corporation';

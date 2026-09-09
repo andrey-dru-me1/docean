@@ -276,7 +276,7 @@ fn temp_root(tag: &str) -> std::path::PathBuf {
     use std::time::{SystemTime, UNIX_EPOCH};
     let mut p = std::env::temp_dir();
     p.push(format!(
-        "docer-search-wire-{tag}-{}-{}",
+        "docean-search-wire-{tag}-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

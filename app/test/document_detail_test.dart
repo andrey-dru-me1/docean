@@ -6,13 +6,13 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:docer/src/features/document_service.dart'
+import 'package:docean/src/features/document_service.dart'
     show FakeDocumentService, SuggestionEntry, SuggestionPlan;
-import 'package:docer/src/rust/domain.dart'
+import 'package:docean/src/rust/domain.dart'
     show SuggestionKind, SuggestionSource, SuggestionStatus;
-import 'package:docer/src/ui/document_view.dart'
+import 'package:docean/src/ui/document_view.dart'
     show DocumentDetailView, DocumentSummary;
-import 'package:docer/src/ui/widgets.dart' show TagChip, TagDeleteIcon;
+import 'package:docean/src/ui/widgets.dart' show TagChip, TagDeleteIcon;
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
 
@@ -874,7 +874,7 @@ void main() {
       );
       String? openedPath;
       final captured = <String>[];
-      final temp = Directory.systemTemp.createTempSync('docer-detail-test');
+      final temp = Directory.systemTemp.createTempSync('docean-detail-test');
       addTearDown(() => temp.deleteSync(recursive: true));
 
       await tester.pumpWidget(
@@ -919,7 +919,7 @@ void main() {
       // A temp directory that does not exist yet (its parent may not exist
       // either, exactly the PathNotFoundException scenario).
       final missing = Directory(
-        '${Directory.systemTemp.path}/docer-missing-${DateTime.now().microsecondsSinceEpoch}',
+        '${Directory.systemTemp.path}/docean-missing-${DateTime.now().microsecondsSinceEpoch}',
       );
       addTearDown(() {
         if (missing.existsSync()) missing.deleteSync(recursive: true);
@@ -972,7 +972,7 @@ void main() {
             document: doc,
             documentService: service,
             // A directory whose creation must fail.
-            tempDirectory: () async => Directory('/nonexistent-root/docer'),
+            tempDirectory: () async => Directory('/nonexistent-root/docean'),
             openExternally: (path) async {
               openedPath = path;
               captured.add(path);

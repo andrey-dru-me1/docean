@@ -98,7 +98,7 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
         let mut p = std::env::temp_dir();
         p.push(format!(
-            "docer-library-api-{tag}-{}-{}",
+            "docean-library-api-{tag}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -200,7 +200,7 @@ mod tests {
         library_set_directory(&repo, Some(dir.display().to_string())).unwrap();
 
         // A file nobody claims: sync must ingest it.
-        let foreign = b"a foreign file from outside docer";
+        let foreign = b"a foreign file from outside docean";
         fs::write(dir.join("Foreign.txt"), foreign).unwrap();
 
         let report = library_sync(&repo).unwrap();

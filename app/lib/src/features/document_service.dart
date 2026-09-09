@@ -69,8 +69,8 @@ abstract interface class BulkOrganizer {
 /// Uses `autoOrgReorganizeAll` for the corpus-wide pass and the async
 /// `autoOrgReorganizeSelected` for the selection-scoped action (runs on
 /// Rust's async worker pool so the Flutter UI isolate is never blocked).
-class DocerBulkOrganizer implements BulkOrganizer {
-  const DocerBulkOrganizer();
+class DoceanBulkOrganizer implements BulkOrganizer {
+  const DoceanBulkOrganizer();
 
   @override
   Future<ReorganizeResult> reorganizeAll() async {
@@ -701,6 +701,7 @@ class BridgeDocumentService implements DocumentService {
     return library_bridge.libraryFilePath(repo: repo, id: id);
   }
 }
+
 /// Returns [doc] with hierarchical-tag ancestors materialized (core parity:
 /// a doc tagged `study/mit/ml` also carries `study`, `study/mit`). Returns
 /// [doc] itself when there is nothing to expand.
@@ -721,7 +722,8 @@ DocumentSummary _withMaterializedAncestors(DocumentSummary doc) {
   );
 }
 
-class FakeDocumentService implements DocumentService {  FakeDocumentService({
+class FakeDocumentService implements DocumentService {
+  FakeDocumentService({
     List<DocumentSummary> documents = const [],
     List<String> tags = const [],
     List<String> paths = const [],

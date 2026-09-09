@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:docer/src/p2p_sync_screen.dart';
-import 'package:docer/src/features/sync.dart' as sync;
-import 'package:docer/src/rust/api/p2p.dart' show PeerInfo;
-import 'package:docer/src/rust/api/sync.dart'
+import 'package:docean/src/p2p_sync_screen.dart';
+import 'package:docean/src/features/sync.dart' as sync;
+import 'package:docean/src/rust/api/p2p.dart' show PeerInfo;
+import 'package:docean/src/rust/api/sync.dart'
     show SyncConflictDto, SyncConflictKindDto;
-import 'package:docer/src/rust/net/models.dart' as net;
+import 'package:docean/src/rust/net/models.dart' as net;
 
 void main() {
   // Fixture: a single discovered (but disconnected) peer and one pending conflict.

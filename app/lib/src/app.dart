@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'features/assistant_service.dart'
     show AssistantService, BridgeAssistantService;
 import 'features/document_service.dart'
-    show BridgeDocumentService, DocerBulkOrganizer, DocumentService;
+    show BridgeDocumentService, DoceanBulkOrganizer, DocumentService;
 import 'features/ingest_service.dart' show BridgeIngestService, IngestService;
 import 'features/library_directory.dart'
     show
@@ -30,8 +30,8 @@ import 'ui/search_screen.dart' show DocumentOpener, SearchScreen;
 
 /// Root widget. All services are injectable so widget tests can run headlessly
 /// without the native library; the app uses the bridge-backed defaults.
-class DocerApp extends StatelessWidget {
-  const DocerApp({
+class DoceanApp extends StatelessWidget {
+  const DoceanApp({
     super.key,
     this.healthCheck = defaultHealthCheck,
     this.searchService = const BridgeSearchService(),
@@ -81,7 +81,7 @@ class DocerApp extends StatelessWidget {
       brightness: Brightness.dark,
     );
     return MaterialApp(
-      title: 'Docer',
+      title: 'Docean',
       debugShowCheckedModeBanner: false,
       theme: _themeFor(baseScheme),
       darkTheme: _themeFor(darkScheme),
@@ -389,7 +389,7 @@ class _MainShellState extends State<MainShell> {
         // The selection toolbar owns the bulk "Re-organize all documents" action
         // (formerly on the Settings screen). Wire the production bridge-backed
         // organizer so the toolbar action actually runs the deterministic pass.
-        bulkOrganizer: const DocerBulkOrganizer(),
+        bulkOrganizer: const DoceanBulkOrganizer(),
       ),
     );
     final search = SearchScreen(
@@ -416,7 +416,7 @@ class _MainShellState extends State<MainShell> {
     if (wide) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Docer'),
+          title: const Text('Docean'),
           actions: [
             IconButton(
               key: const ValueKey('library-folder'),

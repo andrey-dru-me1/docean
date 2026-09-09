@@ -1,7 +1,7 @@
 //! SQLite-backed implementation of [`DocumentStore`].
 //!
 //! Metadata, tags, paths, hierarchy edges, and extracted content live in a
-//! single SQLite database file (`<root>/docer.db`); raw bytes live in the
+//! single SQLite database file (`<root>/docean.db`); raw bytes live in the
 //! [`BlobStore`] under `<root>/blobs/`. See [`crate::storage::schema`] for the
 //! schema.
 
@@ -34,7 +34,7 @@ impl SqliteDocumentStore {
     fn open_impl(root: &Path) -> Result<Self, StorageError> {
         std::fs::create_dir_all(root)?;
 
-        let db_path = root.join("docer.db");
+        let db_path = root.join("docean.db");
         let mut conn = Connection::open(db_path)?;
         // Enforce foreign keys so `ON DELETE CASCADE` actually fires.
         conn.pragma_update(None, "foreign_keys", true)?;

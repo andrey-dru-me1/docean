@@ -83,18 +83,14 @@ class _GutterSegment {
     required Color color,
     required String label,
     required int height,
-  }) =>
-      _GutterSegment._(color: color, height: height, pillLabel: label);
+  }) => _GutterSegment._(color: color, height: height, pillLabel: label);
 
   /// A segment with a document-icon marker.
   factory _GutterSegment.docIcon({required Color color, required int height}) =>
       _GutterSegment._(color: color, height: height, isDocIcon: true);
 
   /// A neutral segment with no marker (top-level tag rows).
-  factory _GutterSegment.neutral({
-    required Color color,
-    required int height,
-  }) =>
+  factory _GutterSegment.neutral({required Color color, required int height}) =>
       _GutterSegment._(color: color, height: height);
 
   /// Segment color.
@@ -120,15 +116,18 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   /// id → its documents, so leaf rows can hand the real [DocumentSummary] to
   /// [TagHierarchyView.onOpenDocument].
   Map<String, DocumentSummary> get _byId => {
-        for (final doc in widget.documents) doc.id: doc,
-      };
+    for (final doc in widget.documents) doc.id: doc,
+  };
 
   /// TagsByDoc for the current documents. Property/scope tags (containing
   /// `:`) and documents with no remaining valid tags are skipped.
   TagsByDoc get _tagsByDoc {
     final tagsByDoc = <String, Set<String>>{};
     for (final doc in widget.documents) {
-      final tags = <String>{for (final t in doc.tags) if (isValidTagPath(t)) t};
+      final tags = <String>{
+        for (final t in doc.tags)
+          if (isValidTagPath(t)) t,
+      };
       if (tags.isEmpty) continue;
       tagsByDoc[doc.id] = tags;
     }
@@ -175,7 +174,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   }) {
     final deferred = <Widget>[];
     _appendTagNode(
-      rows, components, tagsByDoc,
+      rows,
+      components,
+      tagsByDoc,
       rendered: rendered,
       deferredDocs: deferred,
       deferOwnDocs: true,
@@ -208,33 +209,31 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
 
     final contained = _containedDocs(components, tagsByDoc);
     final first = contained.isEmpty ? null : tagsByDoc[contained.first]!;
-    final uniform = first != null &&
+    final uniform =
+        first != null &&
         contained.every((id) {
           final s = tagsByDoc[id]!;
           return s.length == first.length && s.containsAll(first);
         });
     if (uniform) {
       final walked = components.toSet();
-      final remaining = first
-          .where((t) => !walked.contains(t) && !t.contains(':'))
-          .toList()
-        ..sort();
+      final remaining =
+          first.where((t) => !walked.contains(t) && !t.contains(':')).toList()
+            ..sort();
       out.add(
         _buildTagRow(
           components,
           pathKey,
           tagsByDoc,
-          extraTagSpans:
-              [for (final t in remaining) _pathSpans([t], separatorPrefix: ', ')],
+          extraTagSpans: [
+            for (final t in remaining) _pathSpans([t], separatorPrefix: ', '),
+          ],
         ),
       );
       if (!_expandedTagPaths.contains(pathKey)) return 1;
       final docRows = [
         for (final id in contained)
-          _buildDocumentRow(
-            _byId[id]!,
-            key: ValueKey('tag-doc-$id@$pathKey'),
-          ),
+          _buildDocumentRow(_byId[id]!, key: ValueKey('tag-doc-$id@$pathKey')),
       ];
       out.add(
         _GutterBody(
@@ -256,7 +255,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     var count = 1;
     final nestedDeferred = deferredDocs ?? <Widget>[];
     final body = _buildExpandedBody(
-      components, pathKey, tagsByDoc,
+      components,
+      pathKey,
+      tagsByDoc,
       rendered: rendered,
       deferredDocs: nestedDeferred,
       deferDocs: deferOwnDocs,
@@ -329,7 +330,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
         // and an expanded one contributes its whole container into this
         // container's rows column (parallel gutter, one step right).
         final added = _appendTagNode(
-          bodyRows, childComponents, tagsByDoc,
+          bodyRows,
+          childComponents,
+          tagsByDoc,
           rendered: rendered,
           deferredDocs: deferredDocs ?? <Widget>[],
         );
@@ -342,8 +345,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
       }
       segments.add(
         parent.isEmpty
-            ? _GutterSegment.neutral(
-                color: groupColor, height: groupHeight)
+            ? _GutterSegment.neutral(color: groupColor, height: groupHeight)
             : _GutterSegment.pill(
                 color: groupColor,
                 label: lastSegmentOf(parent),
@@ -470,10 +472,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   }
 
   /// A directly-assigned document row inside a container's rows column.
-  Widget _buildDocumentRow(
-    DocumentSummary doc, {
-    Key? key,
-  }) {
+  Widget _buildDocumentRow(DocumentSummary doc, {Key? key}) {
     return GestureDetector(
       key: key,
       onTap: () => widget.onOpenDocument(doc),
@@ -492,11 +491,12 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                        decoration: TextDecoration.underline,
-                        decorationColor:
-                            Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
-                      ),
+                    color: Theme.of(context).colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.4),
+                  ),
                 ),
               ),
             ],
@@ -662,11 +662,7 @@ class _GutterBody extends StatelessWidget {
             seg.pillLabel!,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 9,
-              height: 1,
-            ),
+            style: const TextStyle(color: Colors.white, fontSize: 9, height: 1),
           ),
         ),
       );
@@ -714,11 +710,10 @@ class _GutterBody extends StatelessWidget {
           ),
           if (marker != null)
             Positioned.fill(
-              child: IgnorePointer(
-                child: Center(child: marker),
-              ),
+              child: IgnorePointer(child: Center(child: marker)),
             ),
         ],
       ),
     );
-  }}
+  }
+}

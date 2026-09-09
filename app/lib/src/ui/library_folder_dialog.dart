@@ -63,9 +63,9 @@ class _LibraryFolderDialogState extends State<LibraryFolderDialog> {
   }
 
   void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _chooseFolder() async {

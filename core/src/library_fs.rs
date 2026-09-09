@@ -425,7 +425,7 @@ mod tests {
     fn temp_root(tag: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
         p.push(format!(
-            "docer-library-fs-{tag}-{}-{}",
+            "docean-library-fs-{tag}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)

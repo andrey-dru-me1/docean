@@ -4,24 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 
-import 'package:docer/src/features/assistant_service.dart'
+import 'package:docean/src/features/assistant_service.dart'
     show AssistantChunk, AssistantDone, AssistantService, AssistantTokens;
-import 'package:docer/src/features/document_preview.dart'
+import 'package:docean/src/features/document_preview.dart'
     show DocumentPreviewLoader;
-import 'package:docer/src/features/document_service.dart'
+import 'package:docean/src/features/document_service.dart'
     show FakeDocumentService;
-import 'package:docer/src/features/provider_service.dart'
+import 'package:docean/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
-import 'package:docer/src/features/search_service.dart'
+import 'package:docean/src/features/search_service.dart'
     show HighlightSpan, SearchHitDto, SearchMode, SearchService;
-import 'package:docer/src/rust/api/ai.dart' show ActiveProviderInfo;
-import 'package:docer/src/rust/api/assistant.dart' show DocumentRefDto;
-import 'package:docer/src/ui/chat_screen.dart' show ChatScreen;
-import 'package:docer/src/ui/document_preview_view.dart'
+import 'package:docean/src/rust/api/ai.dart' show ActiveProviderInfo;
+import 'package:docean/src/rust/api/assistant.dart' show DocumentRefDto;
+import 'package:docean/src/ui/chat_screen.dart' show ChatScreen;
+import 'package:docean/src/ui/document_preview_view.dart'
     show DocumentPlaceholder, DocumentThumbnail;
-import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
-import 'package:docer/src/ui/provider_screen.dart' show ProviderScreen;
-import 'package:docer/src/ui/search_screen.dart' show SearchScreen;
+import 'package:docean/src/ui/document_view.dart' show DocumentSummary;
+import 'package:docean/src/ui/provider_screen.dart' show ProviderScreen;
+import 'package:docean/src/ui/search_screen.dart' show SearchScreen;
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -89,7 +89,7 @@ class _FakeProviderService implements ProviderService {
   List<ProviderSettings> listProviders() => [
     ProviderSettings(
       kind: ProviderKind.builtin,
-      model: 'docer-tiny',
+      model: 'docean-tiny',
       enabled: true,
       models: const [],
       hasApiKey: true,
@@ -107,7 +107,7 @@ class _FakeProviderService implements ProviderService {
   @override
   ActiveProviderInfo activeProvider() => ActiveProviderInfo(
     kind: activeKind,
-    model: activeKind == 'builtin' ? 'docer-tiny' : 'gpt-4o-mini',
+    model: activeKind == 'builtin' ? 'docean-tiny' : 'gpt-4o-mini',
     baseUrl: activeKind == 'builtin' ? null : 'https://api.openai.com/v1',
     hasApiKey: activeKind != 'builtin',
   );

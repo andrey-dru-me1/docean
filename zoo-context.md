@@ -1,10 +1,10 @@
-# Zoo context — docer
+# Zoo context — docean
 
 Reusable session context for AI orchestration (Zoo). Last updated: 2026-09-05 (file-library feature waves 1+2 merged).
 Purpose: a fresh session can resume work without re-researching the codebase.
 
 ## Project layout & tooling
-- `docer` = Flutter app (`app/`) + Rust core (`core/`), glued by flutter_rust_bridge (FRB).
+- `docean` = Flutter app (`app/`) + Rust core (`core/`), glued by flutter_rust_bridge (FRB).
 - justfile recipes: `codegen`, `build-core`, `test-core`, `fmt-core`, `lint-core`, `get`, `fmt-app`, `lint-app`, `test-app`, `check` (= fmt-check + lint + tests), `run-macos|linux|windows|android`, `build-*`.
 - RULE (repo instructions): use fvm for everything fvm supports — `cd app && fvm dart analyze`, `fvm flutter test`, `fvm dart format ...`. NEVER bare `flutter`/`dart`.
 - ENV GOTCHA: bare `dart`/`flutter` resolve to a broken `proto` shim here, so `just check` fails at fmt-app-check. Run the underlying commands with fvm directly (cargo commands are fine).
@@ -92,4 +92,4 @@ User-chosen directory mirrors every document as a real friendly-named file (`Qua
 ## Session-management gotchas (for the orchestrator)
 - Do NOT spam `update_todo_list` — a repetition-limit loop (3×) interrupted work in the 2026-09-04 session; update todos only on real status transitions, or skip todos entirely and delegate via `new_task` early.
 - Delegate implementation to `code` mode with verified file/line facts in the message; run verification (fmt/lint/tests) as its own step.
-- User language: English. Platform: macOS, fish shell. Workspace root: /Users/andreymelnikov/programming/self/docer.
+- User language: English. Platform: macOS, fish shell. Workspace root: /Users/andreymelnikov/programming/self/docean.

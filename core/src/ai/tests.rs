@@ -95,7 +95,7 @@ impl AiProvider for MockProvider {
 
 /// Build a manager whose active provider is the mock, over a temp config dir.
 fn mock_manager() -> (AiManager, Arc<AtomicUsize>, tempdir::TempDir) {
-    let dir = tempdir::TempDir::new("docer-ai-test").unwrap();
+    let dir = tempdir::TempDir::new("docean-ai-test").unwrap();
     let store = ConfigStore::new(dir.path().to_path_buf());
     let (mock, calls) = MockProvider::new("mock");
     let manager = AiManager::with_provider(store, crate::ai::erase(mock));
@@ -170,7 +170,7 @@ fn mock_complete_joins_messages() {
 
 #[test]
 fn config_select_persists_and_switches() {
-    let dir = tempdir::TempDir::new("docer-ai-config").unwrap();
+    let dir = tempdir::TempDir::new("docean-ai-config").unwrap();
     let store = ConfigStore::new(dir.path().to_path_buf());
     let (mock, _calls) = MockProvider::new("mock");
     let mut mgr = AiManager::with_provider(store, crate::ai::erase(mock));
@@ -186,7 +186,7 @@ fn config_select_persists_and_switches() {
 
 #[test]
 fn select_unknown_kind_errors() {
-    let dir = tempdir::TempDir::new("docer-ai-unknown").unwrap();
+    let dir = tempdir::TempDir::new("docean-ai-unknown").unwrap();
     let store = ConfigStore::new(dir.path().to_path_buf());
     let (mock, _calls) = MockProvider::new("mock");
     let mut mgr = AiManager::with_provider(store, crate::ai::erase(mock));
@@ -195,7 +195,7 @@ fn select_unknown_kind_errors() {
 
 #[test]
 fn upsert_provider_persists() {
-    let dir = tempdir::TempDir::new("docer-ai-upsert").unwrap();
+    let dir = tempdir::TempDir::new("docean-ai-upsert").unwrap();
     let store = ConfigStore::new(dir.path().to_path_buf());
     let (mock, _calls) = MockProvider::new("mock");
     let mut mgr = AiManager::with_provider(store, crate::ai::erase(mock));
@@ -211,7 +211,7 @@ fn upsert_provider_persists() {
 
 #[test]
 fn builtin_provider_generates_without_network() {
-    let dir = tempdir::TempDir::new("docer-builtin-gen").unwrap();
+    let dir = tempdir::TempDir::new("docean-builtin-gen").unwrap();
     let provider = BuiltinProvider::new(dir.path().join("models"));
     let out = tokio::runtime::Builder::new_current_thread()
         .build()
@@ -227,13 +227,13 @@ fn builtin_provider_generates_without_network() {
 
 #[test]
 fn builtin_classify_picks_closest_label() {
-    let dir = tempdir::TempDir::new("docer-builtin-class").unwrap();
+    let dir = tempdir::TempDir::new("docean-builtin-class").unwrap();
     let provider = BuiltinProvider::new(dir.path().join("models"));
     let out = tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap()
         .block_on(provider.classify(&ClassifyRequest {
-            model: "docer-tiny".to_owned(),
+            model: "docean-tiny".to_owned(),
             text: "invoice for office supplies".to_owned(),
             labels: vec!["invoice".to_owned(), "recipe".to_owned()],
         }))

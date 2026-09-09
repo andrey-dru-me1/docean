@@ -30,8 +30,8 @@ impl Behaviour {
         let public_key = keypair.public();
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id)?;
         let identify = identify::Behaviour::new(
-            identify::Config::new("/docer/1.0.0".into(), public_key)
-                .with_agent_version(format!("docer-core/{}", env!("CARGO_PKG_VERSION"))),
+            identify::Config::new("/docean/1.0.0".into(), public_key)
+                .with_agent_version(format!("docean-core/{}", env!("CARGO_PKG_VERSION"))),
         );
         let ping = ping::Behaviour::new(ping::Config::new());
         Ok(Self {

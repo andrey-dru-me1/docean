@@ -99,7 +99,7 @@ pub fn sample_odt_bytes() -> Vec<u8> {
 fn temp_root(tag: &str) -> PathBuf {
     let mut p = std::env::temp_dir();
     p.push(format!(
-        "docer-ingest-{tag}-{}-{}",
+        "docean-ingest-{tag}-{}-{}",
         std::process::id(),
         rand_token()
     ));

@@ -1,9 +1,9 @@
 #
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
-# Run `pod lib lint docer_rust_builder.podspec` to validate before publishing.
+# Run `pod lib lint docean_rust_builder.podspec` to validate before publishing.
 #
 Pod::Spec.new do |s|
-  s.name             = 'docer_rust_builder'
+  s.name             = 'docean_rust_builder'
   s.version          = '0.0.1'
   s.summary          = 'A new Flutter FFI plugin project.'
   s.description      = <<-DESC
@@ -18,34 +18,33 @@ A new Flutter FFI plugin project.
   # paths, so Classes contains a forwarder C file that relatively imports
   # `../src/*` so that the C sources can be shared among all target platforms.
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
-  s.dependency 'Flutter'
+  s.source_files     = 'Classes/**/*'
+  s.dependency 'FlutterMacOS'
 
   # The Rust core links rust-libp2p, which (on Apple platforms) pulls in
-  # `system-configuration` (network interface enumeration) and `security`
-  # (crypto randomness). Link them so the static library resolves on iOS too.
+  # `system-configuration` (network interface enumeration for mDNS/TCP) and
+  # `security` (crypto randomness for Noise). Link those system frameworks so
+  # the static `libdocean_core.a` resolves.
   s.frameworks = 'SystemConfiguration', 'Security'
 
-  s.platform = :ios, '11.0'
-
-  # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
+  s.platform = :osx, '10.11'
+  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version = '5.0'
 
   s.script_phase = {
     :name => 'Build Rust library',
     # First argument is relative path to the `rust` folder, second is name of rust library
-    :script => 'sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../../core docer_core',
+    :script => 'sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../../core docean_core',
     :execution_position => :before_compile,
     :input_files => ['${BUILT_PRODUCTS_DIR}/cargokit_phony'],
     # Let XCode know that the static library referenced in -force_load below is
     # created by this build step.
-    :output_files => ["${BUILT_PRODUCTS_DIR}/libdocer_core.a"],
+    :output_files => ["${BUILT_PRODUCTS_DIR}/libdocean_core.a"],
   }
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     # Flutter.framework does not contain a i386 slice.
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/libdocer_core.a',
+    'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/libdocean_core.a',
   }
 end

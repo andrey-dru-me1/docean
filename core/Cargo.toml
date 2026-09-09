@@ -1,11 +1,11 @@
 [package]
 # NOTE: no hyphen. cargokit derives the linked library name from the package
 # name, and Cargo maps `-` to `_` in the produced `lib<name>.a`/`.dylib` files,
-# so `docer-core` would break the pod/CMake link step on macOS/iOS.
-name = "docer_core"
+# so `docean-core` would break the pod/CMake link step on macOS/iOS.
+name = "docean_core"
 version = "0.1.0"
 edition = "2021"
-description = "Core engine for docer: document storage, organization, search, AI, and sync."
+description = "Core engine for docean: document storage, organization, search, AI, and sync."
 license = "MIT"
 
 # flutter_rust_bridge requires the crate to be buildable as both a dynamic and

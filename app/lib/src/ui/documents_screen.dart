@@ -13,7 +13,7 @@ import 'search_screen.dart' show DocumentOpener;
 import 'tag_hierarchy_view.dart' show TagHierarchyView;
 import 'widgets.dart' show EmptyState, TagChip, wrapDocumentDragOut;
 
-  /// Categories for filtering documents by file type.
+/// Categories for filtering documents by file type.
 enum FileTypeCategory {
   all('All files'),
   pdf('PDF'),
@@ -37,7 +37,7 @@ enum FileTypeCategory {
       images => mimeType.startsWith('image/'),
       documents =>
         mimeType ==
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
             mimeType == 'application/vnd.oasis.opendocument.text',
       email => mimeType == 'message/rfc822',
       _ => false,
@@ -159,12 +159,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       setState(() {
         _all = results[0] as List<DocumentSummary>;
         // Only show tags that appear on at least one document.
-        final usedTags = <String>{
-          for (final doc in _all) ...doc.tags,
-        };
-        _tags = (results[1] as List<String>)
-            .where(usedTags.contains)
-            .toList();
+        final usedTags = <String>{for (final doc in _all) ...doc.tags};
+        _tags = (results[1] as List<String>).where(usedTags.contains).toList();
         _paths = results[2] as List<String>;
         _loading = false;
       });
@@ -260,7 +256,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       child: Row(
                         children: [
                           if (_fileTypeFilter == cat)
-                            Icon(Icons.check, size: 16, color: Theme.of(context).colorScheme.primary)
+                            Icon(
+                              Icons.check,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            )
                           else
                             const SizedBox(width: 16),
                           const SizedBox(width: 8),
@@ -277,7 +277,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                   visualDensity: VisualDensity.compact,
-                  selected: _fileTypeFilter != null &&
+                  selected:
+                      _fileTypeFilter != null &&
                       _fileTypeFilter != FileTypeCategory.all,
                   labelStyle: TextStyle(
                     fontSize: 11.5,
@@ -640,11 +641,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   /// honored, so this appends rather than replaces). Existing repository tags
   /// are offered as tappable suggestions, but a brand-new tag can also be typed.
   Future<void> _bulkAddTag() async {
-    final tag = await _promptForTag(
-      context,
-      title: 'Add tag',
-      tags: _tags,
-    );
+    final tag = await _promptForTag(context, title: 'Add tag', tags: _tags);
     if (tag == null || !mounted) return;
     final ids = List.of(_selected);
     if (ids.isEmpty) return;
@@ -857,11 +854,10 @@ Future<String?> _promptForTag(
   BuildContext context, {
   required String title,
   List<String>? tags,
-}) =>
-    showDialog<String>(
-      context: context,
-      builder: (dialogContext) => _TagNameDialog(title: title, tags: tags),
-    );
+}) => showDialog<String>(
+  context: context,
+  builder: (dialogContext) => _TagNameDialog(title: title, tags: tags),
+);
 
 /// Prompts for one tag among [tags] (the tags that exist on the selection) and
 /// returns the chosen name, or `null` when the user cancels. The dialog offers
@@ -869,11 +865,10 @@ Future<String?> _promptForTag(
 Future<String?> _promptForExistingTag(
   BuildContext context, {
   required List<String> tags,
-}) =>
-    showDialog<String>(
-      context: context,
-      builder: (dialogContext) => _ExistingTagDialog(tags: tags),
-    );
+}) => showDialog<String>(
+  context: context,
+  builder: (dialogContext) => _ExistingTagDialog(tags: tags),
+);
 
 /// The file name the dropped document should receive.
 ///
@@ -959,10 +954,7 @@ class _TagNameDialogState extends State<_TagNameDialog> {
           ),
           if (_liveSuggestions.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text(
-              'Suggestions',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
+            Text('Suggestions', style: Theme.of(context).textTheme.labelMedium),
             const SizedBox(height: 6),
             Wrap(
               key: const ValueKey('tag-suggestions-bulk'),
@@ -1059,8 +1051,7 @@ class _ExistingTagDialogState extends State<_ExistingTagDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final noneMatch =
-        _controller.text.trim().isNotEmpty && _filtered.isEmpty;
+    final noneMatch = _controller.text.trim().isNotEmpty && _filtered.isEmpty;
     return AlertDialog(
       title: const Text('Remove tag'),
       content: SizedBox(

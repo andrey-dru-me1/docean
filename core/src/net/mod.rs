@@ -1,6 +1,6 @@
 //! Peer-to-peer networking: device discovery and connection management.
 //!
-//! **Boundary:** discover other devices running docer on the local network and
+//! **Boundary:** discover other devices running docean on the local network and
 //! manage transport connections between them. This module is deliberately
 //! narrower than [`crate::sync`]: it only addresses *How do devices find each
 //! other and stay connected?* — the actual document replication (what to send

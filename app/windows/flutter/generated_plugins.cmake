@@ -11,7 +11,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
-  docer_rust_builder
+  docean_rust_builder
   jni
 )
 

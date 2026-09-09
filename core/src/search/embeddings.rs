@@ -18,7 +18,7 @@
 //! # Nearest neighbor
 //!
 //! [`VectorStore`] keeps chunk embeddings in memory and answers cosine-similarity
-//! nearest-neighbor queries. For the corpus sizes docer targets (a personal
+//! nearest-neighbor queries. For the corpus sizes docean targets (a personal
 //! library), brute force is exact and plenty fast; [`VectorStore::nearest`] is
 //! the single primitive later auto-organization will call.
 

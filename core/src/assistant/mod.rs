@@ -273,7 +273,7 @@ impl DocumentRef {
 /// The system prompt instructing the provider to answer from context and emit
 /// `[n]` citation markers.
 const RAG_SYSTEM_PROMPT: &str = "\
-You are Docer's document assistant. Answer the user's question using only the \
+You are Docean's document assistant. Answer the user's question using only the \
 retrieved document excerpts provided with each message. When you use information \
 from an excerpt, cite it inline with a bracketed number matching its position in \
 the provided context (e.g. [1], [2]). Do not fabricate facts not present in the \

@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:docer/src/app.dart';
-import 'package:docer/src/features/document_service.dart'
+import 'package:docean/src/app.dart';
+import 'package:docean/src/features/document_service.dart'
     show FakeDocumentService;
-import 'package:docer/src/features/provider_service.dart'
+import 'package:docean/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
-import 'package:docer/src/rust/api/ai.dart' show ActiveProviderInfo;
-import 'package:docer/src/rust/api/health.dart';
-import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
+import 'package:docean/src/rust/api/ai.dart' show ActiveProviderInfo;
+import 'package:docean/src/rust/api/health.dart';
+import 'package:docean/src/ui/document_view.dart' show DocumentSummary;
 
 HealthStatus _fakeStatus() => const HealthStatus(
   ok: true,
-  engine: 'docer-core',
+  engine: 'docean-core',
   engineVersion: '0.1.0',
   platform: 'test',
   timestampMs: 123,
@@ -58,7 +58,7 @@ class _FakeProviderService implements ProviderService {
 void main() {
   testWidgets('app shell text is dark-on-light in light mode', (tester) async {
     await tester.pumpWidget(
-      DocerApp(
+      DoceanApp(
         healthCheck: _fakeStatus,
         providerService: _FakeProviderService(),
         documentService: FakeDocumentService(),
@@ -96,7 +96,7 @@ void main() {
     addTearDown(platformDispatcher.clearPlatformBrightnessTestValue);
 
     await tester.pumpWidget(
-      DocerApp(
+      DoceanApp(
         healthCheck: _fakeStatus,
         providerService: _FakeProviderService(),
         documentService: FakeDocumentService(),
@@ -130,7 +130,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      DocerApp(
+      DoceanApp(
         healthCheck: _fakeStatus,
         providerService: _FakeProviderService(),
         documentService: FakeDocumentService(),
@@ -143,7 +143,7 @@ void main() {
 
   testWidgets('surfaces a failing health check', (WidgetTester tester) async {
     await tester.pumpWidget(
-      DocerApp(
+      DoceanApp(
         healthCheck: () => throw StateError('engine unavailable'),
         providerService: _FakeProviderService(),
         documentService: FakeDocumentService(),
@@ -159,7 +159,7 @@ void main() {
   ) async {
     final docs = FakeDocumentService();
     await tester.pumpWidget(
-      DocerApp(
+      DoceanApp(
         healthCheck: _fakeStatus,
         providerService: _FakeProviderService(),
         documentService: docs,
@@ -176,7 +176,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      DocerApp(
+      DoceanApp(
         healthCheck: _fakeStatus,
         providerService: _FakeProviderService(),
         documentService: FakeDocumentService(),
@@ -209,7 +209,7 @@ void main() {
       addTearDown(tester.view.reset);
 
       await tester.pumpWidget(
-        DocerApp(
+        DoceanApp(
           healthCheck: _fakeStatus,
           providerService: _FakeProviderService(),
           documentService: docs,
@@ -262,7 +262,7 @@ void main() {
       ],
     );
     await tester.pumpWidget(
-      DocerApp(
+      DoceanApp(
         healthCheck: _fakeStatus,
         providerService: _FakeProviderService(),
         documentService: docs,

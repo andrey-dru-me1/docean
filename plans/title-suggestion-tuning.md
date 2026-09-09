@@ -1,6 +1,6 @@
 # Title Suggestion Tuning — Research + Implementation Plan
 
-**Project:** `docer` (Flutter `app/` + Rust core `core/`, glued by flutter_rust_bridge)
+**Project:** `docean` (Flutter `app/` + Rust core `core/`, glued by flutter_rust_bridge)
 **Scope:** Rust-core-only tuning of **title suggestion generation** (deterministic classic-ML pipeline in `core/src/auto_org/organizer.rs`). No FRB codegen. No `core/src/api/**` signature changes. No `OrgConfig` field changes.
 **Status:** Research + plan only. No source changes made.
 **Verified as of:** 2026-09-04 (session context `zoo-context.md` facts confirmed against source).
@@ -293,7 +293,7 @@ Tests live in `core/src/auto_org/{tests,organizer,keywords,text,rules}.rs` and i
 
 ## 7. Verification Commands (from [`justfile`](justfile:19))
 
-Run from repo root (`/Users/andreymelnikov/programming/self/docer`); fish shell on macOS.
+Run from repo root (`/Users/andreymelnikov/programming/self/docean`); fish shell on macOS.
 
 1. Format (with check to be CI-clean):
    ```

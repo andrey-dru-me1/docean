@@ -1,4 +1,4 @@
-# docer
+# docean
 
 Cross-platform app for storing and managing digital documents. A single Flutter
 (Dart) UI talks to a Rust core engine through
@@ -58,7 +58,7 @@ reuse) with an optional generative rename tier gated on an AI provider. See
    Dart directly; they expose plain Rust traits/types that the `api` module wraps
    in `#[flutter_rust_bridge::frb(...)]` functions when a feature is wired up.
 3. **Interfaces do not leak concrete crate types.** The trait signatures use
-   `docer_core`'s own types (`Document`, `Tag`, …) and `std`/`serde`/`anyhow`
+   `docean_core`'s own types (`Document`, `Tag`, …) and `std`/`serde`/`anyhow`
    types, so swapping a backend never changes the public contract.
 
 ---
@@ -66,7 +66,7 @@ reuse) with an optional generative rename tier gated on an AI provider. See
 ## 2. Repository layout
 
 ```
-docer/
+docean/
 ├── app/                       # Flutter application (single codebase)
 │   ├── lib/
 │   │   ├── main.dart          # RustLib.init() + runApp
@@ -79,7 +79,7 @@ docer/
 │   ├── integration_test/      # end-to-end tests (load native lib)
 │   ├── android/  macos/  linux/  windows/   # platform shells
 │   └── pubspec.yaml
-├── core/                      # Rust crate `docer-core`
+├── core/                      # Rust crate `docean-core`
 │   ├── src/lib.rs
 │   ├── src/api/               # #[frb] bridge surface
 │   ├── src/domain/  storage/  taxonomy/  search/  ai/  auto_org/  assistant/  sync/
@@ -122,7 +122,7 @@ Platform toolchains (per target):
 - **macOS** — Xcode + Command Line Tools; CocoaPods (`brew install cocoapods`).
   Swift Package Manager is kept **off** for the macOS Runner (see
   `app/pubspec.yaml` → `flutter.config.enable-swift-package-manager: false`):
-  the `docer_rust_builder` cargokit plugin is CocoaPods-only, and Flutter 3.44+
+  the `docean_rust_builder` cargokit plugin is CocoaPods-only, and Flutter 3.44+
   enables SPM by default, which breaks the build with
   `Unable to resolve module dependency: FlutterMacOS`.
 - **Linux** — `clang`, `cmake`, `ninja`, GTK3: `sudo apt install clang cmake ninja-build libgtk-3-dev`. (CI-only; see §12.)
@@ -176,7 +176,7 @@ format + lint + test suite.
 | Windows  | `flutter run -d windows` | `flutter build windows` → `app/build/windows/x64/runner/Release/` |
 | Android  | `flutter run -d <device>`| `flutter build apk` → `app/build/app/outputs/flutter-apk/*.apk` |
 
-All four run the same Dart UI. The `docer_rust_builder` plugin (cargokit) compiles
+All four run the same Dart UI. The `docean_rust_builder` plugin (cargokit) compiles
 `../core` for the target platform and links the resulting static/dynamic library
 automatically, so no extra step is needed after `flutter pub get`.
 
@@ -293,7 +293,7 @@ cd app && flutter test integration_test -d macos    # end-to-end (loads native l
 - `app/test/search_chat_ui_test.dart` — widget tests for the search, chat, and
   AI-provider configuration screens using injected fake services (no FFI), and
   `search_service`/`assistant_service`/`provider_service` facades.
-- `app/integration_test/health_test.dart` — loads the real `docer-core` library,
+- `app/integration_test/health_test.dart` — loads the real `docean-core` library,
   asserts the Rust health check flows through to the UI, and exercises the
   search bridge (index + query with highlights).
 
@@ -352,7 +352,7 @@ conflict/reconciliation log).
 * **Toolchain / packaging fixes (re-landed).** Flutter 3.44+ enables Swift
   Package Manager by default, which migrates the macOS Runner to a hybrid
   CocoaPods/SPM state and fails with `Unable to resolve module dependency:
-  FlutterMacOS` because the `docer_rust_builder` cargokit plugin is
+  FlutterMacOS` because the `docean_rust_builder` cargokit plugin is
   CocoaPods-only. Fixed by setting
   `flutter.config.enable-swift-package-manager: false` in `app/pubspec.yaml` and
   stripping the `FlutterGeneratedPluginSwiftPackage` references from
@@ -382,7 +382,7 @@ conflict/reconciliation log).
   ambiguously from `features.dart` (both `p2p.dart` and `sync.dart` define
   top-level `connect`/`events`) — now hidden, and **macOS link failure** — the
   static Rust core (rust-libp2p) needed `SystemConfiguration` + `Security`
-  frameworks, declared in both `macos/` and `ios/` `docer_rust_builder.podspec`s.
+  frameworks, declared in both `macos/` and `ios/` `docean_rust_builder.podspec`s.
 
 ### What was integrated (was missing before this pass)
 
@@ -434,7 +434,7 @@ bridge; the UI surface and Rust logic were verified as follows:
 
 | Platform | Verified? | Notes |
 |----------|-----------|-------|
-| macOS (host) | Rust core ✅ · full app ⚠️ | `cargo test`/`build`/`clippy` and the cargokit link of `docer_core` (both `arm64` and `x86_64`) succeed. Setting `flutter.config.enable-swift-package-manager: false` and stripping the `FlutterGeneratedPluginSwiftPackage` references from `Runner.xcodeproj` correctly switches the build back to CocoaPods (log shows `Running pod install...`), but the Swift compile of the Runner still fails with `Unable to resolve module dependency: 'FlutterMacOS'` because Flutter 3.44.2 + Xcode 26.6 does not emit the `FlutterMacOS.xcframework` entry into `FRAMEWORK_SEARCH_PATHS` for the CocoaPods-only macOS path. This is a toolchain incompatibility, not a repo defect. |
+| macOS (host) | Rust core ✅ · full app ⚠️ | `cargo test`/`build`/`clippy` and the cargokit link of `docean_core` (both `arm64` and `x86_64`) succeed. Setting `flutter.config.enable-swift-package-manager: false` and stripping the `FlutterGeneratedPluginSwiftPackage` references from `Runner.xcodeproj` correctly switches the build back to CocoaPods (log shows `Running pod install...`), but the Swift compile of the Runner still fails with `Unable to resolve module dependency: 'FlutterMacOS'` because Flutter 3.44.2 + Xcode 26.6 does not emit the `FlutterMacOS.xcframework` entry into `FRAMEWORK_SEARCH_PATHS` for the CocoaPods-only macOS path. This is a toolchain incompatibility, not a repo defect. |
 | Linux | ❌ CI-only | macOS host; Flutter does not cross-compile Linux from macOS. Built in CI. |
 | Windows | ❌ CI-only | macOS host; no Windows cross-compilation. Built in CI. |
 | Android | ❌ CI-only | Requires `ANDROID_HOME=~/Library/Android/sdk`, accepted SDK licenses (`sdkmanager --licenses`), and the Rust Android targets (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android`); see §3. Exercised in CI. |
@@ -466,7 +466,7 @@ bridge; the UI surface and Rust logic were verified as follows:
   reversed by disabling SPM (`app/pubspec.yaml` →
   `flutter.config.enable-swift-package-manager: false`) and stripping the
   `FlutterGeneratedPluginSwiftPackage` references from `Runner.xcodeproj`. The
-  `docer_rust_builder` cargokit plugin is CocoaPods-only, so SPM must stay off.
+  `docean_rust_builder` cargokit plugin is CocoaPods-only, so SPM must stay off.
   A remaining Flutter 3.44.2 + Xcode 26.6 toolchain issue still prevents the
   Swift compile from resolving the `FlutterMacOS` module (see §12d).
 * **Sync runtime backend** — the bridge's sync engine still runs over the

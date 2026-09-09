@@ -24,7 +24,7 @@ pub struct HealthStatus {
 pub fn health_check() -> HealthStatus {
     HealthStatus {
         ok: true,
-        engine: "docer-core".to_owned(),
+        engine: "docean-core".to_owned(),
         engine_version: env!("CARGO_PKG_VERSION").to_owned(),
         platform: std::env::consts::OS.to_owned(),
         timestamp_ms: now_millis(),

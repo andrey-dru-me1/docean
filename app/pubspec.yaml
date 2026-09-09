@@ -1,4 +1,4 @@
-name: docer
+name: docean
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -40,7 +40,7 @@ dependencies:
   flutter_rust_bridge: 2.13.0
 
   # Cargokit build glue that compiles `../core` and links the native library.
-  docer_rust_builder:
+  docean_rust_builder:
     path: rust_builder
 
   # Annotation crate required by flutter_rust_bridge codegen for generated types.
@@ -113,7 +113,7 @@ flutter:
 
   # Flutter 3.44+ enables Swift Package Manager for the macOS Runner by
   # default, which migrates it to a hybrid CocoaPods/SPM state and fails with
-  # "Unable to resolve module dependency: FlutterMacOS". The docer_rust_builder
+  # "Unable to resolve module dependency: FlutterMacOS". The docean_rust_builder
   # cargokit plugin is CocoaPods-only, so keep SPM off.
   config:
     enable-swift-package-manager: false

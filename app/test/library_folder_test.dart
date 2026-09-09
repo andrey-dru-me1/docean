@@ -3,16 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:docer/src/app.dart' show DocerApp;
-import 'package:docer/src/features/document_service.dart'
+import 'package:docean/src/app.dart' show DoceanApp;
+import 'package:docean/src/features/document_service.dart'
     show FakeDocumentService;
-import 'package:docer/src/features/library_directory.dart'
+import 'package:docean/src/features/library_directory.dart'
     show LibraryDirectoryService, LibrarySyncSummary;
-import 'package:docer/src/features/provider_service.dart'
+import 'package:docean/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
-import 'package:docer/src/rust/api/ai.dart' show ActiveProviderInfo;
-import 'package:docer/src/rust/api/health.dart' show HealthStatus;
-import 'package:docer/src/ui/library_folder_dialog.dart'
+import 'package:docean/src/rust/api/ai.dart' show ActiveProviderInfo;
+import 'package:docean/src/rust/api/health.dart' show HealthStatus;
+import 'package:docean/src/ui/library_folder_dialog.dart'
     show DirectoryPicker, showLibraryFolderDialog;
 
 /// A [LibraryDirectoryService] that records every call and returns an
@@ -104,7 +104,7 @@ Future<void> _openDialog(
 
 HealthStatus _fakeStatus() => const HealthStatus(
   ok: true,
-  engine: 'docer-core',
+  engine: 'docean-core',
   engineVersion: '0.1.0',
   platform: 'test',
   timestampMs: 123,
@@ -116,7 +116,7 @@ class _FakeProviderService implements ProviderService {
   List<ProviderSettings> listProviders() => [
     ProviderSettings(
       kind: ProviderKind.builtin,
-      model: 'docer-tiny',
+      model: 'docean-tiny',
       enabled: true,
       models: const [],
       hasApiKey: true,
@@ -126,7 +126,7 @@ class _FakeProviderService implements ProviderService {
   @override
   ActiveProviderInfo activeProvider() => const ActiveProviderInfo(
     kind: 'builtin',
-    model: 'docer-tiny',
+    model: 'docean-tiny',
     baseUrl: null,
     hasApiKey: false,
   );
@@ -154,13 +154,13 @@ void main() {
 
       await _openDialog(tester, service: service);
 
-      expect(find.byKey(const ValueKey('library-folder-dialog')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('library-folder-dialog')),
+        findsOneWidget,
+      );
       expect(find.text('Not set'), findsOneWidget);
       // Detach only makes sense once a directory is set.
-      expect(
-        find.byKey(const ValueKey('library-dir-detach')),
-        findsNothing,
-      );
+      expect(find.byKey(const ValueKey('library-dir-detach')), findsNothing);
     });
 
     testWidgets('shows the configured directory when one is pre-set', (
@@ -172,10 +172,7 @@ void main() {
 
       expect(find.text('/docs/inbox'), findsOneWidget);
       expect(find.text('Not set'), findsNothing);
-      expect(
-        find.byKey(const ValueKey('library-dir-detach')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('library-dir-detach')), findsOneWidget);
     });
 
     testWidgets('sync button is disabled when no directory is set', (
@@ -228,7 +225,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('library-dir-choose')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('library-folder-dialog')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('library-folder-dialog')),
+        findsOneWidget,
+      );
       expect(service.setCount, 0);
       expect(service.syncCount, 0);
     });
@@ -250,10 +250,7 @@ void main() {
 
       expect(service.syncCount, 1);
       expect(find.byKey(const ValueKey('library-folder-dialog')), findsNothing);
-      expect(
-        find.text('Library synced: +1 added, 2 linked'),
-        findsOneWidget,
-      );
+      expect(find.text('Library synced: +1 added, 2 linked'), findsOneWidget);
     });
 
     testWidgets('sync failure keeps the dialog open and shows the error', (
@@ -267,7 +264,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('library-dir-sync')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('library-folder-dialog')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('library-folder-dialog')),
+        findsOneWidget,
+      );
       expect(find.textContaining('Sync failed:'), findsOneWidget);
     });
 
@@ -337,7 +337,7 @@ void main() {
         addTearDown(tester.view.reset);
 
         await tester.pumpWidget(
-          DocerApp(
+          DoceanApp(
             healthCheck: _fakeStatus,
             providerService: _FakeProviderService(),
             documentService: FakeDocumentService(),
@@ -346,10 +346,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const ValueKey('library-folder')),
-          findsOneWidget,
-        );
+        expect(find.byKey(const ValueKey('library-folder')), findsOneWidget);
         expect(find.byIcon(Icons.folder_copy_outlined), findsOneWidget);
       }
     });
@@ -361,7 +358,7 @@ void main() {
       final service = _RecordingLibraryService();
 
       await tester.pumpWidget(
-        DocerApp(
+        DoceanApp(
           healthCheck: _fakeStatus,
           providerService: _FakeProviderService(),
           documentService: docs,
@@ -393,7 +390,7 @@ void main() {
       final service = _RecordingLibraryService(dir: '/docs');
 
       await tester.pumpWidget(
-        DocerApp(
+        DoceanApp(
           healthCheck: _fakeStatus,
           providerService: _FakeProviderService(),
           documentService: docs,
@@ -410,10 +407,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(service.syncCount, 2); // 1 startup auto-sync + 1 manual
-      expect(
-        find.text('Library synced: +1 added, 2 linked'),
-        findsOneWidget,
-      );
+      expect(find.text('Library synced: +1 added, 2 linked'), findsOneWidget);
       expect(docs.listCount, greaterThan(callsBefore));
     });
 
@@ -424,7 +418,7 @@ void main() {
       final service = _RecordingLibraryService(dir: '/pre-set');
 
       await tester.pumpWidget(
-        DocerApp(
+        DoceanApp(
           healthCheck: _fakeStatus,
           providerService: _FakeProviderService(),
           documentService: docs,
@@ -444,7 +438,7 @@ void main() {
       final service = _RecordingLibraryService();
 
       await tester.pumpWidget(
-        DocerApp(
+        DoceanApp(
           healthCheck: _fakeStatus,
           providerService: _FakeProviderService(),
           documentService: FakeDocumentService(),

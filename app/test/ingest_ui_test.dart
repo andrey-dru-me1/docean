@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:docer/src/app.dart' show DocerApp;
-import 'package:docer/src/features/document_service.dart'
+import 'package:docean/src/app.dart' show DoceanApp;
+import 'package:docean/src/features/document_service.dart'
     show FakeDocumentService;
-import 'package:docer/src/features/ingest_service.dart'
+import 'package:docean/src/features/ingest_service.dart'
     show IngestEvent, IngestService;
-import 'package:docer/src/features/provider_service.dart'
+import 'package:docean/src/features/provider_service.dart'
     show ProviderKind, ProviderService, ProviderSettings;
-import 'package:docer/src/rust/api/ai.dart' show ActiveProviderInfo;
-import 'package:docer/src/rust/api/health.dart' show HealthStatus;
-import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
-import 'package:docer/src/ui/ingest_panel.dart' show IngestPanel;
-import 'package:docer/src/ui/search_screen.dart' show SearchScreen;
-import 'package:docer/src/features/search_service.dart'
+import 'package:docean/src/rust/api/ai.dart' show ActiveProviderInfo;
+import 'package:docean/src/rust/api/health.dart' show HealthStatus;
+import 'package:docean/src/ui/document_view.dart' show DocumentSummary;
+import 'package:docean/src/ui/ingest_panel.dart' show IngestPanel;
+import 'package:docean/src/ui/search_screen.dart' show SearchScreen;
+import 'package:docean/src/features/search_service.dart'
     show SearchHitDto, SearchMode, SearchService;
 
 /// A fake ingestion service that records the paths it was asked to ingest and
@@ -197,7 +197,7 @@ void main() {
         final search = _FakeSearchService();
 
         await tester.pumpWidget(
-          DocerApp(
+          DoceanApp(
             healthCheck: _fakeStatus,
             providerService: _FakeProviderService(),
             ingestService: ingest,
@@ -244,7 +244,7 @@ void main() {
 
 HealthStatus _fakeStatus() => const HealthStatus(
   ok: true,
-  engine: 'docer-core',
+  engine: 'docean-core',
   engineVersion: '0.1.0',
   platform: 'test',
   timestampMs: 123,
@@ -256,7 +256,7 @@ class _FakeProviderService implements ProviderService {
   List<ProviderSettings> listProviders() => [
     ProviderSettings(
       kind: ProviderKind.builtin,
-      model: 'docer-tiny',
+      model: 'docean-tiny',
       enabled: true,
       models: const [],
       hasApiKey: true,
@@ -266,7 +266,7 @@ class _FakeProviderService implements ProviderService {
   @override
   ActiveProviderInfo activeProvider() => const ActiveProviderInfo(
     kind: 'builtin',
-    model: 'docer-tiny',
+    model: 'docean-tiny',
     baseUrl: null,
     hasApiKey: false,
   );

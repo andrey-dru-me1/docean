@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:docer/src/features/tag_hierarchy.dart';
+import 'package:docean/src/features/tag_hierarchy.dart';
 
 void main() {
   group('implicitAncestors', () {
@@ -51,7 +51,7 @@ void main() {
     });
 
     test('accepts tag with space', () {
-      expect(isValidTagPath('work docer'), isTrue);
+      expect(isValidTagPath('work docean'), isTrue);
     });
 
     test('accepts single-character segment', () {
@@ -158,10 +158,7 @@ void main() {
 
   group('implicitTagSet', () {
     test('returns tag plus all ancestors', () {
-      expect(
-        implicitTagSet('a/b/c'),
-        equals({'a/b/c', 'a/b', 'a'}),
-      );
+      expect(implicitTagSet('a/b/c'), equals({'a/b/c', 'a/b', 'a'}));
     });
 
     test('returns single tag for top-level', () {
@@ -201,18 +198,9 @@ void main() {
     });
 
     test('containedDocIds returns correct doc ids', () {
-      expect(
-        containedDocIds('study', tagsByDoc),
-        equals({'knn', 'qsort'}),
-      );
-      expect(
-        containedDocIds('study/mit', tagsByDoc),
-        equals({'knn', 'qsort'}),
-      );
-      expect(
-        containedDocIds('study/lecture', tagsByDoc),
-        equals({'knn'}),
-      );
+      expect(containedDocIds('study', tagsByDoc), equals({'knn', 'qsort'}));
+      expect(containedDocIds('study/mit', tagsByDoc), equals({'knn', 'qsort'}));
+      expect(containedDocIds('study/lecture', tagsByDoc), equals({'knn'}));
     });
   });
 
@@ -222,18 +210,18 @@ void main() {
       'qsort': {'study/seminar', 'study/mit/cprog'},
     };
 
-    test('spec example: directSubTags study returns mit first then leaves alpha', () {
-      expect(
-        directSubTags('study', tagsByDoc),
-        equals(['mit', 'lecture', 'seminar']),
-      );
-    });
+    test(
+      'spec example: directSubTags study returns mit first then leaves alpha',
+      () {
+        expect(
+          directSubTags('study', tagsByDoc),
+          equals(['mit', 'lecture', 'seminar']),
+        );
+      },
+    );
 
     test('spec example: directSubTags study/mit returns both leaves alpha', () {
-      expect(
-        directSubTags('study/mit', tagsByDoc),
-        equals(['cprog', 'ml']),
-      );
+      expect(directSubTags('study/mit', tagsByDoc), equals(['cprog', 'ml']));
     });
   });
 
@@ -294,11 +282,14 @@ void main() {
       );
     });
 
-    test('tier ordering: exact beats prefix beats segment-prefix beats subsequence', () {
-      final tags = ['ma/x', 'a/ma', 'mxa', 'ma'];
-      final result = suggestTagCompletions('ma', tags);
-      expect(result, equals(['ma', 'ma/x', 'a/ma', 'mxa']));
-    });
+    test(
+      'tier ordering: exact beats prefix beats segment-prefix beats subsequence',
+      () {
+        final tags = ['ma/x', 'a/ma', 'mxa', 'ma'];
+        final result = suggestTagCompletions('ma', tags);
+        expect(result, equals(['ma', 'ma/x', 'a/ma', 'mxa']));
+      },
+    );
 
     test('limit is honored', () {
       final tags = ['a', 'a/b', 'a/b/c', 'a/b/c/d', 'a/b/c/d/e'];
@@ -339,10 +330,7 @@ void main() {
     });
 
     test('unrelated tags kept', () {
-      expect(
-        maximalTags({'work', 'life'}),
-        unorderedEquals(['work', 'life']),
-      );
+      expect(maximalTags({'work', 'life'}), unorderedEquals(['work', 'life']));
     });
 
     test('single tag kept', () {
@@ -372,7 +360,11 @@ void main() {
       expect(
         expandTagAncestors(['study/mit/ml', 'work', 'student:Alice']),
         unorderedEquals([
-          'study/mit/ml', 'study/mit', 'study', 'work', 'student:Alice',
+          'study/mit/ml',
+          'study/mit',
+          'study',
+          'work',
+          'student:Alice',
         ]),
       );
       expect(expandTagAncestors(['plain']), {'plain'});
@@ -383,22 +375,25 @@ void main() {
   group('derivedSubTags (ancestor-prefix sub-tags)', () {
     // The spec example: t1/t2/t3 produces the direct children of its own
     // prefixes — t1/t2's and t1's other branches — minus path components.
-    test('t1/t2/t3 yields the other branches of every prefix, minus components', () {
-      final tagsByDoc = <String, Set<String>>{
-        'a': {
-          't1/t2/t3/s1', 't1/t2/t3/s2',   // direct children of t1/t2/t3
-          't1/t2/s3', 't1/t2/s4',          // children of t1/t2
-          't1/s5', 't1/s6',                // children of t1
-        },
-        'b': {'t1/t2/t3'},                 // path itself
-      };
-      // derivedSubTags excludes the direct sub-tags of the path (they come
-      // from directSubTags) and the path components t2/t3.
-      expect(
-        derivedSubTags('t1/t2/t3', tagsByDoc),
-        unorderedEquals(['t1/t2/s3', 't1/t2/s4', 't1/s5', 't1/s6']),
-      );
-    });
+    test(
+      't1/t2/t3 yields the other branches of every prefix, minus components',
+      () {
+        final tagsByDoc = <String, Set<String>>{
+          'a': {
+            't1/t2/t3/s1', 't1/t2/t3/s2', // direct children of t1/t2/t3
+            't1/t2/s3', 't1/t2/s4', // children of t1/t2
+            't1/s5', 't1/s6', // children of t1
+          },
+          'b': {'t1/t2/t3'}, // path itself
+        };
+        // derivedSubTags excludes the direct sub-tags of the path (they come
+        // from directSubTags) and the path components t2/t3.
+        expect(
+          derivedSubTags('t1/t2/t3', tagsByDoc),
+          unorderedEquals(['t1/t2/s3', 't1/t2/s4', 't1/s5', 't1/s6']),
+        );
+      },
+    );
 
     test('excludes the path components (no recursion)', () {
       final tagsByDoc = <String, Set<String>>{
@@ -443,10 +438,10 @@ void main() {
     test('groups by parent: last path tag first, top-level last', () {
       final tagsByDoc = <String, Set<String>>{
         'doc': {
-          'p1', 'p1/p1s2',                     // chain 1
-          'p2', 'p2/p2s1',                     // chain 2
-          'p2/p2s1/s3',                        // child of the deepest walked tag
-          'p1/p1s2/s4',                        // child of p1/p1s2
+          'p1', 'p1/p1s2', // chain 1
+          'p2', 'p2/p2s1', // chain 2
+          'p2/p2s1/s3', // child of the deepest walked tag
+          'p1/p1s2/s4', // child of p1/p1s2
         },
       };
       // Walk p1 -> p2 -> p2/p2s1 (3 components).
@@ -464,15 +459,9 @@ void main() {
         'doc': {'p1', 'p1/p1s2', 'p2', 'p2/p2s1'},
       };
       // Walk p1 -> p2: group 0 (parent p2): p2s1; group 1 (parent p1): p1s2.
-      expect(
-        childTags(['p1', 'p2'], tagsByDoc),
-        ['p2/p2s1', 'p1/p1s2'],
-      );
+      expect(childTags(['p1', 'p2'], tagsByDoc), ['p2/p2s1', 'p1/p1s2']);
       // Walk p1 only: group 0 (parent p1): p1s2; top-level group: p2 last.
-      expect(
-        childTags(['p1'], tagsByDoc),
-        ['p1/p1s2', 'p2'],
-      );
+      expect(childTags(['p1'], tagsByDoc), ['p1/p1s2', 'p2']);
     });
 
     test('count still breaks ties inside a group', () {
@@ -483,10 +472,11 @@ void main() {
       // Walk study -> study/mit: group 0 (parent study/mit), count desc:
       // ml and cprog both 1 -> alpha: cprog, ml; group 1 (parent study):
       // lecture.
-      expect(
-        childTags(['study', 'study/mit'], tagsByDoc),
-        ['study/mit/cprog', 'study/mit/ml', 'study/lecture'],
-      );
+      expect(childTags(['study', 'study/mit'], tagsByDoc), [
+        'study/mit/cprog',
+        'study/mit/ml',
+        'study/lecture',
+      ]);
     });
   });
 

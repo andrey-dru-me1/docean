@@ -1,4 +1,4 @@
-# Task runner for docer. Run `just` (or `just <recipe>`) from the repo root.
+# Task runner for docean. Run `just` (or `just <recipe>`) from the repo root.
 # Requires: flutter, dart, cargo, and flutter_rust_bridge_codegen on PATH.
 
 default: check

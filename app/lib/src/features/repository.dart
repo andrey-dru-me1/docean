@@ -11,13 +11,13 @@ import 'package:path_provider/path_provider.dart';
 
 import '../rust/api/storage.dart' show DocumentRepository, openRepository;
 
-/// Resolve the on-disk repository root: `<app-documents>/docer`.
+/// Resolve the on-disk repository root: `<app-documents>/docean`.
 ///
 /// Injectable for tests; the production default is the platform's
-/// application-documents directory under a `docer` subfolder.
+/// application-documents directory under a `docean` subfolder.
 Future<String> defaultRepositoryRoot() async {
   final base = await getApplicationDocumentsDirectory();
-  return p.join(base.path, 'docer');
+  return p.join(base.path, 'docean');
 }
 
 DocumentRepository? _cached;

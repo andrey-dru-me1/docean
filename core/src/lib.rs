@@ -1,4 +1,4 @@
-//! `docer-core` — the Rust engine behind the docer app.
+//! `docean-core` — the Rust engine behind the docean app.
 //!
 //! The crate is split into two parts:
 //!

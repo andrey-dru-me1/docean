@@ -606,7 +606,7 @@ mod tests {
     fn temp_root(tag: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
         p.push(format!(
-            "docer-libsync-{tag}-{}-{}",
+            "docean-libsync-{tag}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)

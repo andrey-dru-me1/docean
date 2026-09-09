@@ -9,12 +9,12 @@
 use std::fs;
 use std::path::PathBuf;
 
-/// Keychain service name for all docer AI API keys.
-pub const API_KEY_SERVICE: &str = "docer.ai";
+/// Keychain service name for all docean AI API keys.
+pub const API_KEY_SERVICE: &str = "docean.ai";
 
 /// Environment variable that, when set, opts into a file-backed fallback for
 /// key storage. Intended for tests and headless CI only.
-pub const KEYCHAIN_FALLBACK_ENV: &str = "DOCER_AI_KEYCHAIN_FALLBACK";
+pub const KEYCHAIN_FALLBACK_ENV: &str = "DOCEAN_AI_KEYCHAIN_FALLBACK";
 
 /// Backend used to persist a secret.
 enum SecretBackend {
@@ -47,7 +47,8 @@ impl SecretBackend {
                 fs::write(path, key).map_err(|e| e.to_string())
             }
             SecretBackend::Unavailable => Err(
-                "no OS keychain available; set DOCER_AI_KEYCHAIN_FALLBACK to store keys".to_owned(),
+                "no OS keychain available; set DOCEAN_AI_KEYCHAIN_FALLBACK to store keys"
+                    .to_owned(),
             ),
         }
     }

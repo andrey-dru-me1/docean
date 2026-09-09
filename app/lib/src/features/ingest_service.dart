@@ -26,7 +26,7 @@ abstract interface class IngestService {
 /// The repository handle is opened lazily and cached, so repeated ingestion
 /// batches share the same on-disk store. The root directory is resolved via
 /// [repositoryRoot] (injectable for tests); the production default is the
-/// platform's application-documents directory under a `docer` subfolder.
+/// platform's application-documents directory under a `docean` subfolder.
 class BridgeIngestService implements IngestService {
   const BridgeIngestService({Future<String> Function()? repositoryRoot})
     : _repositoryRoot = repositoryRoot ?? defaultRepositoryRoot;

@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.docer.docer"
+    namespace = "dev.docean.docean"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "dev.docer.docer"
+        applicationId = "dev.docean.docean"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

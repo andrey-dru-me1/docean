@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:docer/src/features/document_service.dart' show FakeDocumentService;
-import 'package:docer/src/ui/document_view.dart' show DocumentDetailView, DocumentSummary;
-import 'package:docer/src/ui/documents_screen.dart' show DocumentsScreen;
-import 'package:docer/src/ui/widgets.dart' show TagChip, tagColorFor;
+import 'package:docean/src/features/document_service.dart'
+    show FakeDocumentService;
+import 'package:docean/src/ui/document_view.dart'
+    show DocumentDetailView, DocumentSummary;
+import 'package:docean/src/ui/documents_screen.dart' show DocumentsScreen;
+import 'package:docean/src/ui/widgets.dart' show TagChip, tagColorFor;
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
@@ -21,29 +23,34 @@ DocumentSummary _doc(
 /// qsort[study/seminar, study/mit/cprog]
 /// notes[idea]   (plain top-level leaf)
 /// memo[todo]    (plain top-level leaf)
-FakeDocumentService _treeService({bool withNestedFiles = false, bool withRootFile = false, bool withUniform = false}) =>
-    FakeDocumentService(
-      documents: [
-        _doc('knn', 'KNN notes', tags: const ['study/lecture', 'study/mit/ml']),
-        _doc('qsort', 'Qsort impl', tags: const ['study/seminar', 'study/mit/cprog']),
-        _doc('notes', 'Ideas', tags: const ['idea']),
-        _doc('memo', 'TODOs', tags: const ['todo']),
-        if (withNestedFiles)
-          _doc('mit-notes', 'MIT notes', tags: const ['study/mit']),
-        if (withRootFile)
-          _doc('study-doc', 'Study doc', tags: const ['study']),
-        if (withUniform)
-          _doc('deep', 'Deep doc', tags: const ['a/b/c']),
-      ],
-      tags: const [
-        'study/lecture',
-        'study/mit/ml',
-        'study/seminar',
-        'study/mit/cprog',
-        'idea',
-        'todo',
-      ],
-    );
+FakeDocumentService _treeService({
+  bool withNestedFiles = false,
+  bool withRootFile = false,
+  bool withUniform = false,
+}) => FakeDocumentService(
+  documents: [
+    _doc('knn', 'KNN notes', tags: const ['study/lecture', 'study/mit/ml']),
+    _doc(
+      'qsort',
+      'Qsort impl',
+      tags: const ['study/seminar', 'study/mit/cprog'],
+    ),
+    _doc('notes', 'Ideas', tags: const ['idea']),
+    _doc('memo', 'TODOs', tags: const ['todo']),
+    if (withNestedFiles)
+      _doc('mit-notes', 'MIT notes', tags: const ['study/mit']),
+    if (withRootFile) _doc('study-doc', 'Study doc', tags: const ['study']),
+    if (withUniform) _doc('deep', 'Deep doc', tags: const ['a/b/c']),
+  ],
+  tags: const [
+    'study/lecture',
+    'study/mit/ml',
+    'study/seminar',
+    'study/mit/cprog',
+    'idea',
+    'todo',
+  ],
+);
 
 Future<void> _toggleToTags(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.account_tree));
@@ -73,17 +80,20 @@ void main() {
   // Own colors: tagColorFor hashes the full path, not just top-level
   // ---------------------------------------------------------------
   group('own colors', () {
-    test('tagColorFor produces distinct colors for each hierarchical level', () {
-      expect(tagColorFor('study'), isNot(equals(tagColorFor('study/mit'))));
-      expect(
-        tagColorFor('study/mit'),
-        isNot(equals(tagColorFor('study/mit/ml'))),
-      );
-      expect(
-        tagColorFor('study'),
-        isNot(equals(tagColorFor('study/mit/ml'))),
-      );
-    });
+    test(
+      'tagColorFor produces distinct colors for each hierarchical level',
+      () {
+        expect(tagColorFor('study'), isNot(equals(tagColorFor('study/mit'))));
+        expect(
+          tagColorFor('study/mit'),
+          isNot(equals(tagColorFor('study/mit/ml'))),
+        );
+        expect(
+          tagColorFor('study'),
+          isNot(equals(tagColorFor('study/mit/ml'))),
+        );
+      },
+    );
   });
 
   // ---------------------------------------------------------------
@@ -94,9 +104,7 @@ void main() {
       'pumping TagChip(label: study/mit/ml) renders 3 colored segments '
       'and 2 dividers',
       (tester) async {
-        await tester.pumpWidget(
-          _wrap(const TagChip(label: 'study/mit/ml')),
-        );
+        await tester.pumpWidget(_wrap(const TagChip(label: 'study/mit/ml')));
 
         // Three text widgets, one per segment.
         expect(find.text('study'), findsOneWidget);
@@ -133,8 +141,7 @@ void main() {
           find.descendant(
             of: find.byType(TagChip),
             matching: find.byWidgetPredicate(
-              (w) =>
-                  w is ColoredBox && w.color == Colors.white24,
+              (w) => w is ColoredBox && w.color == Colors.white24,
             ),
           ),
           findsNWidgets(2),
@@ -142,30 +149,38 @@ void main() {
       },
     );
 
-    testWidgets(
-      'split pill selected state lightens every segment color',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(const TagChip(label: 'study/mit/ml', selected: true)),
+    testWidgets('split pill selected state lightens every segment color', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(const TagChip(label: 'study/mit/ml', selected: true)),
+      );
+
+      Color blockColor(String segment) {
+        final container = tester.widget<Container>(
+          find
+              .ancestor(
+                of: find.text(segment),
+                matching: find.byType(Container),
+              )
+              .first,
         );
+        return container.color!;
+      }
 
-        Color blockColor(String segment) {
-          final container = tester.widget<Container>(
-            find
-                .ancestor(
-                  of: find.text(segment),
-                  matching: find.byType(Container),
-                )
-                .first,
-          );
-          return container.color!;
-        }
-
-        expect(blockColor('study'), Color.lerp(tagColorFor('study'), Colors.white, 0.38)!);
-        expect(blockColor('mit'), Color.lerp(tagColorFor('study/mit'), Colors.white, 0.38)!);
-        expect(blockColor('ml'), Color.lerp(tagColorFor('study/mit/ml'), Colors.white, 0.38)!);
-      },
-    );
+      expect(
+        blockColor('study'),
+        Color.lerp(tagColorFor('study'), Colors.white, 0.38)!,
+      );
+      expect(
+        blockColor('mit'),
+        Color.lerp(tagColorFor('study/mit'), Colors.white, 0.38)!,
+      );
+      expect(
+        blockColor('ml'),
+        Color.lerp(tagColorFor('study/mit/ml'), Colors.white, 0.38)!,
+      );
+    });
   });
 
   // ---------------------------------------------------------------
@@ -174,10 +189,12 @@ void main() {
   group('TagHierarchyView tree', () {
     testWidgets('shows top-level study with count badge 2', (tester) async {
       await tester.pumpWidget(
-        _wrap(DocumentsScreen(
-          documentService: _treeService(),
-          onOpenDocument: (_) {},
-        )),
+        _wrap(
+          DocumentsScreen(
+            documentService: _treeService(),
+            onOpenDocument: (_) {},
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       await _toggleToTags(tester);
@@ -196,10 +213,12 @@ void main() {
       'study children: mit first (2 remaining docs), then lecture, seminar',
       (tester) async {
         await tester.pumpWidget(
-          _wrap(DocumentsScreen(
-            documentService: _treeService(),
-            onOpenDocument: (_) {},
-          )),
+          _wrap(
+            DocumentsScreen(
+              documentService: _treeService(),
+              onOpenDocument: (_) {},
+            ),
+          ),
         );
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
@@ -208,9 +227,19 @@ void main() {
         await tester.pumpAndSettle();
 
         final ys = [
-          tester.getTopLeft(find.byKey(ValueKey(nodeKey(['study', 'study/mit'])))).dy,
-          tester.getTopLeft(find.byKey(ValueKey(nodeKey(['study', 'study/lecture'])))).dy,
-          tester.getTopLeft(find.byKey(ValueKey(nodeKey(['study', 'study/seminar'])))).dy,
+          tester
+              .getTopLeft(find.byKey(ValueKey(nodeKey(['study', 'study/mit']))))
+              .dy,
+          tester
+              .getTopLeft(
+                find.byKey(ValueKey(nodeKey(['study', 'study/lecture']))),
+              )
+              .dy,
+          tester
+              .getTopLeft(
+                find.byKey(ValueKey(nodeKey(['study', 'study/seminar']))),
+              )
+              .dy,
         ];
         for (var i = 0; i < ys.length - 1; i++) {
           expect(ys[i], lessThan(ys[i + 1]));
@@ -232,10 +261,12 @@ void main() {
       'expanding mit keeps its siblings, grouped by parent (cprog, ml, lecture, seminar)',
       (tester) async {
         await tester.pumpWidget(
-          _wrap(DocumentsScreen(
-            documentService: _treeService(),
-            onOpenDocument: (_) {},
-          )),
+          _wrap(
+            DocumentsScreen(
+              documentService: _treeService(),
+              onOpenDocument: (_) {},
+            ),
+          ),
         );
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
@@ -265,17 +296,16 @@ void main() {
         // Grouped by parent: children of the LAST path tag (mit) first
         // (cprog, ml — alpha within the group), then children of earlier
         // path tags (study): lecture, seminar.
+        expect(tester.getTopLeft(cprog).dy, lessThan(tester.getTopLeft(ml).dy));
         expect(
-          tester.getTopLeft(cprog).dy, lessThan(tester.getTopLeft(ml).dy),
+          tester.getTopLeft(ml).dy,
+          lessThan(tester.getTopLeft(lecture).dy),
         );
         expect(
-          tester.getTopLeft(ml).dy, lessThan(tester.getTopLeft(lecture).dy),
-        );
-        expect(
-          tester.getTopLeft(lecture).dy, lessThan(tester.getTopLeft(seminar).dy),
+          tester.getTopLeft(lecture).dy,
+          lessThan(tester.getTopLeft(seminar).dy),
         );
         // mit's children sit deeper than mit itself (chevron x grows).
-
       },
     );
 
@@ -288,10 +318,12 @@ void main() {
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.reset);
         await tester.pumpWidget(
-          _wrap(DocumentsScreen(
-            documentService: _treeService(),
-            onOpenDocument: (_) {},
-          )),
+          _wrap(
+            DocumentsScreen(
+              documentService: _treeService(),
+              onOpenDocument: (_) {},
+            ),
+          ),
         );
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
@@ -304,25 +336,33 @@ void main() {
         await _tapNode(tester, ['study', 'study/mit', 'study/mit/cprog']);
         expect(
           find.descendant(
-            of: find.byKey(ValueKey(nodeKey(
-              ['study', 'study/mit', 'study/mit/cprog'],
-            ))),
+            of: find.byKey(
+              ValueKey(nodeKey(['study', 'study/mit', 'study/mit/cprog'])),
+            ),
             matching: find.textContaining('seminar'),
           ),
           findsOneWidget,
         );
         expect(
-          find.byKey(ValueKey(docRowKey(
-            'qsort',
-            ['study', 'study/mit', 'study/mit/cprog'],
-          ))),
+          find.byKey(
+            ValueKey(
+              docRowKey('qsort', ['study', 'study/mit', 'study/mit/cprog']),
+            ),
+          ),
           findsOneWidget,
         );
         // No child directory rows inside the collapsed cprog subtree.
         expect(
-          find.byKey(ValueKey(nodeKey(
-            ['study', 'study/mit', 'study/mit/cprog', 'study/seminar'],
-          ))),
+          find.byKey(
+            ValueKey(
+              nodeKey([
+                'study',
+                'study/mit',
+                'study/mit/cprog',
+                'study/seminar',
+              ]),
+            ),
+          ),
           findsNothing,
         );
 
@@ -330,17 +370,18 @@ void main() {
         final studyPills = find.byWidgetPredicate(
           (w) =>
               w.key is ValueKey<String> &&
-              (w.key as ValueKey<String>).value.startsWith('tag-parent-pill-study-'),
+              (w.key as ValueKey<String>).value.startsWith(
+                'tag-parent-pill-study-',
+              ),
         );
         expect(studyPills, findsWidgets);
 
         // knn symmetric: collapses at ml with 'lecture' as remaining tag.
         await _tapNode(tester, ['study', 'study/mit', 'study/mit/ml']);
         expect(
-          find.byKey(ValueKey(docRowKey(
-            'knn',
-            ['study', 'study/mit', 'study/mit/ml'],
-          ))),
+          find.byKey(
+            ValueKey(docRowKey('knn', ['study', 'study/mit', 'study/mit/ml'])),
+          ),
           findsOneWidget,
         );
       },
@@ -350,10 +391,15 @@ void main() {
       'files: root directory defers below sections, nested files stay in place',
       (tester) async {
         await tester.pumpWidget(
-          _wrap(DocumentsScreen(
-            documentService: _treeService(withNestedFiles: true, withRootFile: true),
-            onOpenDocument: (_) {},
-          )),
+          _wrap(
+            DocumentsScreen(
+              documentService: _treeService(
+                withNestedFiles: true,
+                withRootFile: true,
+              ),
+              onOpenDocument: (_) {},
+            ),
+          ),
         );
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
@@ -365,16 +411,17 @@ void main() {
 
         // mit's own file: inside mit's container, after its child rows.
         final mitNotes = tester.getTopLeft(
-          find.byKey(ValueKey(docRowKey(
-            'mit-notes',
-            ['study', 'study/mit'],
-          ))),
+          find.byKey(ValueKey(docRowKey('mit-notes', ['study', 'study/mit']))),
         );
         final cprog = tester.getTopLeft(
-          find.byKey(ValueKey(nodeKey(['study', 'study/mit', 'study/mit/cprog']))),
+          find.byKey(
+            ValueKey(nodeKey(['study', 'study/mit', 'study/mit/cprog'])),
+          ),
         );
         final seminarMit = tester.getTopLeft(
-          find.byKey(ValueKey(nodeKey(['study', 'study/mit', 'study/seminar']))),
+          find.byKey(
+            ValueKey(nodeKey(['study', 'study/mit', 'study/seminar'])),
+          ),
         );
         expect(cprog.dy, lessThan(mitNotes.dy));
         expect(seminarMit.dy, lessThan(mitNotes.dy));
@@ -392,44 +439,36 @@ void main() {
       },
     );
 
-    testWidgets(
-      'uniform deep path collapses to one row with remaining tags',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(DocumentsScreen(
+    testWidgets('uniform deep path collapses to one row with remaining tags', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          DocumentsScreen(
             documentService: _treeService(withUniform: true),
             onOpenDocument: (_) {},
-          )),
-        );
-        await tester.pumpAndSettle();
-        await _toggleToTags(tester);
-
-        // 'a' contains only doc 'deep' (set a, a/b, a/b/c) → uniform:
-        // the collapsed row lists the remaining tags b, c; NO child
-        // directory rows for a/b or a/b/c exist.
-        final aRow = find.byKey(ValueKey(nodeKey(['a'])));
-        expect(aRow, findsOneWidget);
-        expect(
-          find.descendant(
-            of: aRow,
-            matching: find.textContaining('a, b, c'),
           ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(ValueKey(nodeKey(['a', 'a/b']))),
-          findsNothing,
-        );
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _toggleToTags(tester);
 
-        // Expanding the collapsed row lists the document links directly.
-        await tester.tap(aRow);
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(ValueKey(docRowKey('deep', ['a']))),
-          findsOneWidget,
-        );
-      },
-    );
+      // 'a' contains only doc 'deep' (set a, a/b, a/b/c) → uniform:
+      // the collapsed row lists the remaining tags b, c; NO child
+      // directory rows for a/b or a/b/c exist.
+      final aRow = find.byKey(ValueKey(nodeKey(['a'])));
+      expect(aRow, findsOneWidget);
+      expect(
+        find.descendant(of: aRow, matching: find.textContaining('a, b, c')),
+        findsOneWidget,
+      );
+      expect(find.byKey(ValueKey(nodeKey(['a', 'a/b']))), findsNothing);
+
+      // Expanding the collapsed row lists the document links directly.
+      await tester.tap(aRow);
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey(docRowKey('deep', ['a']))), findsOneWidget);
+    });
 
     testWidgets(
       'collapse study after expanding study/mit does not crash and preserves expanded state',
@@ -438,10 +477,12 @@ void main() {
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.reset);
         await tester.pumpWidget(
-          _wrap(DocumentsScreen(
-            documentService: _treeService(),
-            onOpenDocument: (_) {},
-          )),
+          _wrap(
+            DocumentsScreen(
+              documentService: _treeService(),
+              onOpenDocument: (_) {},
+            ),
+          ),
         );
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
@@ -478,53 +519,65 @@ void main() {
       },
     );
 
-    testWidgets('tag-tree-toggle-all expands and collapses all', (tester) async {
+    testWidgets('tag-tree-toggle-all expands and collapses all', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1200, 1800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
       await tester.pumpWidget(
-        _wrap(DocumentsScreen(
-          documentService: _treeService(),
-          onOpenDocument: (_) {},
-        )),
+        _wrap(
+          DocumentsScreen(
+            documentService: _treeService(),
+            onOpenDocument: (_) {},
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       await _toggleToTags(tester);
 
-      expect(find.byKey(ValueKey(nodeKey(['study', 'study/mit']))), findsNothing);
+      expect(
+        find.byKey(ValueKey(nodeKey(['study', 'study/mit']))),
+        findsNothing,
+      );
       await tester.tap(find.byKey(const ValueKey('tag-tree-toggle-all')));
       await tester.pumpAndSettle();
 
       // Both documents reachable — their uniform subtrees collapse at the
       // ml/cprog level (each is the single contained doc below it).
       expect(
-        find.byKey(ValueKey(docRowKey(
-          'knn',
-          ['study', 'study/mit', 'study/mit/ml'],
-        ))),
+        find.byKey(
+          ValueKey(docRowKey('knn', ['study', 'study/mit', 'study/mit/ml'])),
+        ),
         findsOneWidget,
       );
       expect(
-        find.byKey(ValueKey(docRowKey(
-          'qsort',
-          ['study', 'study/mit', 'study/mit/cprog'],
-        ))),
+        find.byKey(
+          ValueKey(
+            docRowKey('qsort', ['study', 'study/mit', 'study/mit/cprog']),
+          ),
+        ),
         findsOneWidget,
       );
 
       await tester.tap(find.byKey(const ValueKey('tag-tree-toggle-all')));
       await tester.pumpAndSettle();
-      expect(find.byKey(ValueKey(nodeKey(['study', 'study/mit']))), findsNothing);
+      expect(
+        find.byKey(ValueKey(nodeKey(['study', 'study/mit']))),
+        findsNothing,
+      );
     });
 
     testWidgets(
       'tree rows render colorful Text.rich path and contain no TagChip',
       (tester) async {
         await tester.pumpWidget(
-          _wrap(DocumentsScreen(
-            documentService: _treeService(),
-            onOpenDocument: (_) {},
-          )),
+          _wrap(
+            DocumentsScreen(
+              documentService: _treeService(),
+              onOpenDocument: (_) {},
+            ),
+          ),
         );
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
@@ -555,7 +608,9 @@ void main() {
           find.byWidgetPredicate(
             (w) =>
                 w.key is ValueKey<String> &&
-                (w.key as ValueKey<String>).value.startsWith('tag-parent-pill-study-'),
+                (w.key as ValueKey<String>).value.startsWith(
+                  'tag-parent-pill-study-',
+                ),
           ),
           findsWidgets,
         );
@@ -573,28 +628,23 @@ void main() {
       (tester) async {
         final service = FakeDocumentService(
           documents: [
-            _doc('d1', 'Deep doc', tags: [
-              'study',
-              'study/mit',
-              'study/mit/ml',
-              'student:Alice',
-            ]),
+            _doc(
+              'd1',
+              'Deep doc',
+              tags: ['study', 'study/mit', 'study/mit/ml', 'student:Alice'],
+            ),
           ],
           tags: ['study', 'study/mit', 'study/mit/ml', 'student:Alice'],
         );
 
-        final doc = _doc('d1', 'Deep doc', tags: [
-          'study',
-          'study/mit',
-          'study/mit/ml',
-          'student:Alice',
-        ]);
+        final doc = _doc(
+          'd1',
+          'Deep doc',
+          tags: ['study', 'study/mit', 'study/mit/ml', 'student:Alice'],
+        );
 
         await tester.pumpWidget(
-          _wrap(DocumentDetailView(
-            document: doc,
-            documentService: service,
-          )),
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
         );
         await tester.pumpAndSettle();
 
@@ -611,21 +661,19 @@ void main() {
       (tester) async {
         final service = FakeDocumentService(
           documents: [
-            _doc('d1', 'Deep doc', tags: [
-              'study',
-              'study/mit',
-              'study/mit/ml',
-              'student:Alice',
-            ]),
+            _doc(
+              'd1',
+              'Deep doc',
+              tags: ['study', 'study/mit', 'study/mit/ml', 'student:Alice'],
+            ),
           ],
           tags: ['study', 'study/mit', 'study/mit/ml', 'student:Alice'],
         );
 
         await tester.pumpWidget(
-          _wrap(DocumentsScreen(
-            documentService: service,
-            onOpenDocument: (_) {},
-          )),
+          _wrap(
+            DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
+          ),
         );
         await tester.pumpAndSettle();
 

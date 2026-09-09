@@ -16,7 +16,7 @@ import 'package:flutter/services.dart' show MethodChannel;
 /// in `AppDelegate.swift`. The channel name matches the string registered on
 /// the native side.
 const MethodChannel _quickLookChannel = MethodChannel(
-  'com.docer.docx_preview/quicklook',
+  'com.docean.docx_preview/quicklook',
 );
 
 /// Render the first page of a docx via macOS QuickLook.

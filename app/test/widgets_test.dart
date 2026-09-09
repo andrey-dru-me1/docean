@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:docer/src/ui/widgets.dart'
+import 'package:docean/src/ui/widgets.dart'
     show TagChip, TagDeleteIcon, tagColorFor;
 
 Widget _wrap(Widget child) => MaterialApp(

@@ -19,7 +19,7 @@ class AppDelegate: FlutterAppDelegate {
     let controller: FlutterViewController =
       mainFlutterWindow?.contentViewController as! FlutterViewController
     let channel = FlutterMethodChannel(
-      name: "com.docer.docx_preview/quicklook",
+      name: "com.docean.docx_preview/quicklook",
       binaryMessenger: controller.engine.binaryMessenger)
     channel.setMethodCallHandler { call, result in
       guard call.method == "renderDocxPreview" else {

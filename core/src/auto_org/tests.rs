@@ -216,7 +216,7 @@ fn generative_filename_tier_uses_provider_and_marks_source() {
     let filename = tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap()
-        .block_on(generate_filename(&provider, "docer-tiny", &doc))
+        .block_on(generate_filename(&provider, "docean-tiny", &doc))
         .unwrap();
     assert_eq!(filename, "acme_supplier_invoice");
     assert_eq!(calls.load(Ordering::SeqCst), 1);

@@ -123,9 +123,9 @@ impl DeviceIdentity {
 /// platform config dir when available; falls back to a temp dir otherwise.
 pub fn default_identity_dir() -> PathBuf {
     // Prefer an explicit data dir, else the OS temp dir scoped to this crate.
-    std::env::var_os("DOCER_DATA_DIR")
+    std::env::var_os("DOCEAN_DATA_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("docer-core"))
+        .unwrap_or_else(|| std::env::temp_dir().join("docean-core"))
 }
 
 #[cfg(test)]
@@ -170,6 +170,6 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or_default();
-        std::env::temp_dir().join(format!("docer-id-{nanos}-{}", std::process::id()))
+        std::env::temp_dir().join(format!("docean-id-{nanos}-{}", std::process::id()))
     }
 }

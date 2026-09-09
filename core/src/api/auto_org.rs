@@ -1010,7 +1010,7 @@ mod tests {
     fn temp_root(tag: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
         p.push(format!(
-            "docer-reorganize-{tag}-{}-{}",
+            "docean-reorganize-{tag}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)

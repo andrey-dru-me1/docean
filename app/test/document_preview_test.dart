@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 
-import 'package:docer/src/features/document_preview.dart'
+import 'package:docean/src/features/document_preview.dart'
     show
         DocumentPreviewCache,
         DocumentPreviewFallback,
@@ -14,11 +14,11 @@ import 'package:docer/src/features/document_preview.dart'
         DocumentPreviewLoader,
         DocumentPreviewTextPage,
         computeIsolatedDocxText;
-import 'package:docer/src/features/document_service.dart'
+import 'package:docean/src/features/document_service.dart'
     show FakeDocumentService;
-import 'package:docer/src/ui/document_preview_view.dart'
+import 'package:docean/src/ui/document_preview_view.dart'
     show DocumentPlaceholder, DocumentPreviewPanel, DocumentThumbnail;
-import 'package:docer/src/ui/document_view.dart'
+import 'package:docean/src/ui/document_view.dart'
     show DocumentDetailView, DocumentSummary;
 
 Widget _wrap(Widget child) => MaterialApp(

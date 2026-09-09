@@ -623,12 +623,14 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       final message = changed.isEmpty
           ? 'No documents use this tag'
           : 'Tag renamed in ${changed.length} document${changed.length == 1 ? '' : 's'}';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not rename tag: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not rename tag: $e')));
     }
   }
 
@@ -1191,10 +1193,7 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
           ),
           if (_liveSuggestions.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text(
-              'Suggestions',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
+            Text('Suggestions', style: Theme.of(context).textTheme.labelMedium),
             const SizedBox(height: 6),
             Wrap(
               key: const ValueKey('tag-suggestions'),
@@ -1248,10 +1247,7 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
 /// A dialog that lets the user rename an existing tag across every document
 /// that carries the exact old tag path.
 class _RenameTagDialog extends StatefulWidget {
-  const _RenameTagDialog({
-    required this.initialTag,
-    required this.docCount,
-  });
+  const _RenameTagDialog({required this.initialTag, required this.docCount});
 
   /// The current tag path the user wants to rename.
   final String initialTag;
@@ -1264,8 +1260,9 @@ class _RenameTagDialog extends StatefulWidget {
 }
 
 class _RenameTagDialogState extends State<_RenameTagDialog> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initialTag);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialTag,
+  );
   String? _error;
 
   @override

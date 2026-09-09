@@ -1,4 +1,4 @@
-package dev.docer.docer
+package dev.docean.docean
 
 import io.flutter.embedding.android.FlutterActivity
 

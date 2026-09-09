@@ -75,7 +75,7 @@ impl BuiltinProvider {
 
     /// Path of the model data file (a small template blob).
     fn data_path(&self) -> std::path::PathBuf {
-        self.models_dir().join("docer-tiny.bin")
+        self.models_dir().join("docean-tiny.bin")
     }
 
     /// Current download/readiness status.
@@ -283,7 +283,7 @@ mod builtin_tests {
     fn provider() -> &'static BuiltinProvider {
         static P: OnceLock<BuiltinProvider> = OnceLock::new();
         P.get_or_init(|| {
-            let dir = std::env::temp_dir().join(format!("docer-builtin-{}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("docean-builtin-{}", std::process::id()));
             BuiltinProvider::new(dir)
         })
     }

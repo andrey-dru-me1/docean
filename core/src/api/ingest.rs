@@ -236,7 +236,7 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
         let mut p = std::env::temp_dir();
         p.push(format!(
-            "docer-ingest-bridge-{tag}-{}-{}",
+            "docean-ingest-bridge-{tag}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)

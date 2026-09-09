@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:docer/src/features/document_service.dart'
+import 'package:docean/src/features/document_service.dart'
     show FakeDocumentService;
-import 'package:docer/src/features/tag_hierarchy.dart'
+import 'package:docean/src/features/tag_hierarchy.dart'
     show suggestTagCompletions, validateTagPath, renamedTagsByDoc;
-import 'package:docer/src/ui/document_view.dart'
+import 'package:docean/src/ui/document_view.dart'
     show DocumentDetailView, DocumentSummary;
-import 'package:docer/src/ui/documents_screen.dart' show DocumentsScreen;
-import 'package:docer/src/ui/widgets.dart' show TagChip;
+import 'package:docean/src/ui/documents_screen.dart' show DocumentsScreen;
+import 'package:docean/src/ui/widgets.dart' show TagChip;
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
@@ -25,11 +25,7 @@ const _qsort = DocumentSummary(
   tags: ['study/seminar', 'study/mit/cprog'],
 );
 
-const _s1 = DocumentSummary(
-  id: 's1',
-  title: 's1',
-  tags: ['seminar'],
-);
+const _s1 = DocumentSummary(id: 's1', title: 's1', tags: ['seminar']);
 
 /// The edit (pencil) affordance on the [TagChip] whose label is [tagLabel].
 Finder _editIconFor(String tagLabel) {
@@ -150,19 +146,14 @@ void main() {
   });
 
   group('DocumentDetailView rename tag', () {
-    testWidgets('rename seminar → mit/seminar across documents', (tester) async {
-      final docs = [
-        _knn,
-        _qsort,
-        _s1,
-      ];
+    testWidgets('rename seminar → mit/seminar across documents', (
+      tester,
+    ) async {
+      final docs = [_knn, _qsort, _s1];
       final service = FakeDocumentService(documents: docs);
 
       await tester.pumpWidget(
-        _wrap(DocumentDetailView(
-          document: _s1,
-          documentService: service,
-        )),
+        _wrap(DocumentDetailView(document: _s1, documentService: service)),
       );
       await tester.pumpAndSettle();
 
@@ -206,7 +197,10 @@ void main() {
       final knnAfter = await service.getDocument('knn');
       expect(knnAfter.tags, containsAll(['study/lecture', 'study/mit/ml']));
       final qsortAfter = await service.getDocument('qsort');
-      expect(qsortAfter.tags, containsAll(['study/seminar', 'study/mit/cprog']));
+      expect(
+        qsortAfter.tags,
+        containsAll(['study/seminar', 'study/mit/cprog']),
+      );
     });
 
     testWidgets('no documents use tag shows message', (tester) async {
@@ -218,10 +212,7 @@ void main() {
       final service = FakeDocumentService(documents: docs);
 
       await tester.pumpWidget(
-        _wrap(DocumentDetailView(
-          document: _knn,
-          documentService: service,
-        )),
+        _wrap(DocumentDetailView(document: _knn, documentService: service)),
       );
       await tester.pumpAndSettle();
 
@@ -265,10 +256,7 @@ void main() {
         );
 
         await tester.pumpWidget(
-          _wrap(DocumentDetailView(
-            document: _s1,
-            documentService: service,
-          )),
+          _wrap(DocumentDetailView(document: _s1, documentService: service)),
         );
         await tester.pumpAndSettle();
 
@@ -322,10 +310,7 @@ void main() {
       );
 
       await tester.pumpWidget(
-        _wrap(DocumentDetailView(
-          document: _s1,
-          documentService: service,
-        )),
+        _wrap(DocumentDetailView(document: _s1, documentService: service)),
       );
       await tester.pumpAndSettle();
 
@@ -341,9 +326,7 @@ void main() {
       // Both machine-learning and ml match via subsequence;
       // machine-learning must be present.
       expect(
-        find.byKey(
-          const ValueKey('tag-suggestion-study/mit/machine-learning'),
-        ),
+        find.byKey(const ValueKey('tag-suggestion-study/mit/machine-learning')),
         findsOneWidget,
       );
     });
@@ -362,10 +345,7 @@ void main() {
       );
 
       await tester.pumpWidget(
-        _wrap(DocumentDetailView(
-          document: _s1,
-          documentService: service,
-        )),
+        _wrap(DocumentDetailView(document: _s1, documentService: service)),
       );
       await tester.pumpAndSettle();
 
@@ -391,72 +371,70 @@ void main() {
   });
 
   group('DocumentsScreen bulk dialog suggestions', () {
-    testWidgets(
-      'bulk add tag dialog shows fuzzy suggestions and fills field',
-      (tester) async {
-        final service = FakeDocumentService(
-          documents: [
-            const DocumentSummary(
-              id: 'b1',
-              title: 'b1',
-              tags: ['study/mit/machine-learning'],
-            ),
-            _qsort,
-          ],
-          tags: [
-            'study/lecture',
-            'study/mit/ml',
-            'study/mit/machine-learning',
-            'study/seminar',
-            'study/mit/cprog',
-          ],
-        );
-
-        await tester.pumpWidget(
-          _wrap(
-            DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
+    testWidgets('bulk add tag dialog shows fuzzy suggestions and fills field', (
+      tester,
+    ) async {
+      final service = FakeDocumentService(
+        documents: [
+          const DocumentSummary(
+            id: 'b1',
+            title: 'b1',
+            tags: ['study/mit/machine-learning'],
           ),
-        );
-        await tester.pumpAndSettle();
+          _qsort,
+        ],
+        tags: [
+          'study/lecture',
+          'study/mit/ml',
+          'study/mit/machine-learning',
+          'study/seminar',
+          'study/mit/cprog',
+        ],
+      );
 
-        // Enter selection mode.
-        await tester.tap(find.byKey(const ValueKey('select-documents')));
-        await tester.pumpAndSettle();
-        expect(find.text('2 selected'), findsOneWidget);
+      await tester.pumpWidget(
+        _wrap(
+          DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Tap bulk add tag.
-        await tester.tap(find.byKey(const ValueKey('bulk-add-tag')));
-        await tester.pumpAndSettle();
+      // Enter selection mode.
+      await tester.tap(find.byKey(const ValueKey('select-documents')));
+      await tester.pumpAndSettle();
+      expect(find.text('2 selected'), findsOneWidget);
 
-        // Type 'machine-le'.
-        await tester.enterText(
-          find.byKey(const ValueKey('tag-name-field')),
-          'machine-le',
-        );
-        await tester.pump();
+      // Tap bulk add tag.
+      await tester.tap(find.byKey(const ValueKey('bulk-add-tag')));
+      await tester.pumpAndSettle();
 
-        // The suggestion section and chip appear.
-        expect(find.byKey(const ValueKey('tag-suggestions-bulk')), findsOneWidget);
-        expect(
-          find.byKey(
-            const ValueKey('tag-suggestion-study/mit/machine-learning'),
-          ),
-          findsOneWidget,
-        );
+      // Type 'machine-le'.
+      await tester.enterText(
+        find.byKey(const ValueKey('tag-name-field')),
+        'machine-le',
+      );
+      await tester.pump();
 
-        // Tap the suggestion → fills the field.
-        await tester.tap(
-          find.byKey(
-            const ValueKey('tag-suggestion-study/mit/machine-learning'),
-          ),
-        );
-        await tester.pump();
+      // The suggestion section and chip appear.
+      expect(
+        find.byKey(const ValueKey('tag-suggestions-bulk')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('tag-suggestion-study/mit/machine-learning')),
+        findsOneWidget,
+      );
 
-        final filled = tester.widget<TextField>(
-          find.byKey(const ValueKey('tag-name-field')),
-        );
-        expect(filled.controller!.text, 'study/mit/machine-learning');
-      },
-    );
+      // Tap the suggestion → fills the field.
+      await tester.tap(
+        find.byKey(const ValueKey('tag-suggestion-study/mit/machine-learning')),
+      );
+      await tester.pump();
+
+      final filled = tester.widget<TextField>(
+        find.byKey(const ValueKey('tag-name-field')),
+      );
+      expect(filled.controller!.text, 'study/mit/machine-learning');
+    });
   });
 }

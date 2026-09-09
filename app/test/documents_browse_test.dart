@@ -6,15 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 
-import 'package:docer/src/features/document_preview.dart'
+import 'package:docean/src/features/document_preview.dart'
     show DocumentPreviewLoader;
-import 'package:docer/src/features/document_service.dart'
+import 'package:docean/src/features/document_service.dart'
     show BulkOrganizer, FakeDocumentService, ReorganizeResult, SuggestionPlan;
-import 'package:docer/src/ui/document_preview_view.dart'
+import 'package:docean/src/ui/document_preview_view.dart'
     show DocumentPlaceholder, DocumentTilePreview;
-import 'package:docer/src/ui/document_view.dart' show DocumentSummary;
-import 'package:docer/src/ui/documents_screen.dart' show DocumentsScreen;
-import 'package:docer/src/ui/widgets.dart' show TagChip;
+import 'package:docean/src/ui/document_view.dart' show DocumentSummary;
+import 'package:docean/src/ui/documents_screen.dart' show DocumentsScreen;
+import 'package:docean/src/ui/widgets.dart' show TagChip;
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
@@ -138,52 +138,51 @@ void main() {
       expect(find.text('Beta notes'), findsNothing);
     });
 
-    testWidgets(
-      'multiple selected tags require ALL of them (intersection)',
-      (tester) async {
-        final service = FakeDocumentService(
-          documents: [
-            _doc('i-1', 'Finance only', tags: const ['finance']),
-            _doc('i-2', 'Personal only', tags: const ['personal']),
-            _doc('i-3', 'Both tags', tags: const ['finance', 'personal']),
-          ],
-          tags: const ['finance', 'personal'],
-        );
+    testWidgets('multiple selected tags require ALL of them (intersection)', (
+      tester,
+    ) async {
+      final service = FakeDocumentService(
+        documents: [
+          _doc('i-1', 'Finance only', tags: const ['finance']),
+          _doc('i-2', 'Personal only', tags: const ['personal']),
+          _doc('i-3', 'Both tags', tags: const ['finance', 'personal']),
+        ],
+        tags: const ['finance', 'personal'],
+      );
 
-        await tester.pumpWidget(
-          _wrap(
-            DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
-          ),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _wrap(
+          DocumentsScreen(documentService: service, onOpenDocument: (_) {}),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Zero tags selected: every document is visible.
-        expect(find.text('Finance only'), findsOneWidget);
-        expect(find.text('Personal only'), findsOneWidget);
-        expect(find.text('Both tags'), findsOneWidget);
+      // Zero tags selected: every document is visible.
+      expect(find.text('Finance only'), findsOneWidget);
+      expect(find.text('Personal only'), findsOneWidget);
+      expect(find.text('Both tags'), findsOneWidget);
 
-        // One tag selected: union and intersection agree here.
-        await tester.tap(find.byKey(const ValueKey('filter-finance')));
-        await tester.pumpAndSettle();
-        expect(find.text('Finance only'), findsOneWidget);
-        expect(find.text('Both tags'), findsOneWidget);
-        expect(find.text('Personal only'), findsNothing);
+      // One tag selected: union and intersection agree here.
+      await tester.tap(find.byKey(const ValueKey('filter-finance')));
+      await tester.pumpAndSettle();
+      expect(find.text('Finance only'), findsOneWidget);
+      expect(find.text('Both tags'), findsOneWidget);
+      expect(find.text('Personal only'), findsNothing);
 
-        // Two tags selected: only the document carrying ALL of them survives.
-        await tester.tap(find.byKey(const ValueKey('filter-personal')));
-        await tester.pumpAndSettle();
-        expect(find.text('Both tags'), findsOneWidget);
-        expect(find.text('Finance only'), findsNothing);
-        expect(find.text('Personal only'), findsNothing);
+      // Two tags selected: only the document carrying ALL of them survives.
+      await tester.tap(find.byKey(const ValueKey('filter-personal')));
+      await tester.pumpAndSettle();
+      expect(find.text('Both tags'), findsOneWidget);
+      expect(find.text('Finance only'), findsNothing);
+      expect(find.text('Personal only'), findsNothing);
 
-        // Deselecting one filter widens the results back to a single tag.
-        await tester.tap(find.byKey(const ValueKey('filter-finance')));
-        await tester.pumpAndSettle();
-        expect(find.text('Personal only'), findsOneWidget);
-        expect(find.text('Both tags'), findsOneWidget);
-        expect(find.text('Finance only'), findsNothing);
-      },
-    );
+      // Deselecting one filter widens the results back to a single tag.
+      await tester.tap(find.byKey(const ValueKey('filter-finance')));
+      await tester.pumpAndSettle();
+      expect(find.text('Personal only'), findsOneWidget);
+      expect(find.text('Both tags'), findsOneWidget);
+      expect(find.text('Finance only'), findsNothing);
+    });
 
     testWidgets(
       'renders documents in a preview grid with title and tag overlay',

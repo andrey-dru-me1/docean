@@ -12,7 +12,7 @@ use crate::storage::{hash_bytes, DocumentQuery, DocumentStore, SqliteDocumentSto
 fn temp_store(name: &str) -> SqliteDocumentStore {
     let mut root = std::env::temp_dir();
     root.push(format!(
-        "docer-test-{name}-{}-{}",
+        "docean-test-{name}-{}-{}",
         std::process::id(),
         rand_token()
     ));
@@ -492,7 +492,7 @@ fn suggestions_and_feedback_round_trip() {
 #[test]
 fn persistence_survives_reopen() {
     let root = std::env::temp_dir().join(format!(
-        "docer-persist-{}-{}",
+        "docean-persist-{}-{}",
         std::process::id(),
         rand_token()
     ));

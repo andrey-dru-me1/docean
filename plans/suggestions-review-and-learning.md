@@ -174,7 +174,7 @@ CREATE INDEX idx_feedback_term ON suggestion_feedback(kind, context, term);
      `Map<String, List<SuggestionEntry>>`), plus counters for tests. `suggestTitle` /
      `suggestTags` / `reorganizeOne` fakes now also populate pending suggestions for
      manually-edited docs instead of no-oping.
-3. `DocerBulkOrganizer` unchanged (core still applies + stores alternatives internally).
+3. `DoceanBulkOrganizer` unchanged (core still applies + stores alternatives internally).
 
 ## Phase 6 — Document info UI (Flutter)
 

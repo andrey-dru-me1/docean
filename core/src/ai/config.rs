@@ -79,10 +79,10 @@ impl ProviderConfig {
         let (base_url, model, models) = match kind {
             ProviderKind::Builtin => (
                 None,
-                "docer-tiny".to_owned(),
+                "docean-tiny".to_owned(),
                 vec![ModelInfo {
-                    name: "docer-tiny".to_owned(),
-                    display_name: "Docer Tiny (local)".to_owned(),
+                    name: "docean-tiny".to_owned(),
+                    display_name: "Docean Tiny (local)".to_owned(),
                 }],
             ),
             ProviderKind::Ollama => (
@@ -162,14 +162,14 @@ impl ConfigStore {
 }
 
 /// Default directory under the per-user config dir, e.g.
-/// `~/.config/docer/ai` (or `%APPDATA%\docer\ai` on Windows).
+/// `~/.config/docean/ai` (or `%APPDATA%\docean\ai` on Windows).
 fn default_ai_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
         std::env::var_os("APPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("docer")
+            .join("docean")
             .join("ai")
     }
     #[cfg(not(target_os = "windows"))]
@@ -182,7 +182,7 @@ fn default_ai_dir() -> PathBuf {
                     .map(|h| h.join(".config"))
             })
             .unwrap_or_else(|| PathBuf::from("."));
-        base.join("docer").join("ai")
+        base.join("docean").join("ai")
     }
 }
 

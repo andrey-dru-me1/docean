@@ -37,7 +37,11 @@ const int _maxSegmentLength = 60;
 List<String> implicitAncestors(String tag) {
   final segments = tag.split('/');
   if (tag.isEmpty || segments.any((s) => s.isEmpty)) {
-    throw ArgumentError.value(tag, 'tag', 'Tag path must be non-empty with no empty segments');
+    throw ArgumentError.value(
+      tag,
+      'tag',
+      'Tag path must be non-empty with no empty segments',
+    );
   }
   final result = <String>[];
   final buffer = StringBuffer();
@@ -115,10 +119,7 @@ bool isDirtag(String tag, Iterable<String> allTags) {
 /// ancestors. NOT to be stored — used for logic.
 ///
 /// `'a/b/c'` returns `{'a/b/c', 'a/b', 'a'}`.
-Set<String> implicitTagSet(String tag) => {
-      ...implicitAncestors(tag),
-      tag,
-    };
+Set<String> implicitTagSet(String tag) => {...implicitAncestors(tag), tag};
 
 /// The union of [implicitTagSet] for every stored (non-property) tag across
 /// [tagsByDoc]. Used as the known-tag universe for dirtag detection.
@@ -194,10 +195,10 @@ List<String> directSubTags(String path, TagsByDoc tagsByDoc) {
     }
   }
   dirtags.sort((a, b) {
-    final byCount =
-        containedCount('$path/$b', tagsByDoc).compareTo(
-          containedCount('$path/$a', tagsByDoc),
-        );
+    final byCount = containedCount(
+      '$path/$b',
+      tagsByDoc,
+    ).compareTo(containedCount('$path/$a', tagsByDoc));
     return byCount != 0 ? byCount : a.compareTo(b);
   });
   leaves.sort();
@@ -261,9 +262,10 @@ List<String> topLevelTags(TagsByDoc tagsByDoc) {
     }
   }
   dirtags.sort((a, b) {
-    final byCount = containedCount(b, tagsByDoc).compareTo(
-      containedCount(a, tagsByDoc),
-    );
+    final byCount = containedCount(
+      b,
+      tagsByDoc,
+    ).compareTo(containedCount(a, tagsByDoc));
     return byCount != 0 ? byCount : a.compareTo(b);
   });
   leaves.sort();
@@ -337,7 +339,9 @@ List<String> childTags(List<String> components, TagsByDoc tagsByDoc) {
     final byGroup = groupOf(a).compareTo(groupOf(b));
     if (byGroup != 0) return byGroup;
     final byCount = remainingCount(b).compareTo(remainingCount(a));
-    return byCount != 0 ? byCount : lastSegmentOf(a).compareTo(lastSegmentOf(b));
+    return byCount != 0
+        ? byCount
+        : lastSegmentOf(a).compareTo(lastSegmentOf(b));
   });
   return result;
 }
