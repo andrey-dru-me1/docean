@@ -54,6 +54,8 @@ void main() {
         expect(find.text('study'), findsNothing);
         expect(find.text('mit'), findsNothing);
         expect(find.text('courses'), findsOneWidget);
+        // Exact fits show no ellipsis: letters and the full leaf are not cuts.
+        expect(find.textContaining('…'), findsNothing);
 
         final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer(location: const Offset(10, 10));
@@ -118,10 +120,87 @@ void main() {
         await tester.pump();
         await tester.pumpAndSettle();
         expect(find.text('middle'), findsOneWidget);
+        // The leaf yielded room for the neighbour: its mid-word cut is
+        // marked with an ellipsis.
+        expect(find.text('lo…'), findsOneWidget);
         expect(tester.getSize(pill).width, width);
         debugDefaultTargetPlatformOverride = null;
       },
     );
+
+    testWidgets('resting prefix extensions are marked with an ellipsis', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      await tester.pumpWidget(_wrap(const TagChip(label: 'longword/x/yy')));
+      await tester.pumpAndSettle();
+      // The pill is pinned to its widest (hover) state, so at rest the
+      // reserved spare extends 'longword' past its letter — but the word
+      // cannot fit fully, and the cut is ellipsized. The leaf stays whole.
+      expect(find.text('longword'), findsNothing);
+      expect(find.text('yy'), findsOneWidget);
+      expect(find.textContaining('…'), findsOneWidget);
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('compressed pill clamps to a tight cell and ellipsizes', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      await tester.pumpWidget(
+        _wrap(
+          const SizedBox(
+            width: 150,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TagChip(label: 'ngu/practice/review supervisor'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final pill = find.byKey(const ValueKey('tag-pill'));
+      expect(tester.getSize(pill).width, lessThanOrEqualTo(150));
+      // The leaf takes the first cut and says so with an ellipsis.
+      expect(find.textContaining('…'), findsWidgets);
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('hover expansion on a clamped pill still fits the cell', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      await tester.pumpWidget(
+        _wrap(
+          const SizedBox(
+            width: 150,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TagChip(label: 'ngu/practice/review supervisor'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(5, 5));
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(
+        tester.getCenter(find.byKey(const ValueKey('seg-block-1'))),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final pill = find.byKey(const ValueKey('tag-pill'));
+      expect(tester.getSize(pill).width, lessThanOrEqualTo(150));
+      // Sum of blocks still equals the clamped width: segments co-cut.
+      expect(find.textContaining('…'), findsWidgets);
+      debugDefaultTargetPlatformOverride = null;
+    });
 
     testWidgets('renders a compact pill with no reserved avatar slot', (
       tester,

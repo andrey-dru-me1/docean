@@ -213,7 +213,10 @@ class _TagChipState extends State<TagChip> {
     return tp.width;
   }
 
-  /// The longest prefix of [text] whose rendered width fits [width].
+  /// The longest prefix of [text] whose rendered width fits [width]. Every
+  /// cut is marked with `…` when the glyph fits; single-letter collapses are
+  /// untouched automatically (a letter plus the ellipsis never fits the
+  /// letter's own width).
   String _prefixFitting(
     BuildContext context,
     String text,
@@ -222,10 +225,23 @@ class _TagChipState extends State<TagChip> {
   ) {
     if (width <= 0) return '';
     if (_textWidth(context, text, style) <= width) return text;
+    bool fits(String s) => _textWidth(context, s, style) <= width;
+    if (fits('…')) {
+      var lo = 0, hi = text.length;
+      while (lo < hi) {
+        final mid = (lo + hi + 1) >> 1;
+        if (fits('${text.substring(0, mid)}…')) {
+          lo = mid;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      if (lo > 0) return '${text.substring(0, lo)}…';
+    }
     var lo = 0, hi = text.length;
     while (lo < hi) {
       final mid = (lo + hi + 1) >> 1;
-      if (_textWidth(context, text.substring(0, mid), style) <= width) {
+      if (fits(text.substring(0, mid))) {
         lo = mid;
       } else {
         hi = mid - 1;
@@ -240,16 +256,21 @@ class _TagChipState extends State<TagChip> {
   ///   spare allows), the leaf shows in full flush with the rounded edge;
   /// * hovering a parent expands it to its full name and re-splits the rest
   ///   fairly (nearest neighbours first) — the leaf shrinks and cuts
-  ///   mid-word; hovering the leaf restores the resting layout exactly;
+  ///   mid-word with an ellipsis; hovering the leaf restores the resting
+  ///   layout exactly;
   /// * the pill width is FIXED to the widest state; every block box carries
   ///   a small right "room" baked into the width math, so glyph advance
   ///   drift and the text shadow never shave the last letter and boxes meet
   ///   edge-to-edge with no dead gaps;
+  /// * when the incoming width is tighter than the natural pill, the shared
+  ///   text budget shrinks to fit: the leaf is cut first, then parents, each
+  ///   truncated segment ending in an ellipsis — the pill always fits;
   /// * no per-block clipping and no scaling — layout is exact.
   Widget _buildCompressedSplitPill(
     BuildContext context,
     List<String> segments,
     TextStyle labelStyle,
+    double maxWidth,
   ) {
     const pad = 8.0;
     const blockPadding = pad * 2;
@@ -271,9 +292,12 @@ class _TagChipState extends State<TagChip> {
     // Right-side room per block: absorbs real-font advance drift and part of
     // the drop-shadow. Folded into the fixed width so it costs nothing at
     // the edges. Parents keep it tight — it reads as padding before the
-    // divider; the leaf gets generous room (it must never clip its glyphs).
+    // divider. The leaf block already carries the same right padding (8) a
+    // plain pill gives its label, so only a sliver is added: a longer tail
+    // would make hierarchical pills trail far more dead space than plain
+    // ones and steal width the last glyph needs.
     final roomParent = 1.5;
-    final roomLeaf = 3.0 + 0.2 * segments.last.length;
+    final roomLeaf = 1.0;
     final roomSum = roomParent * parentCount + roomLeaf;
 
     // Fixed pill width: the widest state (rest, or one parent expanded with
@@ -283,8 +307,16 @@ class _TagChipState extends State<TagChip> {
       final hoverTotal = fulls[i] + (letterSum - letters[i]) + leafLetter;
       if (hoverTotal > textMax) textMax = hoverTotal;
     }
-    final content = core + roomSum + textMax;
-    final budget = content - core - roomSum; // shared TEXT width + spare
+    var content = core + roomSum + textMax;
+    var budget = content - core - roomSum; // shared TEXT width + spare
+    // Tight cells (grid tiles): the pill must never exceed the incoming
+    // width. Trim the shared text budget to the room that padding and
+    // dividers leave; the allocation below then cuts the leaf first, and
+    // the parents after it.
+    if (maxWidth.isFinite && content > maxWidth) {
+      content = maxWidth;
+      budget = math.max(content - core - roomSum, 0);
+    }
 
     final texts = List<double>.filled(segments.length, 0);
     final hovered = _hoverSegment;
@@ -313,6 +345,24 @@ class _TagChipState extends State<TagChip> {
           texts[i] += take;
           spare -= take;
         }
+      } else if (spare < 0) {
+        // Clamped budget: cut the leaf (widest text, most meaningful to
+        // abbreviate) down first; only then eat into the one-letter parents.
+        var over = -spare;
+        final leafCut = math.min(over, texts[parentCount]);
+        texts[parentCount] -= leafCut;
+        over -= leafCut;
+        if (over > 0) {
+          final shrinkOrder = <int>[for (var i = 0; i < parentCount; i++) i]
+            ..sort((a, b) => letters[b].compareTo(letters[a]));
+          for (final i in shrinkOrder) {
+            if (over <= 0) break;
+            final cut = math.min(over, texts[i]);
+            texts[i] -= cut;
+            over -= cut;
+          }
+        }
+        spare = 0;
       }
     } else {
       texts[hovered] = capsAll[hovered];
@@ -340,6 +390,35 @@ class _TagChipState extends State<TagChip> {
         rem -= texts[i];
       }
       spare = rem;
+      if (spare < 0) {
+        // Clamped budget: even the hovered word at full plus the letter
+        // floors does not fit. Shrink the hovered segment toward its floor
+        // (it ellipsizes), then the other parents and the leaf below theirs.
+        var over = -spare;
+        final hoverCut = math.min(over, texts[hovered] - floorsAll[hovered]);
+        texts[hovered] -= hoverCut;
+        over -= hoverCut;
+        final shrinkOrder = <int>[
+          for (var i = 0; i < parentCount; i++)
+            if (i != hovered) i,
+        ]..sort((a, b) => letters[b].compareTo(letters[a]));
+        for (final i in shrinkOrder) {
+          if (over <= 0) break;
+          final cut = math.min(over, texts[i]);
+          texts[i] -= cut;
+          over -= cut;
+        }
+        if (over > 0) {
+          final cut = math.min(over, texts[parentCount]);
+          texts[parentCount] -= cut;
+          over -= cut;
+        }
+        if (over > 0) {
+          // Last resort: the hovered letter rides its own block padding.
+          texts[hovered] -= math.min(over, texts[hovered]);
+        }
+        spare = 0;
+      }
     }
 
     final children = <Widget>[];
@@ -461,10 +540,19 @@ class _TagChipState extends State<TagChip> {
     if (isSplit) {
       final segments = widget.label.split('/');
       if (!_touchInteraction && _hoverable) {
-        // Collapsed letters, single-segment hover expansion, fixed width.
+        // Collapsed letters, single-segment hover expansion, fixed width —
+        // but never wider than the cell the chip is placed in (grid tiles
+        // bound it with the Wrap's remaining run width).
         return _wrapInteractions(
           context,
-          _buildCompressedSplitPill(context, segments, labelStyle),
+          LayoutBuilder(
+            builder: (context, constraints) => _buildCompressedSplitPill(
+              context,
+              segments,
+              labelStyle,
+              constraints.maxWidth,
+            ),
+          ),
           background,
         );
       }
