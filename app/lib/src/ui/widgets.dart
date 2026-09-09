@@ -2,9 +2,11 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:super_clipboard/super_clipboard.dart'
@@ -177,6 +179,17 @@ class TagChip extends StatefulWidget {
 }
 
 class _TagChipState extends State<TagChip> {
+  /// Segment index currently under the pointer (compressed split pills only).
+  int? _hoverSegment;
+
+  /// Hit-tests pill hover: gaps between segments keep the last state so the
+  /// layout never oscillates while the cursor crosses dividers.
+  final GlobalKey _rowKey = GlobalKey();
+
+  /// A non-mouse pointer touched the chip: drop compression and show the
+  /// full split pill — touch users have no hover to expand segments with.
+  bool _touchInteraction = false;
+
   bool get _interactive =>
       widget.onSelected != null ||
       widget.onPressed != null ||
@@ -192,13 +205,245 @@ class _TagChipState extends State<TagChip> {
     // onDeleted is handled by the overlay TagDeleteIcon, not the pill itself.
   }
 
+  double _textWidth(BuildContext context, String text, TextStyle style) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: Directionality.of(context),
+    )..layout();
+    return tp.width;
+  }
+
+  /// The longest prefix of [text] whose rendered width fits [width].
+  String _prefixFitting(
+    BuildContext context,
+    String text,
+    TextStyle style,
+    double width,
+  ) {
+    if (width <= 0) return '';
+    if (_textWidth(context, text, style) <= width) return text;
+    var lo = 0, hi = text.length;
+    while (lo < hi) {
+      final mid = (lo + hi + 1) >> 1;
+      if (_textWidth(context, text.substring(0, mid), style) <= width) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return text.substring(0, lo);
+  }
+
+  /// Compressed hierarchical pill (desktop):
+  ///
+  /// * rest — parents collapse to one letter (plus any prefix the reserved
+  ///   spare allows), the leaf shows in full flush with the rounded edge;
+  /// * hovering a parent expands it to its full name and re-splits the rest
+  ///   fairly (nearest neighbours first) — the leaf shrinks and cuts
+  ///   mid-word; hovering the leaf restores the resting layout exactly;
+  /// * the pill width is FIXED to the widest state; every block box carries
+  ///   a small right "room" baked into the width math, so glyph advance
+  ///   drift and the text shadow never shave the last letter and boxes meet
+  ///   edge-to-edge with no dead gaps;
+  /// * no per-block clipping and no scaling — layout is exact.
+  Widget _buildCompressedSplitPill(
+    BuildContext context,
+    List<String> segments,
+    TextStyle labelStyle,
+  ) {
+    const pad = 8.0;
+    const blockPadding = pad * 2;
+    final parentCount = segments.length - 1;
+    final letters = <double>[
+      for (var i = 0; i < parentCount; i++)
+        _textWidth(context, segments[i][0], labelStyle),
+    ];
+    final fulls = <double>[
+      for (var i = 0; i < parentCount; i++)
+        _textWidth(context, segments[i], labelStyle),
+    ];
+    final leafWidth = _textWidth(context, segments.last, labelStyle);
+    final leafLetter = _textWidth(context, segments.last[0], labelStyle);
+    final dividers = 1.0 * (segments.length - 1);
+    final core = segments.length * blockPadding + dividers;
+    final letterSum = letters.fold<double>(0, (a, b) => a + b);
+
+    // Right-side room per block: absorbs real-font advance drift and part of
+    // the drop-shadow. Folded into the fixed width so it costs nothing at
+    // the edges. Parents keep it tight — it reads as padding before the
+    // divider; the leaf gets generous room (it must never clip its glyphs).
+    final roomParent = 1.5;
+    final roomLeaf = 3.0 + 0.2 * segments.last.length;
+    final roomSum = roomParent * parentCount + roomLeaf;
+
+    // Fixed pill width: the widest state (rest, or one parent expanded with
+    // everything else at its floor) plus the rooms.
+    var textMax = letterSum + leafWidth;
+    for (var i = 0; i < parentCount; i++) {
+      final hoverTotal = fulls[i] + (letterSum - letters[i]) + leafLetter;
+      if (hoverTotal > textMax) textMax = hoverTotal;
+    }
+    final content = core + roomSum + textMax;
+    final budget = content - core - roomSum; // shared TEXT width + spare
+
+    final texts = List<double>.filled(segments.length, 0);
+    final hovered = _hoverSegment;
+    final capsAll = <double>[...fulls, leafWidth];
+    final floorsAll = <double>[...letters, leafLetter];
+    double spare;
+    // Hovering the leaf is the resting layout: at rest the leaf already
+    // renders in full, so "expanding" it must not re-split the parents.
+    if (hovered == null || hovered >= parentCount) {
+      for (var i = 0; i < parentCount; i++) {
+        texts[i] = letters[i];
+      }
+      texts[parentCount] = leafWidth;
+      spare = budget - letterSum - leafWidth;
+      // The leaf must sit flush against the rounded right edge: give any
+      // leftover to the parents' prefixes (most expandable first); only
+      // what has nowhere to go remains as trailing leaf fill.
+      if (spare > 0 && parentCount > 0) {
+        final order = <int>[for (var i = 0; i < parentCount; i++) i]
+          ..sort(
+            (a, b) => (fulls[b] - letters[b]).compareTo(fulls[a] - letters[a]),
+          );
+        for (final i in order) {
+          if (spare <= 0) break;
+          final take = math.min(spare, fulls[i] - letters[i]);
+          texts[i] += take;
+          spare -= take;
+        }
+      }
+    } else {
+      texts[hovered] = capsAll[hovered];
+      // Distance-priority greedy split: the NEAREST cell (left neighbour
+      // wins ties) expands toward its full word first, then the next, the
+      // leaf last — each step only reserving the minimum one-letter floors
+      // for the cells behind it. So a hovered left segment lets the middle
+      // neighbour reach its full size, and the leaf only takes the width
+      // that remains (full word + trailing fill when there is still more).
+      final order = <int>[];
+      for (var d = 1; d <= segments.length; d++) {
+        if (hovered - d >= 0) order.add(hovered - d);
+        if (hovered + d <= parentCount) order.add(hovered + d);
+      }
+      var rem = budget - capsAll[hovered];
+      for (var k = 0; k < order.length; k++) {
+        final i = order[k];
+        final reserve = order
+            .sublist(k + 1)
+            .fold<double>(0, (a, j) => a + floorsAll[j]);
+        final want = rem - reserve;
+        texts[i] = want <= floorsAll[i]
+            ? floorsAll[i]
+            : math.min(capsAll[i], want);
+        rem -= texts[i];
+      }
+      spare = rem;
+    }
+
+    final children = <Widget>[];
+    final blockWidths = <double>[];
+    for (var i = 0; i < segments.length; i++) {
+      if (i > 0) {
+        children.add(
+          const SizedBox(width: 1, child: ColoredBox(color: Colors.white24)),
+        );
+      }
+      final prefix = segments.sublist(0, i + 1).join('/');
+      var blockColor = tagColorFor(prefix);
+      if (widget.selected) {
+        blockColor = Color.lerp(blockColor, Colors.white, 0.38)!;
+      }
+      final isLeaf = i == segments.length - 1;
+      final room = isLeaf ? roomLeaf : roomParent;
+      final shown = _prefixFitting(context, segments[i], labelStyle, texts[i]);
+      final width = texts[i] + blockPadding + room + (isLeaf ? spare : 0.0);
+      blockWidths.add(width);
+      children.add(
+        // AnimatedContainer (no clip): the width lerps smoothly and the text
+        // — already at its new budget — simply rides the moving edges.
+        // AnimatedSize was avoided on purpose: it clips while lerping, which
+        // shaved segment glyphs and the rounded ends mid-animation.
+        AnimatedContainer(
+          key: ValueKey('seg-block-$i'),
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          width: width,
+          decoration: BoxDecoration(color: blockColor),
+          padding: const EdgeInsets.symmetric(horizontal: pad, vertical: 5),
+          child: Text(
+            shown.isEmpty ? segments[i][0] : shown,
+            style: labelStyle,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.visible,
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      key: const ValueKey('tag-pill'),
+      width: content,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(999),
+        child: MouseRegion(
+          onExit: (_) {
+            if (_hoverSegment != null) {
+              setState(() => _hoverSegment = null);
+            }
+          },
+          child: Listener(
+            onPointerHover: (event) {
+              final ro = _rowKey.currentContext?.findRenderObject();
+              if (ro is! RenderBox || !ro.attached || !ro.hasSize) return;
+              final local = ro.globalToLocal(event.position);
+              // Resolve the target segment now, but apply it after the
+              // current frame: setState inside the hover callback would run
+              // during the mouse-tracker's device-update pass and trip its
+              // re-entrancy assertion.
+              int? target;
+              var x = 0.0;
+              for (var i = 0; i < blockWidths.length; i++) {
+                if (local.dx >= x && local.dx <= x + blockWidths[i]) {
+                  target = i;
+                  break;
+                }
+                x += blockWidths[i] + 1;
+              }
+              if (target != null && target != _hoverSegment) {
+                // Deferred a microtask: applying immediately would rebuild
+                // inside the mouse-tracker's device-update pass and trip its
+                // re-entrancy assertion.
+                scheduleMicrotask(() {
+                  if (mounted && _hoverSegment != target) {
+                    setState(() => _hoverSegment = target);
+                  }
+                });
+              }
+            },
+            // The blocks sum EXACTLY to `content` (rooms are baked in); the
+            // row is laid out plain — no scaling, no overflow asserts.
+            child: Row(
+              key: _rowKey,
+              mainAxisSize: MainAxisSize.min,
+              children: children,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = tagColorFor(widget.label);
     final isSplit = widget.label.contains('/');
 
     // Border and overlay background color are based on the FIRST segment's color.
-    final firstColor = isSplit ? tagColorFor(widget.label.split('/').first) : color;
+    final firstColor = isSplit
+        ? tagColorFor(widget.label.split('/').first)
+        : color;
     // Overlay background used by edit/delete grims: lightened when selected.
     final background = widget.selected
         ? Color.lerp(firstColor, Colors.white, 0.38)!
@@ -215,14 +460,19 @@ class _TagChipState extends State<TagChip> {
     Widget pill;
     if (isSplit) {
       final segments = widget.label.split('/');
+      if (!_touchInteraction && _hoverable) {
+        // Collapsed letters, single-segment hover expansion, fixed width.
+        return _wrapInteractions(
+          context,
+          _buildCompressedSplitPill(context, segments, labelStyle),
+          background,
+        );
+      }
       final blockChildren = <Widget>[];
       for (var i = 0; i < segments.length; i++) {
         if (i > 0) {
           blockChildren.add(
-            const SizedBox(
-              width: 1,
-              child: ColoredBox(color: Colors.white24),
-            ),
+            const SizedBox(width: 1, child: ColoredBox(color: Colors.white24)),
           );
         }
         final prefix = segments.sublist(0, i + 1).join('/');
@@ -238,11 +488,7 @@ class _TagChipState extends State<TagChip> {
           Container(
             color: blockColor,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-            child: Text(
-              segments[i],
-              style: labelStyle,
-              maxLines: 1,
-            ),
+            child: Text(segments[i], style: labelStyle, maxLines: 1),
           ),
         );
       }
@@ -252,9 +498,7 @@ class _TagChipState extends State<TagChip> {
         curve: Curves.easeOut,
         // No border: a border would draw over the segment dividers and
         // break the seamless split look.
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(999)),
         clipBehavior: Clip.antiAlias,
         child: FittedBox(
           // scaleDown: the pill hugs its content (never stretches to the
@@ -290,23 +534,44 @@ class _TagChipState extends State<TagChip> {
       );
     }
 
-    // Display-only chip: inert — no tap handling, no cursor.
+    return _wrapInteractions(context, pill, background);
+  }
+
+  /// Whether the platform provides a persistent pointer for hover (desktop
+  /// and web); touch platforms keep full-text pills.
+  bool get _hoverable =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.linux;
+
+  /// Wraps a rendered pill with touch detection and the chip's interactions
+  /// (tap, edit/delete edge affordances).
+  Widget _wrapInteractions(
+    BuildContext context,
+    Widget pill,
+    Color background,
+  ) {
+    // A touch interaction anywhere on the chip drops compression — touch
+    // users cannot hover segments open.
+    if (isSplitLabel) {
+      pill = Listener(
+        onPointerDown: (event) {
+          if (event.kind != PointerDeviceKind.mouse && !_touchInteraction) {
+            setState(() => _touchInteraction = true);
+          }
+        },
+        child: pill,
+      );
+    }
     if (!_interactive) {
       return pill;
     }
-
-    // Interactive chip: tap handling only. No hover feedback and no click
-    // cursor — the delete × on removable chips is the sole hover affordance.
-    // No key is set here — the widget's own key (e.g. `filter-$tag`) lives on
-    // the TagChip element, so find-by-key resolve this chip exactly once.
     final tap = GestureDetector(
       onTap: _handleTap,
       behavior: HitTestBehavior.opaque,
       child: pill,
     );
-
-    // Edit-able and/or delete-able chip: overlay hover-reveal affordances
-    // flush against the pill's left (edit) and right (delete) edges.
     if (widget.onEdit != null || widget.onDeleted != null) {
       return Stack(
         clipBehavior: Clip.none,
@@ -338,9 +603,10 @@ class _TagChipState extends State<TagChip> {
         ],
       );
     }
-
     return tap;
   }
+
+  bool get isSplitLabel => widget.label.contains('/');
 }
 
 /// Read a [HighlightSpan]'s byte range as ints for slicing a snippet substring.
@@ -774,10 +1040,7 @@ Future<DragItem?> _documentDragItem({
     // only; other platforms would provide no useful representation.
     return null;
   }
-  final item = DragItem(
-    suggestedName: fileName,
-    localData: documentId,
-  );
+  final item = DragItem(suggestedName: fileName, localData: documentId);
   item.addVirtualFile(
     format: _kFileFormatForMime(mimeType),
     provider: (sinkProvider, _) async {

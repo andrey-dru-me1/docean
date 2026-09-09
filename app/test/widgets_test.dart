@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +35,94 @@ BoxDecoration _pillDecoration(WidgetTester tester) {
 
 void main() {
   group('TagChip', () {
+    testWidgets(
+      'hierarchical pills compress to letters with a fixed hover-invariant width',
+      (tester) async {
+        // The test binding reports TargetPlatform.android by default; hover
+        // compression is a desktop feature.
+        debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+        await tester.pumpWidget(
+          _wrap(const TagChip(label: 'study/mit/courses')),
+        );
+        await tester.pumpAndSettle();
+
+        final pill = find.byKey(const ValueKey('tag-pill'));
+        expect(pill, findsOneWidget);
+        final restingWidth = tester.getSize(pill).width;
+        // At rest the longest parent shows a prefix of its reserved slack,
+        // the other collapses to one letter — never the full name.
+        expect(find.text('study'), findsNothing);
+        expect(find.text('mit'), findsNothing);
+        expect(find.text('courses'), findsOneWidget);
+
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: const Offset(10, 10));
+        addTearDown(mouse.removePointer);
+
+        // Hovering a parent expands THAT segment to its full name while the
+        // pill width stays pinned (no jumping layout). Hover is resolved
+        // geometrically from the pill row, so aim at the first block.
+        Future<void> hoverSegment(int index) async {
+          await mouse.moveTo(
+            tester.getCenter(find.byKey(ValueKey('seg-block-$index'))),
+          );
+          await tester.pump();
+          await tester.pumpAndSettle();
+        }
+
+        await hoverSegment(0);
+        await tester.pumpAndSettle();
+        expect(find.text('study'), findsOneWidget);
+        expect(tester.getSize(pill).width, restingWidth);
+
+        await hoverSegment(1);
+        // Hovering the middle: it reaches full width and the NEAREST
+        // neighbour (left, ahead of the leaf in tie order) also shows its
+        // full word; the leaf yields and cuts to one letter.
+        expect(find.text('mit'), findsOneWidget);
+        expect(find.text('study'), findsOneWidget);
+        expect(find.text('courses'), findsNothing);
+        expect(tester.getSize(pill).width, restingWidth);
+
+        // Leaving collapses back to the resting layout.
+        await mouse.moveTo(const Offset(10, 10));
+        await tester.pumpAndSettle();
+        expect(find.text('mit'), findsNothing);
+        expect(tester.getSize(pill).width, restingWidth);
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+
+    testWidgets(
+      'hovering the left segment lets the middle neighbour reach full width',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+        // 'q / middle / looooooo' — the LEAF is the widest cell, so at rest
+        // the middle neighbour is just the letter 'm'.
+        await tester.pumpWidget(
+          _wrap(const TagChip(label: 'q/middle/looooooo')),
+        );
+        await tester.pumpAndSettle();
+        final pill = find.byKey(const ValueKey('tag-pill'));
+        final width = tester.getSize(pill).width;
+        expect(find.text('middle'), findsNothing);
+
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: const Offset(5, 5));
+        addTearDown(mouse.removePointer);
+        // Hovering the left cell ('q' — already at cap) must give the FULL
+        // width to its nearest neighbour ('middle'), leaving the leaf cut.
+        await mouse.moveTo(
+          tester.getCenter(find.byKey(const ValueKey('seg-block-0'))),
+        );
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(find.text('middle'), findsOneWidget);
+        expect(tester.getSize(pill).width, width);
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+
     testWidgets('renders a compact pill with no reserved avatar slot', (
       tester,
     ) async {
