@@ -177,8 +177,8 @@ impl DocumentRepository {
     ///
     /// When no library is configured this is a no-op (`Ok(())`).
     ///
-    /// The name is derived from `extra["original_name"]` + mime type via
-    /// [`LibraryFs::file_name_for`], avoiding collisions with
+    /// The name is derived from the document title + mime/original extension
+    /// via [`LibraryFs::title_file_name`], avoiding collisions with
     /// [`LibraryFs::unique_name`]. Blob bytes are read from the store and
     /// written atomically when the file is missing. Stamp order (write first,
     /// then `put`) means a crash after the write but before the stamp is healed
@@ -197,12 +197,13 @@ impl DocumentRepository {
         let name = match doc.extra.get("file_name") {
             Some(n) => n.clone(),
             None => {
-                let base = LibraryFs::file_name_for(
+                let base = LibraryFs::title_file_name(
+                    Some(&doc.title),
                     doc.extra.get("original_name").map(String::as_str),
                     &doc.mime_type,
                     &hash,
                 );
-                lib.unique_name(&base, &hash)
+                lib.unique_name(&base)
             }
         };
         let exists = lib.contains(&name);

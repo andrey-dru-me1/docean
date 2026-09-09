@@ -68,13 +68,19 @@ pub fn library_sync(repo: &DocumentRepository) -> Result<LibrarySyncReportDto, S
 ///
 /// Used for reveal-in-finder / open-directly from the real file (no temp copy
 /// needed). Returns `None` when the library is unset, the document has no
-/// stamped `file_name`, or the file no longer exists on disk.
+/// stamped `file_name`, or the file no longer exists on disk. The stamped
+/// `main_path` folder is honored.
 #[flutter_rust_bridge::frb(sync)]
 pub fn library_file_path(repo: &DocumentRepository, id: String) -> Option<String> {
     let dir = repo.library_dir()?;
     let doc = repo.get(id).ok()?;
     let name = doc.extra.get("file_name")?;
-    let path = PathBuf::from(&dir).join(name);
+    let main_path = doc.extra.get("main_path").map(String::as_str).unwrap_or("");
+    let path = if main_path.is_empty() {
+        PathBuf::from(&dir).join(name)
+    } else {
+        PathBuf::from(&dir).join(main_path).join(name)
+    };
     if path.is_file() {
         Some(path.to_string_lossy().into_owned())
     } else {
@@ -209,9 +215,9 @@ mod tests {
 
         let id = hash_bytes(foreign);
         let doc = repo.get(id.clone()).unwrap();
-        assert_eq!(
-            doc.extra.get("file_name").map(String::as_str),
-            Some("Foreign.txt")
+        assert!(
+            doc.extra.contains_key("file_name"),
+            "title-derived name must be stamped (auto-org may rename the title)"
         );
     }
 

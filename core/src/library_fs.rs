@@ -56,42 +56,74 @@ impl LibraryFs {
             None => format!("document-{hash8}"),
         };
 
-        let ext = original_ext(original_name).or_else(|| mime_to_ext(mime_type).map(str::to_owned));
+        match resolve_ext(original_name, mime_type) {
+            Some(e) => format!("{stem}.{e}"),
+            None => stem,
+        }
+    }
 
+    /// File name for a document mirror derived from the app's document title.
+    ///
+    /// The stem is the sanitized title (Unicode letters survive — Cyrillic,
+    /// CJK, ...); the extension comes from the original file name when it has
+    /// one, else from the mime type. A title that already ends with the
+    /// resolved extension is not doubled. An empty sanitized title falls back
+    /// to `document-<hash8>`.
+    pub fn title_file_name(
+        title: Option<&str>,
+        original_name: Option<&str>,
+        mime_type: &str,
+        hash: &str,
+    ) -> String {
+        let hash8 = &hash[..hash.len().min(8)];
+        let ext = resolve_ext(original_name, mime_type);
+        let mut stem = match title {
+            Some(t) => {
+                let sanitized = sanitize_fs_stem(t);
+                if sanitized.is_empty() {
+                    format!("document-{hash8}")
+                } else {
+                    sanitized
+                }
+            }
+            None => format!("document-{hash8}"),
+        };
+        if let Some(e) = &ext {
+            let suffix = format!(".{e}");
+            if stem
+                .to_ascii_lowercase()
+                .ends_with(&suffix.to_ascii_lowercase())
+            {
+                stem.truncate(stem.len() - suffix.len());
+            }
+        }
         match ext {
             Some(e) => format!("{stem}.{e}"),
             None => stem,
         }
     }
 
-    pub fn unique_name(&self, base: &str, hash: &str) -> String {
-        let hash8 = &hash[..hash.len().min(8)];
+    /// First available name in the directory for [base]: [base] itself, then
+    /// `base (2)`, `base (3)`, ... — extension preserved, human-readable
+    /// collision suffixes.
+    pub fn unique_name(&self, base: &str) -> String {
+        if !self.contains(base) {
+            return base.to_owned();
+        }
 
         let (stem, ext) = match base.rfind('.') {
             Some(i) => (&base[..i], Some(&base[i + 1..])),
             None => (base, None),
         };
 
-        let make = |suffix: Option<&str>| match (ext, suffix) {
-            (Some(e), Some(s)) => format!("{stem}{s}.{e}"),
-            (Some(e), None) => format!("{stem}.{e}"),
-            (None, Some(s)) => format!("{stem}{s}"),
-            (None, None) => stem.to_string(),
+        let make = |n: u64| match ext {
+            Some(e) => format!("{stem} ({n}).{e}"),
+            None => format!("{stem} ({n})"),
         };
-
-        let first = make(None);
-        if !self.contains(&first) {
-            return first;
-        }
-
-        let second = make(Some(&format!("-{hash8}")));
-        if !self.contains(&second) {
-            return second;
-        }
 
         let mut n: u64 = 2;
         loop {
-            let candidate = make(Some(&format!("-{hash8}-{n}")));
+            let candidate = make(n);
             if !self.contains(&candidate) {
                 return candidate;
             }
@@ -289,10 +321,6 @@ impl LibraryFs {
 }
 
 impl LibraryDir for LibraryFs {
-    fn name_for(&self, original_name: Option<&str>, mime_type: &str, hash: &str) -> String {
-        Self::file_name_for(original_name, mime_type, hash)
-    }
-
     fn contains(&self, name: &str) -> bool {
         LibraryFs::contains(self, name)
     }
@@ -342,6 +370,68 @@ impl LibraryDir for LibraryFs {
 
     fn contains_tree(&self, rel_dir: &str, name: &str) -> bool {
         LibraryFs::contains_tree(self, rel_dir, name)
+    }
+}
+
+fn resolve_ext(original_name: Option<&str>, mime_type: &str) -> Option<String> {
+    original_ext(original_name).or_else(|| mime_to_ext(mime_type).map(str::to_owned))
+}
+
+/// Sanitize a document title into a filesystem-safe stem, preserving Unicode
+/// letters and digits (Cyrillic, CJK, ...). Allowed: alphanumeric, space,
+/// `.`, `_`, `-`, `(`, `)`; everything else collapses to `_` (runs dedup'd),
+/// edges are trimmed, length capped at 80 chars, and Windows-reserved device
+/// names get a `_` prefix.
+pub(crate) fn sanitize_fs_stem(raw: &str) -> String {
+    let mapped: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, ' ' | '.' | '_' | '-' | '(' | ')') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    let mut collapsed = String::with_capacity(mapped.len());
+    let mut prev_underscore = false;
+    for c in mapped.chars() {
+        if c == '_' {
+            if prev_underscore {
+                continue;
+            }
+            prev_underscore = true;
+        } else {
+            prev_underscore = false;
+        }
+        collapsed.push(c);
+    }
+
+    let trimmed = collapsed.trim_matches(|c| matches!(c, '_' | '.' | '-' | ' '));
+    let mut stem: String = trimmed.chars().take(80).collect();
+    if is_windows_reserved(&stem) {
+        stem.insert(0, '_');
+    }
+    stem
+}
+
+/// Whether [stem]'s name head (before the first dot) is a Windows-reserved
+/// device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`), which is
+/// illegal as a file or directory name on Windows even with an extension.
+fn is_windows_reserved(stem: &str) -> bool {
+    let head = stem.split('.').next().unwrap_or("").to_ascii_uppercase();
+    match head.as_str() {
+        "CON" | "PRN" | "AUX" | "NUL" => true,
+        _ if head.is_empty() => false,
+        _ => {
+            // Reserved suffixes are ASCII digits only; a multi-byte last
+            // char can never qualify.
+            let last = head.chars().last().unwrap_or('\0');
+            let prefix_len = head.len() - last.len_utf8();
+            let prefix = &head[..prefix_len];
+            (prefix == "COM" || prefix == "LPT") && matches!(last, '1'..='9')
+        }
     }
 }
 
@@ -581,22 +671,85 @@ mod tests {
     fn unique_name_collision_handling() {
         let root = temp_root("unique");
         let lib = LibraryFs::open(&root).unwrap();
-        let hash = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
-
         // Pre-seed "Report.pdf"
         fs::write(root.join("Report.pdf"), b"").unwrap();
-        let name1 = lib.unique_name("Report.pdf", hash);
-        assert_eq!(name1, "Report-abcdef12.pdf");
+        assert_eq!(lib.unique_name("Report.pdf"), "Report (2).pdf");
 
         // Pre-seed that too
-        fs::write(root.join("Report-abcdef12.pdf"), b"").unwrap();
-        let name2 = lib.unique_name("Report.pdf", hash);
-        assert_eq!(name2, "Report-abcdef12-2.pdf");
+        fs::write(root.join("Report (2).pdf"), b"").unwrap();
+        assert_eq!(lib.unique_name("Report.pdf"), "Report (3).pdf");
 
         // Pre-seed that
-        fs::write(root.join("Report-abcdef12-2.pdf"), b"").unwrap();
-        let name3 = lib.unique_name("Report.pdf", hash);
-        assert_eq!(name3, "Report-abcdef12-3.pdf");
+        fs::write(root.join("Report (3).pdf"), b"").unwrap();
+        assert_eq!(lib.unique_name("Report.pdf"), "Report (4).pdf");
+
+        // Extensionless names collide the same way.
+        fs::write(root.join("Notes"), b"").unwrap();
+        assert_eq!(lib.unique_name("Notes"), "Notes (2)");
+
+        // A free base is returned untouched.
+        assert_eq!(lib.unique_name("Fresh.txt"), "Fresh.txt");
+    }
+
+    #[test]
+    fn title_file_name_derives_from_title() {
+        assert_eq!(
+            LibraryFs::title_file_name(
+                Some("Quarterly Report"),
+                Some("scan_0042.pdf"),
+                "application/pdf",
+                "abcdef12345678"
+            ),
+            "Quarterly Report.pdf"
+        );
+        // Cyrillic (and any Unicode letters) must survive.
+        assert_eq!(
+            LibraryFs::title_file_name(
+                Some("Конспект лекций"),
+                None,
+                "application/pdf",
+                "abcdef12345678"
+            ),
+            "Конспект лекций.pdf"
+        );
+        // A title already carrying the extension is not doubled.
+        assert_eq!(
+            LibraryFs::title_file_name(
+                Some("Report.pdf"),
+                None,
+                "application/pdf",
+                "abcdef12345678"
+            ),
+            "Report.pdf"
+        );
+        // Forbidden filesystem characters fold into underscores; edge
+        // underscores are trimmed.
+        assert_eq!(
+            LibraryFs::title_file_name(Some("a/b: c<d>?"), None, "text/plain", "abcdef12345678"),
+            "a_b_ c_d.txt"
+        );
+        // Empty title falls back to the hash.
+        assert_eq!(
+            LibraryFs::title_file_name(
+                Some("---"),
+                Some("x.bin"),
+                "application/octet-stream",
+                "abcdef12345678"
+            ),
+            "document-abcdef12.bin"
+        );
+    }
+
+    #[test]
+    fn sanitize_fs_stem_windows_reserved_names() {
+        assert_eq!(sanitize_fs_stem("CON"), "_CON");
+        assert_eq!(sanitize_fs_stem("nul"), "_nul");
+        assert_eq!(sanitize_fs_stem("Com1"), "_Com1");
+        assert_eq!(sanitize_fs_stem("lpt4.txt"), "_lpt4.txt");
+        assert_eq!(sanitize_fs_stem("CON.txt"), "_CON.txt");
+        assert_eq!(sanitize_fs_stem("console"), "console");
+        // Trailing dots and spaces are trimmed (Windows).
+        assert_eq!(sanitize_fs_stem("Report. "), "Report");
     }
 
     #[test]
