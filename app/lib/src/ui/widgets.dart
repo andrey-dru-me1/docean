@@ -293,11 +293,11 @@ class _TagChipState extends State<TagChip> {
     // the drop-shadow. Folded into the fixed width so it costs nothing at
     // the edges. Parents keep it tight — it reads as padding before the
     // divider. The leaf block already carries the same right padding (8) a
-    // plain pill gives its label, so only a sliver is added: a longer tail
-    // would make hierarchical pills trail far more dead space than plain
-    // ones and steal width the last glyph needs.
+    // plain pill gives its label, so only a small fixed sliver is added on
+    // top: a length-scaled tail would make hierarchical pills trail far more
+    // dead space than plain ones and steal width the last glyph needs.
     final roomParent = 1.5;
-    final roomLeaf = 1.0;
+    final roomLeaf = 4.0;
     final roomSum = roomParent * parentCount + roomLeaf;
 
     // Fixed pill width: the widest state (rest, or one parent expanded with
