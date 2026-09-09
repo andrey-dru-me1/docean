@@ -16,6 +16,10 @@ typedef DirectoryPicker = Future<String?> Function();
 /// Opens the native directory picker and returns the selected folder path.
 Future<String?> pickDirectoryWithFilePicker() => FilePicker.getDirectoryPath();
 
+/// Signature for persisting a security-scoped bookmark for the picked folder
+/// (App Sandbox access). `null` in tests keeps dialog flows channel-free.
+typedef LibraryFolderBookmarker = Future<bool> Function(String path);
+
 /// Shows the library-folder dialog. Resolves `true` when the user set, synced,
 /// or detached the folder (the host should refresh its document list); `false`
 /// on cancel.
@@ -23,12 +27,14 @@ Future<bool?> showLibraryFolderDialog(
   BuildContext context, {
   required LibraryDirectoryService service,
   DirectoryPicker? pickDirectory,
+  LibraryFolderBookmarker? bookmarkFolder,
 }) {
   return showDialog<bool>(
     context: context,
     builder: (_) => LibraryFolderDialog(
       service: service,
       pickDirectory: pickDirectory ?? pickDirectoryWithFilePicker,
+      bookmarkFolder: bookmarkFolder,
     ),
   );
 }
@@ -37,11 +43,13 @@ class LibraryFolderDialog extends StatefulWidget {
   const LibraryFolderDialog({
     super.key,
     required this.service,
-    required this.pickDirectory,
+    this.pickDirectory,
+    this.bookmarkFolder,
   });
 
   final LibraryDirectoryService service;
-  final DirectoryPicker pickDirectory;
+  final DirectoryPicker? pickDirectory;
+  final LibraryFolderBookmarker? bookmarkFolder;
 
   @override
   State<LibraryFolderDialog> createState() => _LibraryFolderDialogState();
@@ -69,10 +77,14 @@ class _LibraryFolderDialogState extends State<LibraryFolderDialog> {
   }
 
   Future<void> _chooseFolder() async {
-    final picked = await widget.pickDirectory();
+    final picked = await widget.pickDirectory!();
     if (picked == null || picked.isEmpty) return;
     setState(() => _syncing = true);
     try {
+      // App Sandbox: persist the folder grant before the sync reads it.
+      if (widget.bookmarkFolder != null) {
+        await widget.bookmarkFolder!(picked);
+      }
       await widget.service.setLibraryDirectory(picked);
       final summary = await widget.service.syncLibrary();
       if (!mounted) return;

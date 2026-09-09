@@ -45,6 +45,8 @@ class DoceanApp extends StatelessWidget {
     this.openDocument,
     this.libraryService = const BridgeLibraryDirectoryService(),
     this.pickDirectory,
+    this.libraryBookmarkFolder,
+    this.libraryScopeRestore,
   });
 
   final HealthCheckFn healthCheck;
@@ -73,6 +75,14 @@ class DoceanApp extends StatelessWidget {
   /// native `file_picker`); tests inject a fake.
   final DirectoryPicker? pickDirectory;
 
+  /// Persists the App Sandbox security-scoped bookmark for a freshly picked
+  /// library folder. Production wires the platform channel; tests leave it
+  /// `null` so picker flows never touch the channel.
+  final Future<bool> Function(String path)? libraryBookmarkFolder;
+
+  /// Restores a persisted security-scoped access at startup. `null` in tests.
+  final Future<String?> Function()? libraryScopeRestore;
+
   @override
   Widget build(BuildContext context) {
     final baseScheme = ColorScheme.fromSeed(seedColor: Colors.teal);
@@ -98,6 +108,8 @@ class DoceanApp extends StatelessWidget {
         openDocument: openDocument,
         libraryService: libraryService,
         pickDirectory: pickDirectory,
+        libraryBookmarkFolder: libraryBookmarkFolder,
+        libraryScopeRestore: libraryScopeRestore,
       ),
     );
   }
@@ -171,6 +183,8 @@ class MainShell extends StatefulWidget {
     this.openDocument,
     this.libraryService,
     this.pickDirectory,
+    this.libraryBookmarkFolder,
+    this.libraryScopeRestore,
   });
 
   final HealthCheckFn healthCheck;
@@ -185,6 +199,13 @@ class MainShell extends StatefulWidget {
   final DocumentOpener? openDocument;
   final LibraryDirectoryService? libraryService;
   final DirectoryPicker? pickDirectory;
+
+  /// Persists the App Sandbox security-scoped bookmark for a picked library
+  /// folder; `null` in tests.
+  final Future<bool> Function(String path)? libraryBookmarkFolder;
+
+  /// Restores a persisted security-scoped access at startup; `null` in tests.
+  final Future<String?> Function()? libraryScopeRestore;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -249,8 +270,11 @@ class _MainShellState extends State<MainShell> {
 
   /// Best-effort startup sync: if a library directory is already configured,
   /// run one sync and bump the document list — never block or surface errors.
+  /// Restores the App Sandbox security scope first: a picked library folder is
+  /// only reachable while its persisted bookmark-backed access is active.
   Future<void> _autoSyncLibrary() async {
     try {
+      await widget.libraryScopeRestore?.call();
       final dir = await _libraryService.libraryDirectory();
       if (dir == null) return;
       await _libraryService.syncLibrary();
@@ -267,6 +291,7 @@ class _MainShellState extends State<MainShell> {
       context,
       service: _libraryService,
       pickDirectory: widget.pickDirectory ?? pickDirectoryWithFilePicker,
+      bookmarkFolder: widget.libraryBookmarkFolder,
     );
     if (changed == true && mounted) {
       _documentsRefreshTick.value++;
