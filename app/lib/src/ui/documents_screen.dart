@@ -965,6 +965,9 @@ class _TagNameDialogState extends State<_TagNameDialog> {
                   TagChip(
                     key: ValueKey('tag-suggestion-$tag'),
                     label: tag,
+                    // AlertDialog content is measured via IntrinsicWidth —
+                    // keep suggestion chips in the plain full-text path.
+                    compress: false,
                     onPressed: () {
                       _controller.text = tag;
                       _onChanged(tag);
@@ -988,6 +991,7 @@ class _TagNameDialogState extends State<_TagNameDialog> {
                   TagChip(
                     key: ValueKey('suggest-$tag'),
                     label: tag,
+                    compress: false,
                     onPressed: () => _submit(tag),
                   ),
               ],
@@ -1263,24 +1267,31 @@ class _DocumentPreviewTile extends StatelessWidget {
                 top: 8,
                 left: 8,
                 right: 8,
-                child: Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    for (final tag in maximalTags(document.tags))
-                      TagChip(
-                        // Tapping the chip toggles it in the filter bar; the
-                        // handler lives on TagChip itself so the pill is
-                        // interactive (tap-only: no hover lightening, no click
-                        // cursor) and its tap never falls through to the
-                        // tile's open-document InkWell below.
-                        key: ValueKey('tile-tag-tap-$tag'),
-                        label: tag,
-                        onPressed: onTagTap != null
-                            ? () => onTagTap!(tag)
-                            : null,
-                      ),
-                  ],
+                // The tile width is bounded by the Positioned box; read it
+                // HERE (never inside TagChip) and hand each chip an explicit
+                // clamp — a LayoutBuilder in the pill's own subtree would
+                // break intrinsic/dry layout measurement in AlertDialogs.
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: [
+                      for (final tag in maximalTags(document.tags))
+                        TagChip(
+                          // Tapping the chip toggles it in the filter bar; the
+                          // handler lives on TagChip itself so the pill is
+                          // interactive (tap-only: no hover lightening, no click
+                          // cursor) and its tap never falls through to the
+                          // tile's open-document InkWell below.
+                          key: ValueKey('tile-tag-tap-$tag'),
+                          label: tag,
+                          clampWidth: constraints.maxWidth,
+                          onPressed: onTagTap != null
+                              ? () => onTagTap!(tag)
+                              : null,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             // Title pinned above the corner checkbox: the right inset reserves

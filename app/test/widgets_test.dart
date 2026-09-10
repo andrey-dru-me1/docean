@@ -149,12 +149,9 @@ void main() {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       await tester.pumpWidget(
         _wrap(
-          const SizedBox(
-            width: 150,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TagChip(label: 'ngu/practice/review supervisor'),
-            ),
+          const TagChip(
+            label: 'ngu/practice/review supervisor',
+            clampWidth: 150,
           ),
         ),
       );
@@ -174,12 +171,9 @@ void main() {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       await tester.pumpWidget(
         _wrap(
-          const SizedBox(
-            width: 150,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TagChip(label: 'ngu/practice/review supervisor'),
-            ),
+          const TagChip(
+            label: 'ngu/practice/review supervisor',
+            clampWidth: 150,
           ),
         ),
       );

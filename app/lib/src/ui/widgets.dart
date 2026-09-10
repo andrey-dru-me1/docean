@@ -107,6 +107,28 @@ Color tagTintFor(BuildContext context, String name) {
   return Color.alphaBlend(light.withValues(alpha: 0.70), scheme.surface);
 }
 
+/// Defers hover-driven rebuilds out of the mouse tracker's device-update pass.
+///
+/// `MouseRegion.onEnter`/`onExit`/`onHover` run inside
+/// `MouseTracker._deviceUpdatePhase` (see `RendererBinding.dispatchEvent`,
+/// which updates the tracker *before* routing the event to the gesture
+/// recognizers). A synchronous `setState` there can rebuild while the pass is
+/// active and re-enter it, tripping the debug `!_debugDuringDeviceUpdate`
+/// assertion — and because that throw happens before `super.dispatchEvent`,
+/// the current pointer event (e.g. the tap that should open a dialog) is never
+/// delivered to its recognizer. Applying the change on a later microtask runs
+/// it after the phase has unwound, so the rebuild cannot re-enter it.
+mixin _DeferredMouseHover<T extends StatefulWidget> on State<T> {
+  void _deferHover({
+    required bool Function() isChanged,
+    required VoidCallback apply,
+  }) {
+    scheduleMicrotask(() {
+      if (mounted && isChanged()) setState(apply);
+    });
+  }
+}
+
 /// A compact, colored tag pill used consistently across every surface:
 /// preview tiles, filter bars, search results, and the info sidebar.
 ///
@@ -144,9 +166,24 @@ class TagChip extends StatefulWidget {
     this.onPressed,
     this.onDeleted,
     this.onEdit,
+    this.compress = true,
+    this.clampWidth,
   });
 
   final String label;
+
+  /// Whether hierarchical labels may render as the hover-compressed split
+  /// pill (desktop). `false` forces the plain full-text segments — required
+  /// inside intrinsic-measuring ancestors (`AlertDialog` wraps content in
+  /// `IntrinsicWidth`), whose dry-layout pass cannot descend into the
+  /// pill's constraint-reading machinery.
+  final bool compress;
+
+  /// Hard upper bound for the compressed pill's width, supplied by bounded
+  /// cells (grid tiles via a wrapping `LayoutBuilder`). Deliberately NOT read
+  /// from live constraints inside the pill: a `LayoutBuilder` in the subtree
+  /// breaks any ancestor computing intrinsic/dry layout (e.g. `AlertDialog`).
+  final double? clampWidth;
 
   /// Selection state for filter chips: when selected the pill is filled with a
   /// stronger tint and a fully-opaque ring so the active filter is obvious at
@@ -178,7 +215,7 @@ class TagChip extends StatefulWidget {
   State<TagChip> createState() => _TagChipState();
 }
 
-class _TagChipState extends State<TagChip> {
+class _TagChipState extends State<TagChip> with _DeferredMouseHover {
   /// Segment index currently under the pointer (compressed split pills only).
   int? _hoverSegment;
 
@@ -467,11 +504,11 @@ class _TagChipState extends State<TagChip> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
         child: MouseRegion(
-          onExit: (_) {
-            if (_hoverSegment != null) {
-              setState(() => _hoverSegment = null);
-            }
-          },
+          onExit: (_) => _deferHover(
+            // Deferred rebuild (checked in-microtask): see _DeferredMouseHover.
+            isChanged: () => _hoverSegment != null,
+            apply: () => _hoverSegment = null,
+          ),
           child: Listener(
             onPointerHover: (event) {
               final ro = _rowKey.currentContext?.findRenderObject();
@@ -490,15 +527,13 @@ class _TagChipState extends State<TagChip> {
                 }
                 x += blockWidths[i] + 1;
               }
-              if (target != null && target != _hoverSegment) {
-                // Deferred a microtask: applying immediately would rebuild
-                // inside the mouse-tracker's device-update pass and trip its
-                // re-entrancy assertion.
-                scheduleMicrotask(() {
-                  if (mounted && _hoverSegment != target) {
-                    setState(() => _hoverSegment = target);
-                  }
-                });
+              if (target != null) {
+                // Deferred rebuild (checked in-microtask): see
+                // _DeferredMouseHover.
+                _deferHover(
+                  isChanged: () => _hoverSegment != target,
+                  apply: () => _hoverSegment = target,
+                );
               }
             },
             // The blocks sum EXACTLY to `content` (rooms are baked in); the
@@ -539,19 +574,19 @@ class _TagChipState extends State<TagChip> {
     Widget pill;
     if (isSplit) {
       final segments = widget.label.split('/');
-      if (!_touchInteraction && _hoverable) {
-        // Collapsed letters, single-segment hover expansion, fixed width —
-        // but never wider than the cell the chip is placed in (grid tiles
-        // bound it with the Wrap's remaining run width).
+      if (widget.compress && !_touchInteraction && _hoverable) {
+        // Collapsed letters, single-segment hover expansion, fixed width.
+        // No LayoutBuilder: it cannot be dry-laid-out, and `AlertDialog` (and
+        // any IntrinsicWidth/Height ancestor) measures children that way.
+        // Bounded cells (grid tiles) pass an explicit [TagChip.clampWidth]
+        // instead, so the pill never exceeds its run.
         return _wrapInteractions(
           context,
-          LayoutBuilder(
-            builder: (context, constraints) => _buildCompressedSplitPill(
-              context,
-              segments,
-              labelStyle,
-              constraints.maxWidth,
-            ),
+          _buildCompressedSplitPill(
+            context,
+            segments,
+            labelStyle,
+            widget.clampWidth ?? double.infinity,
           ),
           background,
         );
@@ -741,9 +776,14 @@ class TagEditIcon extends StatefulWidget {
   State<TagEditIcon> createState() => _TagEditIconState();
 }
 
-class _TagEditIconState extends State<TagEditIcon> {
+class _TagEditIconState extends State<TagEditIcon> with _DeferredMouseHover {
   bool _hovering = false;
   bool _touchInteraction = false;
+
+  void _setHovering(bool value) => _deferHover(
+    isChanged: () => _hovering != value,
+    apply: () => _hovering = value,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -755,8 +795,8 @@ class _TagEditIconState extends State<TagEditIcon> {
         }
       },
       child: MouseRegion(
-        onEnter: (_) => setState(() => _hovering = true),
-        onExit: (_) => setState(() => _hovering = false),
+        onEnter: (_) => _setHovering(true),
+        onExit: (_) => _setHovering(false),
         cursor: visible ? SystemMouseCursors.click : MouseCursor.defer,
         child: GestureDetector(
           onTap: widget.onEdit,
@@ -833,7 +873,8 @@ class TagDeleteIcon extends StatefulWidget {
   State<TagDeleteIcon> createState() => _TagDeleteIconState();
 }
 
-class _TagDeleteIconState extends State<TagDeleteIcon> {
+class _TagDeleteIconState extends State<TagDeleteIcon>
+    with _DeferredMouseHover {
   bool _hovering = false;
 
   /// Whether a non-mouse pointer (touch/stylus) has interacted so far.
@@ -845,6 +886,11 @@ class _TagDeleteIconState extends State<TagDeleteIcon> {
   /// until hover.
   bool _touchInteraction = false;
 
+  void _setHovering(bool value) => _deferHover(
+    isChanged: () => _hovering != value,
+    apply: () => _hovering = value,
+  );
+
   @override
   Widget build(BuildContext context) {
     final visible = _hovering || _touchInteraction;
@@ -855,8 +901,8 @@ class _TagDeleteIconState extends State<TagDeleteIcon> {
         }
       },
       child: MouseRegion(
-        onEnter: (_) => setState(() => _hovering = true),
-        onExit: (_) => setState(() => _hovering = false),
+        onEnter: (_) => _setHovering(true),
+        onExit: (_) => _setHovering(false),
         cursor: visible ? SystemMouseCursors.click : MouseCursor.defer,
         // The tap handler stays *above* the visibility gate so a touch that
         // reveals the × also registers as the deletion (matching the chip's

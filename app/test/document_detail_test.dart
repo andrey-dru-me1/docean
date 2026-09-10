@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -216,6 +218,79 @@ void main() {
       expect(find.byType(TagChip), findsNWidgets(2));
       expect(find.text('tax'), findsOneWidget);
     });
+
+    testWidgets(
+      'deleting hovered tags by mouse keeps the + composer openable',
+      (tester) async {
+        // Regression 1: direct setState in the tag pills' MouseRegion
+        // enter/exit callbacks rebuilt inside the mouse tracker's
+        // device-update pass.
+        // Regression 2: the composer hosts split suggestion chips, and while
+        // the pill clamped itself via an inner LayoutBuilder, AlertDialog's
+        // IntrinsicWidth dry-layout pass threw — the dialog never laid out
+        // and the mouse tracker then flooded "Cannot hit test a render box
+        // with no size", freezing the UI.
+        debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+
+        final doc = _doc(tags: const ['study/mit', 'finance']);
+        final service = FakeDocumentService(
+          documents: [doc],
+          // Repository knows hierarchical tags → the composer renders
+          // suggestion chips (the intrinsic-crash trigger).
+          tags: const ['study/mit/ml', 'finance/q3', 'misc'],
+          contentByDocumentId: {'doc-1': 'Report body'},
+        );
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: const Offset(4, 4));
+        addTearDown(mouse.removePointer);
+
+        Future<void> hoverAndDelete(String tagLabel) async {
+          final chip = find.byKey(ValueKey('tag-$tagLabel'));
+          final rect = tester.getRect(chip);
+          // Enter the pill (hover reveal + deferred segment expand).
+          await mouse.moveTo(rect.center);
+          await tester.pumpAndSettle();
+          // Tap the delete lane at the chip's right edge, under the mouse.
+          await tester.tapAt(Offset(rect.right - 8, rect.center.dy));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+        }
+
+        await hoverAndDelete('study/mit');
+        await hoverAndDelete('finance');
+
+        // Deleting the split pill leaves its materialized ancestor `study`
+        // (finance removed too); the pointer has churned enter/exit on every
+        // pill and the now-empty area where the + button moved into.
+        expect(find.byKey(const ValueKey('tag-finance')), findsNothing);
+        expect(find.byKey(const ValueKey('tag-study/mit')), findsNothing);
+        expect(service.lastSetTags, isNot(contains('finance')));
+        expect(service.lastSetTags, isNot(contains('study/mit')));
+
+        await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byType(AlertDialog), findsOneWidget);
+
+        // Sweep the mouse across the dialog's suggestion chips: every hit
+        // box must be fully laid out (the freeze came from hitting the
+        // half-laid-out dialog).
+        for (final tag in const ['study/mit/ml', 'finance/q3', 'misc']) {
+          final chip = find.byKey(ValueKey('suggest-$tag'));
+          expect(chip, findsOneWidget);
+          await mouse.moveTo(tester.getCenter(chip));
+          await tester.pump();
+          await tester.pump();
+        }
+        expect(tester.takeException(), isNull);
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
 
     testWidgets(
       'adds a tag optimistically — the chip appears before the persist '

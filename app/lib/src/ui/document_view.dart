@@ -1204,6 +1204,10 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
                   TagChip(
                     key: ValueKey('tag-suggestion-$tag'),
                     label: tag,
+                    // Full-text segments: AlertDialog measures content via
+                    // IntrinsicWidth, and hover-compression would only hide
+                    // the very tag name the user is choosing.
+                    compress: false,
                     onPressed: () {
                       _controller.text = tag;
                       _onChanged(tag);
@@ -1227,6 +1231,10 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
                   TagChip(
                     key: ValueKey('suggest-$tag'),
                     label: tag,
+                    // See the live-suggestion chips above: full-text, and no
+                    // constraint-reading machinery under the dialog's
+                    // IntrinsicWidth measurement.
+                    compress: false,
                     onPressed: () => _submit(tag),
                   ),
               ],
