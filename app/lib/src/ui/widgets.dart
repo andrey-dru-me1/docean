@@ -166,18 +166,10 @@ class TagChip extends StatefulWidget {
     this.onPressed,
     this.onDeleted,
     this.onEdit,
-    this.compress = true,
     this.clampWidth,
   });
 
   final String label;
-
-  /// Whether hierarchical labels may render as the hover-compressed split
-  /// pill (desktop). `false` forces the plain full-text segments — required
-  /// inside intrinsic-measuring ancestors (`AlertDialog` wraps content in
-  /// `IntrinsicWidth`), whose dry-layout pass cannot descend into the
-  /// pill's constraint-reading machinery.
-  final bool compress;
 
   /// Hard upper bound for the compressed pill's width, supplied by bounded
   /// cells (grid tiles via a wrapping `LayoutBuilder`). Deliberately NOT read
@@ -552,12 +544,18 @@ class _TagChipState extends State<TagChip> with _DeferredMouseHover {
   @override
   Widget build(BuildContext context) {
     final color = tagColorFor(widget.label);
-    final isSplit = widget.label.contains('/');
+    // Defensive segmentation: legacy or auto-organized tags can carry empty
+    // segments (e.g. `/outbox`), and indexing an empty segment's first
+    // letter crashes the collapsed pill. Drop empty segments; only genuine
+    // multi-segment labels split.
+    final segments = widget.label
+        .split('/')
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final isSplit = segments.length > 1;
 
     // Border and overlay background color are based on the FIRST segment's color.
-    final firstColor = isSplit
-        ? tagColorFor(widget.label.split('/').first)
-        : color;
+    final firstColor = isSplit ? tagColorFor(segments.first) : color;
     // Overlay background used by edit/delete grims: lightened when selected.
     final background = widget.selected
         ? Color.lerp(firstColor, Colors.white, 0.38)!
@@ -573,8 +571,7 @@ class _TagChipState extends State<TagChip> with _DeferredMouseHover {
 
     Widget pill;
     if (isSplit) {
-      final segments = widget.label.split('/');
-      if (widget.compress && !_touchInteraction && _hoverable) {
+      if (!_touchInteraction && _hoverable) {
         // Collapsed letters, single-segment hover expansion, fixed width.
         // No LayoutBuilder: it cannot be dry-laid-out, and `AlertDialog` (and
         // any IntrinsicWidth/Height ancestor) measures children that way.
@@ -729,7 +726,8 @@ class _TagChipState extends State<TagChip> with _DeferredMouseHover {
     return tap;
   }
 
-  bool get isSplitLabel => widget.label.contains('/');
+  bool get isSplitLabel =>
+      widget.label.split('/').where((s) => s.isNotEmpty).length > 1;
 }
 
 /// Read a [HighlightSpan]'s byte range as ints for slicing a snippet substring.

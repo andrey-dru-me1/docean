@@ -219,6 +219,46 @@ void main() {
       expect(find.text('tax'), findsOneWidget);
     });
 
+    testWidgets('composer rejects an invalid tag name inline', (tester) async {
+      final doc = _doc(tags: const ['finance']);
+      final service = FakeDocumentService(
+        documents: [doc],
+        contentByDocumentId: {'doc-1': 'Report body'},
+      );
+      await tester.pumpWidget(
+        _wrap(DocumentDetailView(document: doc, documentService: service)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '/outbox');
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byTooltip('Add tag'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Rejected inline: dialog stays open, nothing persisted.
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Tag must not start with a slash'), findsOneWidget);
+      expect(service.setTagsCount, 0);
+
+      // Correcting the name clears the error and submits.
+      await tester.enterText(find.byType(TextField).last, 'outbox');
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byTooltip('Add tag'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(service.lastSetTags, contains('outbox'));
+    });
+
     testWidgets(
       'deleting hovered tags by mouse keeps the + composer openable',
       (tester) async {
@@ -237,7 +277,7 @@ void main() {
           documents: [doc],
           // Repository knows hierarchical tags → the composer renders
           // suggestion chips (the intrinsic-crash trigger).
-          tags: const ['study/mit/ml', 'finance/q3', 'misc'],
+          tags: const ['study/mit/ml', 'finance/q3', 'misc', '/outbox'],
           contentByDocumentId: {'doc-1': 'Report body'},
         );
         await tester.pumpWidget(
@@ -280,7 +320,12 @@ void main() {
         // Sweep the mouse across the dialog's suggestion chips: every hit
         // box must be fully laid out (the freeze came from hitting the
         // half-laid-out dialog).
-        for (final tag in const ['study/mit/ml', 'finance/q3', 'misc']) {
+        for (final tag in const [
+          'study/mit/ml',
+          'finance/q3',
+          'misc',
+          '/outbox',
+        ]) {
           final chip = find.byKey(ValueKey('suggest-$tag'));
           expect(chip, findsOneWidget);
           await mouse.moveTo(tester.getCenter(chip));

@@ -196,6 +196,26 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     });
 
+    testWidgets('labels with empty segments never index a blank letter', (
+      tester,
+    ) async {
+      // Regression: a legacy `/outbox` tag crashed the composer dialog —
+      // the collapsed pill indexed segments[i][0] on an empty segment.
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      await tester.pumpWidget(_wrap(const TagChip(label: '/outbox')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      // Empty segments are dropped: a single-segment label is a plain pill.
+      expect(find.text('/outbox'), findsOneWidget);
+
+      // Mid-string empties are dropped too, keeping a genuine split.
+      await tester.pumpWidget(_wrap(const TagChip(label: 'a//b')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('tag-pill')), findsOneWidget);
+      debugDefaultTargetPlatformOverride = null;
+    });
+
     testWidgets('renders a compact pill with no reserved avatar slot', (
       tester,
     ) async {

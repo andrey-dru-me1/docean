@@ -1128,6 +1128,9 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
   /// blank).
   List<String> _liveSuggestions = const [];
 
+  /// Inline validation error for the typed tag name.
+  String? _error;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -1137,6 +1140,7 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
   void _onChanged(String value) {
     final q = value.trim();
     setState(() {
+      _error = null;
       _liveSuggestions = q.isEmpty
           ? const []
           : suggestTagCompletions(q, widget.allTags);
@@ -1146,6 +1150,11 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
   void _submit(String raw) {
     final tag = raw.trim();
     if (tag.isEmpty) return;
+    final err = validateTagPath(tag);
+    if (err != null) {
+      setState(() => _error = err);
+      return;
+    }
     Navigator.of(context).pop();
     widget.onSubmit(tag);
   }
@@ -1153,6 +1162,10 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      // The suggestion list can outgrow the dialog on large repositories;
+      // scrollable content keeps it inside the screen instead of throwing
+      // a RenderFlex overflow.
+      scrollable: true,
       title: const Text('Add tag'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1191,6 +1204,16 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
               ),
             ],
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+              ),
+            ),
+          ],
           if (_liveSuggestions.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text('Suggestions', style: Theme.of(context).textTheme.labelMedium),
@@ -1204,10 +1227,6 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
                   TagChip(
                     key: ValueKey('tag-suggestion-$tag'),
                     label: tag,
-                    // Full-text segments: AlertDialog measures content via
-                    // IntrinsicWidth, and hover-compression would only hide
-                    // the very tag name the user is choosing.
-                    compress: false,
                     onPressed: () {
                       _controller.text = tag;
                       _onChanged(tag);
@@ -1231,10 +1250,6 @@ class _AddTagComposerDialogState extends State<_AddTagComposerDialog> {
                   TagChip(
                     key: ValueKey('suggest-$tag'),
                     label: tag,
-                    // See the live-suggestion chips above: full-text, and no
-                    // constraint-reading machinery under the dialog's
-                    // IntrinsicWidth measurement.
-                    compress: false,
                     onPressed: () => _submit(tag),
                   ),
               ],

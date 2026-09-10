@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart'
     show BulkOrganizer, DocumentService, NoopBulkOrganizer;
-import '../features/tag_hierarchy.dart' show maximalTags, suggestTagCompletions;
+import '../features/tag_hierarchy.dart'
+    show maximalTags, suggestTagCompletions, validateTagPath;
 import 'document_preview_view.dart' show DocumentTilePreview;
 import 'document_view.dart' show DocumentSummary;
 import 'search_screen.dart' show DocumentOpener;
@@ -905,6 +906,9 @@ class _TagNameDialogState extends State<_TagNameDialog> {
   /// Fuzzy completions for the current query (empty when the field is blank).
   List<String> _liveSuggestions = const [];
 
+  /// Inline validation error for the typed tag name.
+  String? _error;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -914,6 +918,7 @@ class _TagNameDialogState extends State<_TagNameDialog> {
   void _onChanged(String value) {
     final q = value.trim();
     setState(() {
+      _error = null;
       _liveSuggestions = q.isEmpty
           ? const []
           : suggestTagCompletions(q, widget.tags ?? const []);
@@ -923,12 +928,18 @@ class _TagNameDialogState extends State<_TagNameDialog> {
   void _submit(String raw) {
     final tag = raw.trim();
     if (tag.isEmpty) return;
+    final err = validateTagPath(tag);
+    if (err != null) {
+      setState(() => _error = err);
+      return;
+    }
     Navigator.of(context).pop(tag);
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: Text(widget.title),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -952,6 +963,16 @@ class _TagNameDialogState extends State<_TagNameDialog> {
               ),
             ],
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+              ),
+            ),
+          ],
           if (_liveSuggestions.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text('Suggestions', style: Theme.of(context).textTheme.labelMedium),
@@ -965,9 +986,6 @@ class _TagNameDialogState extends State<_TagNameDialog> {
                   TagChip(
                     key: ValueKey('tag-suggestion-$tag'),
                     label: tag,
-                    // AlertDialog content is measured via IntrinsicWidth —
-                    // keep suggestion chips in the plain full-text path.
-                    compress: false,
                     onPressed: () {
                       _controller.text = tag;
                       _onChanged(tag);
@@ -991,7 +1009,6 @@ class _TagNameDialogState extends State<_TagNameDialog> {
                   TagChip(
                     key: ValueKey('suggest-$tag'),
                     label: tag,
-                    compress: false,
                     onPressed: () => _submit(tag),
                   ),
               ],
