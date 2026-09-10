@@ -106,6 +106,30 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_feedback_term ON suggestion_feedback(kind, context, term);
     "#,
+    // v2 -> v3: unused tags are never stored. An AFTER DELETE trigger on the
+    // join table prunes a tag row the moment its last document reference
+    // disappears — this covers re-tagging (`set_tags`/`put` delete the join
+    // rows first), tag renames (which re-tag through the same path) and
+    // document deletion (the FK cascade's row deletions fire the trigger;
+    // verified empirically on this SQLite build). The tag-keyed index backs
+    // the per-delete reference check and the FK cascades. The backfill sweep
+    // purges orphans left behind by the previous catalog-forever behaviour.
+    // Note: `put_tag` (metadata seeding, unused in production) is the only
+    // remaining way to create a standalone row; every document-driven path
+    // keeps the registry and the join table in lockstep.
+    r#"
+    CREATE INDEX idx_document_tags_tag ON document_tags(tag);
+
+    CREATE TRIGGER tags_prune_unreferenced
+    AFTER DELETE ON document_tags
+    FOR EACH ROW
+    WHEN (SELECT COUNT(*) FROM document_tags WHERE tag = OLD.tag) = 0
+    BEGIN
+        DELETE FROM tags WHERE name = OLD.tag;
+    END;
+
+    DELETE FROM tags WHERE name NOT IN (SELECT tag FROM document_tags);
+    "#,
 ];
 
 /// Apply all pending migrations to `conn`.

@@ -360,25 +360,80 @@ fn set_tags_replaces_document_tags_without_rewriting_bytes() {
     assert!(got.tags.contains(&"study/mit/ml".to_owned()));
     assert!(got.tags.contains(&"work".to_owned()));
 
-    // New tag names are created in the catalog so they surface in list_tags.
+    // The registry holds exactly what is still attached: names from the
+    // replaced set vanish automatically (v3 prune trigger), while ancestors
+    // materialized for the current set surface in list_tags.
     let names: Vec<String> = store
         .list_tags()
         .unwrap()
         .into_iter()
         .map(|t| t.name)
         .collect();
-    assert!(names.contains(&"receipts".to_owned()));
-    assert!(names.contains(&"new".to_owned()));
+    assert!(names.contains(&"study".to_owned()));
+    assert!(names.contains(&"study/mit".to_owned()));
+    assert!(names.contains(&"work".to_owned()));
+    assert!(!names.contains(&"receipts".to_owned()));
+    assert!(!names.contains(&"new".to_owned()));
 
-    // Clearing the set removes all assignments.
+    // Clearing the set prunes every tag this document was the last to use.
     store.set_tags(&"d1".to_owned(), &[]).unwrap();
     assert!(store.get(&"d1".to_owned()).unwrap().tags.is_empty());
+    assert!(
+        store.list_tags().unwrap().is_empty(),
+        "no document references remain"
+    );
 
     // Unknown documents are a storage error, not a silent no-op.
     let err = store
         .set_tags(&"nope".to_owned(), &["x".to_owned()])
         .unwrap_err();
     assert!(matches!(err, StorageError::NotFound(id) if id == "nope"));
+}
+
+#[test]
+fn unused_tags_are_pruned_from_the_registry() {
+    let mut store = temp_store("tag_prune");
+    store
+        .put(doc("d1", "one", &["solo", "shared"]), b"payload one")
+        .unwrap();
+    store
+        .put(doc("d2", "two", &["shared"]), b"payload two")
+        .unwrap();
+
+    // Re-tagging drops 'solo' (last reference gone) but keeps 'shared'
+    // (still referenced by both documents).
+    store
+        .set_tags(&"d1".to_owned(), &["shared".to_owned()])
+        .unwrap();
+    let names: Vec<String> = store
+        .list_tags()
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names, vec!["shared".to_owned()], "solo pruned on untag");
+
+    // Reattaching 'solo' to d1 then DELETING the document must prune it
+    // again — this time through the FK cascade's row deletions.
+    store
+        .set_tags(&"d1".to_owned(), &["solo".to_owned()])
+        .unwrap();
+    assert!(store.list_tags().unwrap().iter().any(|t| t.name == "solo"));
+    store.delete(&"d1".to_owned()).unwrap();
+    let names: Vec<String> = store
+        .list_tags()
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names, vec!["shared".to_owned()], "solo pruned via cascade");
+
+    // The shared tag survives until its LAST document is deleted.
+    store.delete(&"d2".to_owned()).unwrap();
+    assert!(
+        store.list_tags().unwrap().is_empty(),
+        "registry empties exactly when references do"
+    );
 }
 
 #[test]
