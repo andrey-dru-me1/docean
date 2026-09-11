@@ -216,6 +216,41 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     });
 
+    testWidgets('hover-compressed pills lay out under AlertDialog', (
+      tester,
+    ) async {
+      // Regression: AlertDialog measures content via IntrinsicWidth; a
+      // LayoutBuilder anywhere in the pill subtree threw the dry-layout pass
+      // and froze the whole dialog. The pills are now intrinsic-safe, so
+      // rendering them directly inside a dialog must not throw.
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: AlertDialog(
+                title: const Text('Add tag'),
+                content: const Wrap(
+                  spacing: 6,
+                  children: [
+                    TagChip(label: 'study/mit/ml'),
+                    TagChip(label: 'finance/q3/reconciliation'),
+                    TagChip(label: '/outbox'),
+                  ],
+                ),
+                actions: [TextButton(onPressed: () {}, child: Text('Done'))],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      // Compressed pills are live inside the dialog.
+      expect(find.byKey(const ValueKey('tag-pill')), findsNWidgets(2));
+      debugDefaultTargetPlatformOverride = null;
+    });
+
     testWidgets('renders a compact pill with no reserved avatar slot', (
       tester,
     ) async {

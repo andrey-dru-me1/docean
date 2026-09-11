@@ -12,6 +12,7 @@ import 'document_preview_view.dart' show DocumentTilePreview;
 import 'document_view.dart' show DocumentSummary;
 import 'search_screen.dart' show DocumentOpener;
 import 'tag_hierarchy_view.dart' show TagHierarchyView;
+import 'tag_search_field.dart' show TagSearchField;
 import 'widgets.dart' show EmptyState, TagChip, wrapDocumentDragOut;
 
 /// Categories for filtering documents by file type.
@@ -327,23 +328,40 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           ),
           if (_tags.isNotEmpty) ...[
             const SizedBox(height: 8),
+            // Active tag filters + a search field. The full registry is NOT
+            // listed anymore: typing suggests completions (best match first,
+            // Enter selects), and after each pick the field stays focused so
+            // several filters can be added in a row.
             Wrap(
               spacing: 6,
               runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                for (final tag in _tags)
+                for (final tag in _tagFilters)
                   TagChip(
                     key: ValueKey('filter-$tag'),
                     label: tag,
-                    selected: _tagFilters.contains(tag),
+                    selected: true,
                     onSelected: (v) => setState(() {
-                      if (v) {
-                        _tagFilters.add(tag);
-                      } else {
-                        _tagFilters.remove(tag);
-                      }
+                      if (!v) _tagFilters.remove(tag);
                     }),
                   ),
+                SizedBox(
+                  width: 240,
+                  child: TagSearchField(
+                    keyPrefix: 'filter',
+                    hintText: 'Filter by tag',
+                    allTags: _tags
+                        .where((t) => !_tagFilters.contains(t))
+                        .toList(),
+                    textStyle: const TextStyle(fontSize: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
+                    ),
+                    onSelected: (tag) => setState(() => _tagFilters.add(tag)),
+                  ),
+                ),
               ],
             ),
           ],

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 import 'package:url_launcher/url_launcher.dart';
@@ -13,6 +15,7 @@ import '../features/tag_hierarchy.dart'
     show maximalTags, suggestTagCompletions, validateTagPath, renamedTagsByDoc;
 import '../rust/domain.dart' show SuggestionKind;
 import 'document_preview_view.dart' show DocumentPreviewPanel;
+import 'tag_search_field.dart' show TagSearchField;
 import 'widgets.dart' show TagChip;
 
 /// A compact summary of a document enough to open it in a detail view.
@@ -143,6 +146,10 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   /// The tag names suggested by the last [DocumentService.suggestTags] run, so
   /// the add-tag composer can offer them as one-tap chips.
   List<String> _lastSuggestedTags = const [];
+
+  /// Inline add-tag composer state (desktop): expansion + completion pool.
+  bool _addingTagInline = false;
+  List<String> _composerPool = const [];
 
   /// Pending/current suggestion rows for this document (review UI source).
   List<SuggestionEntry> _suggestions = const [];
@@ -668,6 +675,34 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     );
   }
 
+  /// Pointer-hover platforms get the INLINE tag composer (a search field that
+  /// appears under the chips, dismissed by clicking away); touch keeps the
+  /// modal dialog, which matches on-screen-keyboard ergonomics.
+  bool get _inlineTagComposer =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.linux;
+
+  /// Expands/collapses the inline add-tag search field, refreshing its
+  /// completion pool from the repository registry.
+  Future<void> _toggleAddTag() async {
+    if (!_inlineTagComposer) {
+      await _openAddTagComposer();
+      return;
+    }
+    if (_addingTagInline) {
+      setState(() => _addingTagInline = false);
+      return;
+    }
+    final result = await _composerTagSuggestions();
+    if (!mounted) return;
+    setState(() {
+      _composerPool = result.allTags;
+      _addingTagInline = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -1002,43 +1037,79 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   }
 
   Widget _buildTags() {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        for (final tag in maximalTags(_doc.tags))
-          TagChip(
-            key: ValueKey('tag-$tag'),
-            label: tag,
-            onDeleted: () => _removeTag(tag),
-            onEdit: () => _openRenameTagDialog(tag),
-          ),
-        // A plain "+" that opens the tag composer. A bare icon, no circle,
-        // centered inside a box sized to the TagChip pills' height
-        // (11.5px label + 2×5px padding + 2×1px border ≈ 24px) so it sits
-        // optically centered against the chips instead of riding above them.
-        // The Wrap's own spacing provides the horizontal gap. The tooltip
-        // keeps the affordance discoverable for mouse users and labelled for
-        // screen readers.
-        Tooltip(
-          message: 'Add tag',
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _openAddTagComposer,
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: Icon(
-                  Icons.add,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final tag in maximalTags(_doc.tags))
+              TagChip(
+                key: ValueKey('tag-$tag'),
+                label: tag,
+                onDeleted: () => _removeTag(tag),
+                onEdit: () => _openRenameTagDialog(tag),
+              ),
+            // A plain "+" that opens the tag composer (inline field on
+            // desktop, dialog on touch). A bare icon, no circle,
+            // centered inside a box sized to the TagChip pills' height
+            // (11.5px label + 2×5px padding + 2×1px border ≈ 24px) so it sits
+            // optically centered against the chips instead of riding above
+            // them. The Wrap's own spacing provides the horizontal gap. The
+            // tooltip keeps the affordance discoverable for mouse users and
+            // labelled for screen readers.
+            Tooltip(
+              message: 'Add tag',
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _toggleAddTag,
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: Icon(
+                      Icons.add,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
+        if (_addingTagInline)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: SizedBox(
+              width: 280,
+              child: TagSearchField(
+                keyPrefix: 'add-tag',
+                hintText: 'Type a tag…',
+                autofocus: true,
+                allowFreeText: true,
+                submitValidator: validateTagPath,
+                textStyle: const TextStyle(fontSize: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 8,
+                ),
+                allTags: _composerPool
+                    .where((t) => !_doc.tags.contains(t))
+                    .toList(),
+                onSelected: _addTag,
+                // Click-away collapses the inline composer.
+                onBlur: () {
+                  if (mounted && _addingTagInline) {
+                    setState(() => _addingTagInline = false);
+                  }
+                },
+              ),
+            ),
+          ),
       ],
     );
   }

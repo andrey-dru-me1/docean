@@ -42,6 +42,16 @@ DocumentSummary _doc(
   List<String> paths = const [],
 }) => DocumentSummary(id: id, title: title, tags: tags, paths: paths);
 
+/// Adds a tag filter through the filter bar's search field: type the name,
+/// pick the (best-match) suggestion. The field keeps focus afterwards, so
+/// several filters can be added back-to-back.
+Future<void> _addTagFilter(WidgetTester tester, String tag) async {
+  await tester.enterText(find.byKey(const ValueKey('filter-field')), tag);
+  await tester.pump();
+  await tester.tap(find.byKey(ValueKey('filter-suggestion-$tag')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('DocumentsScreen', () {
     testWidgets('lists every persisted document from the service', (
@@ -112,7 +122,7 @@ void main() {
       expect(opened.single.title, 'Contract');
     });
 
-    testWidgets('filters documents by tag chip', (tester) async {
+    testWidgets('filters documents via the tag search field', (tester) async {
       final service = FakeDocumentService(
         documents: [
           _doc('doc-a', 'Alpha report', tags: const ['finance']),
@@ -128,10 +138,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Filter to 'finance' only. The filter bar uses the shared TagChip pill
-      // (no longer a Material FilterChip), keyed for unambiguous taps
-      // (grid-tile overlays are TagChips too now).
-      await tester.tap(find.byKey(const ValueKey('filter-finance')));
+      // Filter to 'finance' only via the search field (the full registry is
+      // no longer listed; typing suggests completions).
+      await _addTagFilter(tester, 'finance');
       await tester.pumpAndSettle();
 
       expect(find.text('Alpha report'), findsOneWidget);
@@ -163,20 +172,19 @@ void main() {
       expect(find.text('Both tags'), findsOneWidget);
 
       // One tag selected: union and intersection agree here.
-      await tester.tap(find.byKey(const ValueKey('filter-finance')));
-      await tester.pumpAndSettle();
+      await _addTagFilter(tester, 'finance');
       expect(find.text('Finance only'), findsOneWidget);
       expect(find.text('Both tags'), findsOneWidget);
       expect(find.text('Personal only'), findsNothing);
 
-      // Two tags selected: only the document carrying ALL of them survives.
-      await tester.tap(find.byKey(const ValueKey('filter-personal')));
-      await tester.pumpAndSettle();
+      // Two tags selected (sequential through the field): only the document
+      // carrying ALL of them survives.
+      await _addTagFilter(tester, 'personal');
       expect(find.text('Both tags'), findsOneWidget);
       expect(find.text('Finance only'), findsNothing);
       expect(find.text('Personal only'), findsNothing);
 
-      // Deselecting one filter widens the results back to a single tag.
+      // Deselecting one filter (active chip) widens the results again.
       await tester.tap(find.byKey(const ValueKey('filter-finance')));
       await tester.pumpAndSettle();
       expect(find.text('Personal only'), findsOneWidget);
@@ -651,8 +659,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Filter to the 'finance' tag only: 2 of the 3 documents match.
-      await tester.tap(find.byKey(const ValueKey('filter-finance')));
-      await tester.pumpAndSettle();
+      await _addTagFilter(tester, 'finance');
       await tester.tap(find.byKey(const ValueKey('select-documents')));
       await tester.pumpAndSettle();
 

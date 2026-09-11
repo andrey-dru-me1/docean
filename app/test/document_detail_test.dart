@@ -265,12 +265,12 @@ void main() {
         // Regression 1: direct setState in the tag pills' MouseRegion
         // enter/exit callbacks rebuilt inside the mouse tracker's
         // device-update pass.
-        // Regression 2: the composer hosts split suggestion chips, and while
-        // the pill clamped itself via an inner LayoutBuilder, AlertDialog's
-        // IntrinsicWidth dry-layout pass threw — the dialog never laid out
-        // and the mouse tracker then flooded "Cannot hit test a render box
-        // with no size", freezing the UI.
+        // Regression 2: hierarchical pills inside the add-tag flow must not
+        // use LayoutBuilder (AlertDialog's IntrinsicWidth dry-layout threw and
+        // froze the UI); desktop now gets the inline composer, whose overlay
+        // suggestions also ride the same pills/registry.
         debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
 
         final doc = _doc(tags: const ['study/mit', 'finance']);
         final service = FakeDocumentService(
@@ -315,23 +315,48 @@ void main() {
         await tester.tap(find.byTooltip('Add tag'), warnIfMissed: false);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        expect(find.byType(AlertDialog), findsOneWidget);
+        // Desktop gets the INLINE composer (click-away dismisses it).
+        final field = find.byKey(const ValueKey('add-tag-field'));
+        expect(field, findsOneWidget);
 
-        // Sweep the mouse across the dialog's suggestion chips: every hit
-        // box must be fully laid out (the freeze came from hitting the
-        // half-laid-out dialog).
-        for (final tag in const [
-          'study/mit/ml',
-          'finance/q3',
-          'misc',
-          '/outbox',
-        ]) {
-          final chip = find.byKey(ValueKey('suggest-$tag'));
-          expect(chip, findsOneWidget);
-          await mouse.moveTo(tester.getCenter(chip));
-          await tester.pump();
-          await tester.pump();
-        }
+        // Type a subsequence: the ranked completion surfaces and a tap
+        // applies it; the field stays focused for the next tag.
+        await tester.enterText(field, 'ml');
+        await tester.pump();
+        await tester.tap(
+          find.byKey(const ValueKey('add-tag-suggestion-study/mit/ml')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tag-study/mit/ml')), findsOneWidget);
+        expect(field, findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        // Enter on the best match adds it too (keyboard-first flow).
+        await tester.enterText(field, 'q3');
+        await tester.pump();
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tag-finance/q3')), findsOneWidget);
+
+        // Free text creates a brand-new tag (validated).
+        await tester.enterText(field, 'zzz-fresh');
+        await tester.pump();
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tag-zzz-fresh')), findsOneWidget);
+
+        // An invalid new name is rejected inline, without closing.
+        await tester.enterText(field, '/outbox2');
+        await tester.pump();
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+        expect(find.text('Tag must not start with a slash'), findsOneWidget);
+        expect(field, findsOneWidget);
+
+        // Clicking away collapses the composer.
+        await tester.tap(find.byType(TextField).first);
+        await tester.pumpAndSettle();
+        expect(field, findsNothing);
         expect(tester.takeException(), isNull);
         debugDefaultTargetPlatformOverride = null;
       },
