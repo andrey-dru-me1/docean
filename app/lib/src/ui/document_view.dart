@@ -1085,18 +1085,13 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: SizedBox(
-              width: 280,
+              width: 200,
               child: TagSearchField(
                 keyPrefix: 'add-tag',
                 hintText: 'Type a tag…',
                 autofocus: true,
                 allowFreeText: true,
                 submitValidator: validateTagPath,
-                textStyle: const TextStyle(fontSize: 12),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
                 allTags: _composerPool
                     .where((t) => !_doc.tags.contains(t))
                     .toList(),

@@ -347,18 +347,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     }),
                   ),
                 SizedBox(
-                  width: 240,
+                  width: 180,
                   child: TagSearchField(
                     keyPrefix: 'filter',
                     hintText: 'Filter by tag',
                     allTags: _tags
                         .where((t) => !_tagFilters.contains(t))
                         .toList(),
-                    textStyle: const TextStyle(fontSize: 12),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
                     onSelected: (tag) => setState(() => _tagFilters.add(tag)),
                   ),
                 ),
@@ -1080,11 +1075,14 @@ class _ExistingTagDialogState extends State<_ExistingTagDialog> {
   }
 
   void _applyFilter(String query) {
-    final q = query.trim().toLowerCase();
+    final q = query.trim();
     setState(() {
+      // Same tiered matcher as the filter bar / add-tag search (exact →
+      // prefix → segment prefix → subsequence), uncapped: the list is the
+      // dialog's body, not a completion popup.
       _filtered = q.isEmpty
           ? widget.tags
-          : widget.tags.where((t) => t.toLowerCase().contains(q)).toList();
+          : suggestTagCompletions(q, widget.tags, limit: widget.tags.length);
     });
   }
 

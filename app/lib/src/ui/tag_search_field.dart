@@ -51,7 +51,7 @@ class TagSearchField extends StatefulWidget {
   final bool autofocus;
   final int maxSuggestions;
 
-  /// Label typography; defaults to the theme's bodyMedium.
+  /// Label typography; defaults to the compact 11.5/w600 pill style.
   final TextStyle? textStyle;
 
   /// Field inner padding (dense layouts pass compact values).
@@ -68,7 +68,7 @@ class TagSearchField extends StatefulWidget {
 }
 
 class _TagSearchFieldState extends State<TagSearchField> {
-  static const double _rowHeight = 36;
+  static const double _rowHeight = 28;
   static const int _maxRows = 6;
 
   final TextEditingController _controller = TextEditingController();
@@ -305,6 +305,23 @@ class _TagSearchFieldState extends State<TagSearchField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    // Compact pill: same height as TagChip pills (~24px), no leading icon,
+    // stadium border, subtle fill so it reads as an inline affordance rather
+    // than a form field.
+    final shape = BorderRadius.circular(999);
+    OutlineInputBorder stadiumBorder({Color? color}) => OutlineInputBorder(
+      borderRadius: shape,
+      borderSide: color == null
+          ? BorderSide.none
+          : BorderSide(color: color, width: 1),
+    );
+    final textStyle =
+        widget.textStyle ??
+        const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+        ).copyWith(color: scheme.onSurface);
     return CompositedTransformTarget(
       link: _layerLink,
       child: Focus(
@@ -315,20 +332,31 @@ class _TagSearchFieldState extends State<TagSearchField> {
           controller: _controller,
           focusNode: _focusNode,
           autofocus: widget.autofocus,
-          style: widget.textStyle,
+          style: textStyle,
           onChanged: _onChanged,
           onSubmitted: (_) => _submit(),
           decoration: InputDecoration(
             hintText: widget.hintText,
+            hintStyle: textStyle.copyWith(
+              fontWeight: FontWeight.w400,
+              color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
             isDense: true,
-            contentPadding: widget.contentPadding,
-            prefixIcon: const Icon(Icons.tag, size: 16),
+            filled: true,
+            fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+            contentPadding:
+                widget.contentPadding ??
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             errorText: _error,
             errorStyle: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.error,
               fontSize: 11,
             ),
-            border: const OutlineInputBorder(),
+            border: stadiumBorder(color: scheme.outlineVariant),
+            enabledBorder: stadiumBorder(color: scheme.outlineVariant),
+            focusedBorder: stadiumBorder(color: scheme.primary),
+            errorBorder: stadiumBorder(color: scheme.error),
+            focusedErrorBorder: stadiumBorder(color: scheme.error),
           ),
         ),
       ),
