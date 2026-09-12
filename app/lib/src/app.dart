@@ -40,7 +40,6 @@ class DoceanApp extends StatelessWidget {
     this.ingestService = const BridgeIngestService(),
     this.documentService = const BridgeDocumentService(),
     this.tags = const [],
-    this.paths = const [],
     this.pickPaths,
     this.openDocument,
     this.libraryService = const BridgeLibraryDirectoryService(),
@@ -56,7 +55,6 @@ class DoceanApp extends StatelessWidget {
   final IngestService ingestService;
   final DocumentService documentService;
   final List<String> tags;
-  final List<String> paths;
 
   /// Injected file picker for the ingestion panel (defaults to the native
   /// `file_picker`); tests inject a fake.
@@ -103,7 +101,6 @@ class DoceanApp extends StatelessWidget {
         ingestService: ingestService,
         documentService: documentService,
         tags: tags,
-        paths: paths,
         pickPaths: pickPaths,
         openDocument: openDocument,
         libraryService: libraryService,
@@ -178,7 +175,6 @@ class MainShell extends StatefulWidget {
     required this.ingestService,
     required this.documentService,
     required this.tags,
-    required this.paths,
     this.pickPaths,
     this.openDocument,
     this.libraryService,
@@ -194,7 +190,6 @@ class MainShell extends StatefulWidget {
   final IngestService ingestService;
   final DocumentService documentService;
   final List<String> tags;
-  final List<String> paths;
   final PathPicker? pickPaths;
   final DocumentOpener? openDocument;
   final LibraryDirectoryService? libraryService;
@@ -422,7 +417,6 @@ class _MainShellState extends State<MainShell> {
       onOpenDocument: _openDocument,
       documentService: widget.documentService,
       tags: widget.tags,
-      paths: widget.paths,
       onConfigureAi: () => setState(() => _index = 3),
     );
     final chat = ChatScreen(

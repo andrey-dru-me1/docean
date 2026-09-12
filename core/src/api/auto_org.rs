@@ -21,8 +21,7 @@ use crate::auto_org::generative::generate_filename;
 use crate::auto_org::organizer::{Corpus, CorpusDoc, DeterministicOrganizer};
 use crate::auto_org::rules::RuleSet;
 use crate::domain::{
-    DocumentSuggestion, PathAssignment, SuggestionFeedback, SuggestionKind, SuggestionSource,
-    SuggestionStatus,
+    DocumentSuggestion, SuggestionFeedback, SuggestionKind, SuggestionSource, SuggestionStatus,
 };
 use crate::storage::DocumentQuery;
 
@@ -65,12 +64,11 @@ fn flag_is_set(extra: &std::collections::HashMap<String, String>, key: &str) -> 
 struct ApplyCounts {
     changed_tags: bool,
     changed_title: bool,
-    changed_placement: bool,
 }
 
 impl ApplyCounts {
     fn any(&self) -> bool {
-        self.changed_tags || self.changed_title || self.changed_placement
+        self.changed_tags || self.changed_title
     }
 }
 
@@ -82,8 +80,6 @@ impl ApplyCounts {
 /// * title → [`DocumentRepository::update_title`] (persists `title_manual`)
 ///   unless `title_manual` is already set — and only when the pipeline actually
 ///   produced a (trimmed, non-empty) title suggestion.
-/// * placement → [`DocumentRepository::assign_path`] (always; a hierarchy move
-///   is not part of the manual title/tag contract).
 fn apply_plan(
     repo: &DocumentRepository,
     plan: &OrgPlan,
@@ -94,7 +90,6 @@ fn apply_plan(
     let mut counts = ApplyCounts {
         changed_tags: false,
         changed_title: false,
-        changed_placement: false,
     };
 
     let doc = repo.get(plan.document_id.clone())?;
@@ -122,19 +117,6 @@ fn apply_plan(
             repo.apply_suggested_title(plan.document_id.clone(), title)?;
             counts.changed_title = true;
         }
-    }
-
-    if let Some(path) = plan
-        .suggested_path
-        .as_ref()
-        .filter(|p| !p.trim().is_empty())
-    {
-        repo.assign_path(PathAssignment {
-            document_id: plan.document_id.clone(),
-            path: path.clone(),
-            position: 0,
-        })?;
-        counts.changed_placement = true;
     }
 
     // Persist every candidate as a pending suggestion for review — rank 0 is
@@ -344,18 +326,6 @@ pub(crate) fn organize_document(
     }
     repo.put(doc, repo.read_bytes(document_id.to_owned())?)?;
 
-    if let Some(path) = plan
-        .suggested_path
-        .as_ref()
-        .filter(|p| !p.trim().is_empty())
-    {
-        repo.assign_path(PathAssignment {
-            document_id: document_id.to_owned(),
-            path: path.clone(),
-            position: 0,
-        })?;
-    }
-
     // Persist the candidate list (rank 0 + alternatives) for review, with the
     // pre-suggestion value offered first among alternatives.
     store_plan_suggestions(
@@ -371,7 +341,7 @@ pub(crate) fn organize_document(
 }
 
 /// Run the deterministic (non-generative) organizer on `document_id`, returning
-/// the [`OrgPlan`] of suggested tags, placement, rename, and dedup.
+/// the [`OrgPlan`] of suggested tags, rename, and dedup.
 ///
 /// Declared `async` so FRB executes it on Rust's async worker pool instead of
 /// the Dart UI isolate. This is the primitive behind the per-file "Suggest
@@ -404,7 +374,7 @@ pub async fn auto_org_organize(
 pub struct OrgBulkStats {
     /// Documents examined by the pass.
     pub total: usize,
-    /// Documents whose tags/title/placement changed as a result.
+    /// Documents whose tags/title changed as a result.
     pub updated: usize,
     /// Documents left untouched (already matching, or manual-edit flags set).
     pub skipped: usize,
@@ -417,13 +387,10 @@ pub struct OrgBulkStats {
 /// as ingestion, and applies the suggestion through the *normal* update paths:
 ///
 /// * title applied only when `extra['title_manual']` is **not** truthy;
-/// * tags applied only when `extra['tags_manual']` is **not** truthy;
-/// * placement always applied (a hierarchy move is not part of the manual
-///   title/tag contract).
+/// * tags applied only when `extra['tags_manual']` is **not** truthy.
 ///
 /// Each applied change is written via [`DocumentRepository::update_title`] /
-/// [`DocumentRepository::set_tags`] and the fresh tags/paths are mirrored into
-/// the in-memory search index via [`crate::api::search::search_set_metadata`]
+/// [`DocumentRepository::set_tags`] and the fresh tags are mirrored into
 /// (that mirror also happens inside the two update paths). The pass needs **no
 /// AI provider** — it is the same deterministic pipeline used at ingestion.
 #[flutter_rust_bridge::frb(sync)]
@@ -468,9 +435,8 @@ pub fn auto_org_reorganize_all(
 ///
 /// Semantics are identical to [`auto_org_reorganize_one_impl`] — title applied
 /// only when `extra['title_manual']` is not truthy, tags only when
-/// `extra['tags_manual']` is not truthy, placement always applied — but the
-/// corpus snapshot and organizer are built **once** for the whole batch instead
-/// of once per document.
+/// `extra['tags_manual']` is not truthy — but the corpus snapshot and organizer
+/// are built **once** for the whole batch instead of once per document.
 #[flutter_rust_bridge::frb]
 pub async fn auto_org_reorganize_selected(
     repo: &DocumentRepository,
@@ -533,12 +499,7 @@ fn auto_org_reorganize_one_impl(
     // same wiring the ingestion pipeline uses after auto-organization).
     if counts.any() {
         let fresh = repo.get(document_id.clone())?;
-        let paths = repo
-            .paths_of(document_id.clone())?
-            .into_iter()
-            .map(|p| p.path)
-            .collect::<Vec<_>>();
-        crate::api::search::search_set_metadata(document_id.clone(), fresh.tags, paths);
+        crate::api::search::search_set_metadata(document_id.clone(), fresh.tags);
     }
 
     Ok(counts.any())
@@ -986,12 +947,10 @@ fn new_uuid() -> String {
     )
 }
 
-/// A convenience default [`RuleSet`] (empty placement rules + `/inbox` fallback).
+/// A convenience default [`RuleSet`] (default filename template, no placement).
 #[flutter_rust_bridge::frb(sync)]
 pub fn auto_org_default_rules() -> RuleSet {
     RuleSet {
-        placement: Vec::new(),
-        fallback_path: Some("/inbox".to_owned()),
         filename_template: RuleSet::default_template(),
     }
 }

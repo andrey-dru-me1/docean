@@ -43,7 +43,6 @@ void main() {
         text: 'fox',
         mode: SearchMode.exact,
         tags: const [],
-        paths: const [],
       ),
     );
     expect(hits, isNotEmpty);

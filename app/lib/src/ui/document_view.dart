@@ -28,7 +28,6 @@ class DocumentSummary {
     required this.title,
     this.snippet,
     this.tags = const [],
-    this.paths = const [],
     this.mimeType,
     this.originalName,
     this.extra = const {},
@@ -38,7 +37,6 @@ class DocumentSummary {
   final String title;
   final String? snippet;
   final List<String> tags;
-  final List<String> paths;
 
   /// MIME type of the original file, when known (used to derive a temp-file
   /// extension for the "open externally" action, and to decide whether the raw
@@ -477,7 +475,6 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         title: src.title,
         snippet: src.snippet,
         tags: List.of(tags),
-        paths: src.paths,
         mimeType: src.mimeType,
         originalName: src.originalName,
         extra: src.extra,
@@ -778,10 +775,6 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
                   _buildTags(),
                   const SizedBox(height: 8),
                   _buildSuggestionsSection(),
-                  if (_doc.paths.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _buildPaths(),
-                  ],
                 ],
               ),
             ),
@@ -848,27 +841,6 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
             visualDensity: VisualDensity.compact,
             onPressed: _loadingContent ? null : _suggestTitle,
             icon: const Icon(Icons.auto_fix_high, size: 20),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildPaths() {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        for (final path in _doc.paths)
-          Chip(
-            avatar: const Icon(Icons.folder_outlined, size: 14),
-            label: Text(path),
-            visualDensity: VisualDensity.compact,
-            // Explicit onSurfaceVariant (not the theme's chip default) so path
-            // chips stay dark-on-light / light-on-dark instead of white-on-light.
-            labelStyle: TextStyle(
-              fontSize: 11.5,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
           ),
       ],
     );

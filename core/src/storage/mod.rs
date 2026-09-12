@@ -25,9 +25,7 @@ mod tests;
 
 use std::path::PathBuf;
 
-use crate::domain::{
-    Content, Document, DocumentId, HierarchyLink, HierarchyPath, NodeKind, PathAssignment, Tag,
-};
+use crate::domain::{Content, Document, DocumentId, HierarchyLink, NodeKind, Tag};
 
 pub use blob::{hash_bytes, BlobStore};
 pub use sqlite::SqliteDocumentStore;
@@ -37,8 +35,6 @@ pub use sqlite::SqliteDocumentStore;
 pub enum StorageError {
     #[error("document {0} not found")]
     NotFound(DocumentId),
-    #[error("path {0} not found")]
-    PathNotFound(String),
     #[error("storage is not open")]
     Closed,
     #[error("io error: {0}")]
@@ -84,29 +80,6 @@ pub trait DocumentStore {
     fn link(&mut self, link: HierarchyLink) -> Result<(), StorageError>;
 
     fn children(&self, parent: &DocumentId) -> Result<Vec<DocumentId>, StorageError>;
-
-    // --- many-to-many paths ------------------------------------------------
-
-    /// Put (upsert) a hierarchy path into the catalog.
-    fn put_path(&mut self, path: &HierarchyPath) -> Result<(), StorageError>;
-
-    /// List all hierarchy paths.
-    fn list_paths(&self) -> Result<Vec<HierarchyPath>, StorageError>;
-
-    /// Delete a hierarchy path and sever all of its document assignments.
-    fn delete_path(&mut self, path: &str) -> Result<(), StorageError>;
-
-    /// Assign a document to an additional hierarchy path (many-to-many).
-    fn assign_path(&mut self, assignment: PathAssignment) -> Result<(), StorageError>;
-
-    /// Remove a document from a hierarchy path.
-    fn unassign_path(&mut self, document_id: &DocumentId, path: &str) -> Result<(), StorageError>;
-
-    /// All paths through which a document is reachable.
-    fn paths_of(&self, document_id: &DocumentId) -> Result<Vec<HierarchyPath>, StorageError>;
-
-    /// Document ids assigned to the given path, ordered by `position`.
-    fn documents_at(&self, path: &str) -> Result<Vec<DocumentId>, StorageError>;
 
     // --- extracted content -------------------------------------------------
 

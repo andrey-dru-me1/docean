@@ -9,8 +9,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::domain::{
-    Content, Document, DocumentSuggestion, FeedbackStats, HierarchyLink, HierarchyPath,
-    PathAssignment, SuggestionFeedback, SuggestionKind, Tag,
+    Content, Document, DocumentSuggestion, FeedbackStats, HierarchyLink, SuggestionFeedback,
+    SuggestionKind, Tag,
 };
 use crate::library_fs::LibraryFs;
 use crate::storage::{DocumentQuery, DocumentStore, SqliteDocumentStore};
@@ -236,44 +236,6 @@ impl DocumentRepository {
         self.store()?.children(&parent).map_err(|e| e.to_string())
     }
 
-    // --- many-to-many paths ------------------------------------------------
-
-    pub fn put_path(&self, path: String) -> Result<(), String> {
-        self.store()?
-            .put_path(&HierarchyPath { path })
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn list_paths(&self) -> Result<Vec<HierarchyPath>, String> {
-        self.store()?.list_paths().map_err(|e| e.to_string())
-    }
-
-    pub fn delete_path(&self, path: String) -> Result<(), String> {
-        self.store()?.delete_path(&path).map_err(|e| e.to_string())
-    }
-
-    pub fn assign_path(&self, assignment: PathAssignment) -> Result<(), String> {
-        self.store()?
-            .assign_path(assignment)
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn unassign_path(&self, document_id: String, path: String) -> Result<(), String> {
-        self.store()?
-            .unassign_path(&document_id, &path)
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn paths_of(&self, document_id: String) -> Result<Vec<HierarchyPath>, String> {
-        self.store()?
-            .paths_of(&document_id)
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn documents_at(&self, path: String) -> Result<Vec<String>, String> {
-        self.store()?.documents_at(&path).map_err(|e| e.to_string())
-    }
-
     // --- extracted content -------------------------------------------------
 
     pub fn put_content(
@@ -362,14 +324,9 @@ impl DocumentRepository {
         let bytes = self.read_bytes(document_id.clone())?;
         self.put(doc, bytes)?;
 
-        // Mirror the tags (and the unchanged paths) into the in-memory search
-        // metadata so results can be filtered by them immediately.
-        let paths = self
-            .paths_of(document_id.clone())?
-            .into_iter()
-            .map(|p| p.path)
-            .collect();
-        crate::api::search::search_set_metadata(document_id, tags, paths);
+        // Mirror the tags into the in-memory search metadata so results can
+        // be filtered by them immediately.
+        crate::api::search::search_set_metadata(document_id, tags);
         Ok(())
     }
 
@@ -415,14 +372,9 @@ impl DocumentRepository {
         let bytes = self.read_bytes(document_id.clone())?;
         self.put(doc, bytes)?;
 
-        // Mirror the (unchanged) tags and paths into the search metadata so the
-        // renamed document stays filterable with its existing assignments.
-        let paths = self
-            .paths_of(document_id.clone())?
-            .into_iter()
-            .map(|p| p.path)
-            .collect();
-        crate::api::search::search_set_metadata(document_id, tags, paths);
+        // Mirror the tags into the search metadata so the renamed document
+        // stays filterable with its existing assignments.
+        crate::api::search::search_set_metadata(document_id, tags);
         Ok(())
     }
 

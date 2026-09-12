@@ -1,6 +1,6 @@
 //! SQLite-backed implementation of [`DocumentStore`].
 //!
-//! Metadata, tags, paths, hierarchy edges, and extracted content live in a
+//! Metadata, tags, hierarchy edges, and extracted content live in a
 //! single SQLite database file (`<root>/docean.db`); raw bytes live in the
 //! [`BlobStore`] under `<root>/blobs/`. See [`crate::storage::schema`] for the
 //! schema.
@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::domain::{
-    Content, Document, DocumentId, DocumentSuggestion, FeedbackStats, HierarchyLink, HierarchyPath,
-    NodeKind, PathAssignment, SuggestionFeedback, SuggestionKind, Tag,
+    Content, Document, DocumentId, DocumentSuggestion, FeedbackStats, HierarchyLink, NodeKind,
+    SuggestionFeedback, SuggestionKind, Tag,
 };
 use crate::storage::blob::{hash_bytes, BlobStore};
 use crate::storage::schema;
@@ -335,104 +335,6 @@ impl DocumentStore for SqliteDocumentStore {
             )?;
             let ids = stmt
                 .query_map([parent], |r| r.get::<_, String>(0))?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(ids)
-        })
-    }
-
-    // --- many-to-many paths ------------------------------------------------
-
-    fn put_path(&mut self, path: &HierarchyPath) -> Result<(), StorageError> {
-        self.with_conn_mut(|conn| {
-            conn.execute(
-                "INSERT INTO paths(path) VALUES (?1) ON CONFLICT(path) DO NOTHING",
-                [&path.path],
-            )?;
-            Ok(())
-        })
-    }
-
-    fn list_paths(&self) -> Result<Vec<HierarchyPath>, StorageError> {
-        self.with_conn(|conn| {
-            let mut stmt = conn.prepare("SELECT path FROM paths ORDER BY path")?;
-            let paths = stmt
-                .query_map([], |r| Ok(HierarchyPath { path: r.get(0)? }))?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(paths)
-        })
-    }
-
-    fn delete_path(&mut self, path: &str) -> Result<(), StorageError> {
-        self.with_conn_mut(|conn| {
-            let n = conn.execute("DELETE FROM paths WHERE path = ?1", [path])?;
-            if n == 0 {
-                return Err(StorageError::PathNotFound(path.to_owned()));
-            }
-            Ok(())
-        })
-    }
-
-    fn assign_path(&mut self, assignment: PathAssignment) -> Result<(), StorageError> {
-        // Ensure the path exists before assigning to it.
-        self.put_path(&HierarchyPath {
-            path: assignment.path.clone(),
-        })?;
-
-        self.with_conn_mut(|conn| {
-            conn.execute(
-                r#"
-                INSERT INTO document_paths(document_id, path_id, position)
-                VALUES (?1, (SELECT id FROM paths WHERE path = ?2), ?3)
-                ON CONFLICT(document_id, path_id) DO UPDATE SET position = excluded.position
-                "#,
-                params![assignment.document_id, assignment.path, assignment.position],
-            )?;
-            Ok(())
-        })
-    }
-
-    fn unassign_path(&mut self, document_id: &DocumentId, path: &str) -> Result<(), StorageError> {
-        self.with_conn_mut(|conn| {
-            conn.execute(
-                r#"
-                DELETE FROM document_paths
-                WHERE document_id = ?1 AND path_id = (SELECT id FROM paths WHERE path = ?2)
-                "#,
-                params![document_id, path],
-            )?;
-            Ok(())
-        })
-    }
-
-    fn paths_of(&self, document_id: &DocumentId) -> Result<Vec<HierarchyPath>, StorageError> {
-        self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                r#"
-                SELECT p.path FROM paths p
-                JOIN document_paths dp ON dp.path_id = p.id
-                WHERE dp.document_id = ?1
-                ORDER BY dp.position, p.path
-                "#,
-            )?;
-            let paths = stmt
-                .query_map([document_id], |r| Ok(HierarchyPath { path: r.get(0)? }))?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(paths)
-        })
-    }
-
-    fn documents_at(&self, path: &str) -> Result<Vec<DocumentId>, StorageError> {
-        self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                r#"
-                SELECT dp.document_id FROM document_paths dp
-                JOIN paths p ON p.id = dp.path_id
-                WHERE p.path = ?1
-                ORDER BY dp.position, dp.document_id
-                "#,
-            )?;
-            let ids = stmt
-                .query_map([path], |r| r.get::<_, String>(0))?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(ids)
         })

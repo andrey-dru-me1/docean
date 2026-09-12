@@ -298,9 +298,6 @@ impl DeterministicOrganizer {
             is_learning,
         );
 
-        // --- Step 2: placement ------------------------------------------
-        let suggested_path = rules::resolve_path(&self.config.rules, &signals);
-
         // --- Step 4: de-duplication -------------------------------------
         let (lsh, signatures) = corpus.lsh_index(self.config.shingle_k, Some(doc_id));
         let is_duplicate_of = if doc.text.trim().is_empty() {
@@ -320,7 +317,6 @@ impl DeterministicOrganizer {
             document_id: doc_id.to_owned(),
             tags,
             alt_tag_sets,
-            suggested_path,
             suggested_title: Some(suggested_title),
             alt_titles,
             is_duplicate_of,

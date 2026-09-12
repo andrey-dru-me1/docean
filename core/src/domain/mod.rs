@@ -59,29 +59,6 @@ pub struct HierarchyLink {
     pub position: i32,
 }
 
-/// A hierarchy path, e.g. `/work/invoices/2026`.
-///
-/// A path is an entity independent of any single document: a document may be
-/// reachable through *many* paths (each a [`PathAssignment`] edge), and a path
-/// may contain many documents. This is a many-to-many relationship mirroring
-/// filesystem hard links / multiple virtual folders.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct HierarchyPath {
-    /// Canonical, `/`-separated path with a leading slash. Unique in storage.
-    pub path: String,
-}
-
-/// A member edge of the many-to-many relationship between documents and paths.
-///
-/// One document ↔ many paths, and one path ↔ many documents.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PathAssignment {
-    pub document_id: DocumentId,
-    pub path: String,
-    /// Ordinal position of the document among the path's members.
-    pub position: i32,
-}
-
 /// Extracted/ingested textual content for a document.
 ///
 /// Kept separate from [`Document`] metadata so that raw binary documents can be

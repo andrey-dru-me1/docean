@@ -12,14 +12,13 @@ import 'widgets.dart'
 /// What a search result should do when tapped.
 typedef DocumentOpener = void Function(DocumentSummary summary);
 
-/// Search page: query bar, tag/path filters, mode toggle, highlighted results.
+/// Search page: query bar, tag filters, mode toggle, highlighted results.
 class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
     required this.searchService,
     required this.onOpenDocument,
     required this.tags,
-    this.paths = const [],
     this.documentService,
     this.previewLoader,
     this.onConfigureAi,
@@ -29,7 +28,7 @@ class SearchScreen extends StatefulWidget {
   final DocumentOpener onOpenDocument;
 
   /// Resolves document metadata for search-result thumbnails. Search hits only
-  /// carry `documentId`/tags/paths, so a thumbnail that wants to show an image
+  /// carry `documentId`/tags, so a thumbnail that wants to show an image
   /// or PDF preview needs this to fetch the MIME type. Optional so tests can
   /// omit it (the thumbnail then degrades to the type-colored tile).
   final DocumentService? documentService;
@@ -42,9 +41,6 @@ class SearchScreen extends StatefulWidget {
   /// Available tag names for the filter dropdown / chips.
   final List<String> tags;
 
-  /// Available hierarchy paths for the path filter dropdown.
-  final List<String> paths;
-
   final VoidCallback? onConfigureAi;
 
   @override
@@ -56,7 +52,6 @@ class _SearchScreenState extends State<SearchScreen> {
   final _focusNode = FocusNode();
   SearchMode _mode = SearchMode.hybrid;
   final List<String> _selectedTags = [];
-  String? _selectedPath;
   List<SearchHitDto> _results = [];
   bool _loading = false;
   Object? _error;
@@ -110,7 +105,6 @@ class _SearchScreenState extends State<SearchScreen> {
         query,
         mode: _mode,
         tags: _selectedTags,
-        paths: _selectedPath == null ? const [] : [_selectedPath!],
         limit: 60,
       );
       if (!mounted) return;
@@ -143,7 +137,6 @@ class _SearchScreenState extends State<SearchScreen> {
       title: cached?.title ?? _titleFrom(hit),
       snippet: hit.snippet,
       tags: hit.tags,
-      paths: hit.paths,
       originalName: cached?.originalName,
       mimeType: cached?.mimeType,
     );
@@ -153,10 +146,8 @@ class _SearchScreenState extends State<SearchScreen> {
     // Prefer a resolved document title from the repository.
     final cached = _docSummaries[hit.documentId];
     if (cached != null) return cached.title;
-    // Fall back to a path segment as a human-readable title hint.
-    if (hit.paths.isNotEmpty) return hit.paths.first;
     // Never surface the raw internal document id: fall back to a friendly
-    // placeholder when the search index has no path/title metadata.
+    // placeholder until the repository metadata resolves.
     return 'Untitled document';
   }
 
@@ -263,28 +254,6 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
                 const SizedBox(height: 8),
               ],
-              if (widget.paths.isNotEmpty)
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedPath,
-                  decoration: const InputDecoration(
-                    labelText: 'Filter by path',
-                    prefixIcon: Icon(Icons.folder_open),
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem(
-                      value: null,
-                      child: Text('All paths'),
-                    ),
-                    ...widget.paths.map(
-                      (p) => DropdownMenuItem(value: p, child: Text(p)),
-                    ),
-                  ],
-                  onChanged: (v) {
-                    _selectedPath = v;
-                    _runSearch();
-                  },
-                ),
             ],
           ),
         ),
@@ -369,7 +338,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           highlights: hit.highlights,
                           maxLines: 3,
                         ),
-                        if (hit.tags.isNotEmpty || hit.paths.isNotEmpty) ...[
+                        if (hit.tags.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 6,
@@ -379,16 +348,6 @@ class _SearchScreenState extends State<SearchScreen> {
                                 TagChip(
                                   key: ValueKey('hit-tag-$tag'),
                                   label: tag,
-                                ),
-                              for (final path in hit.paths)
-                                Chip(
-                                  avatar: const Icon(
-                                    Icons.folder_outlined,
-                                    size: 14,
-                                  ),
-                                  label: Text(path),
-                                  visualDensity: VisualDensity.compact,
-                                  labelStyle: const TextStyle(fontSize: 11.5),
                                 ),
                             ],
                           ),
@@ -490,8 +449,7 @@ class _SearchResultThumbState extends State<_SearchResultThumb> {
 
   /// Best-effort title for a search hit (mirrors `_titleFrom` on the parent
   /// state); never surfaces a raw internal document id.
-  static String _titleFor(SearchHitDto hit) =>
-      hit.paths.isNotEmpty ? hit.paths.first : 'Untitled document';
+  static String _titleFor(SearchHitDto hit) => 'Untitled document';
 
   @override
   void initState() {
@@ -539,7 +497,6 @@ class _SearchResultThumbState extends State<_SearchResultThumb> {
           id: widget.hit.documentId,
           title: _titleFor(widget.hit),
           tags: widget.hit.tags,
-          paths: widget.hit.paths,
         );
     return SizedBox(
       width: 48,

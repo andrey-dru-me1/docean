@@ -165,8 +165,8 @@ pub fn ingest_files(
             Ok(ids) => {
                 // The file is durably persisted (metadata + blob + content) and
                 // its extracted text was written via `put_content`. Run the
-                // deterministic auto-organization pipeline (tags + title +
-                // placement) and then feed the in-memory search index from the
+                // deterministic auto-organization pipeline (tags + title) and
+                // then feed the in-memory search index from the
                 // persisted store so the just-uploaded document is immediately
                 // searchable with its applied tags/title. This is the wiring
                 // point between the SQLite repository and the search UI.
@@ -343,7 +343,7 @@ mod tests {
             text: "invoice".to_owned(),
             mode: SearchMode::Exact,
             tags: vec![],
-            paths: vec![],
+
             limit: None,
         });
         assert!(
@@ -389,7 +389,7 @@ mod tests {
             text: "invoice".to_owned(),
             mode: SearchMode::Exact,
             tags: vec![],
-            paths: vec![],
+
             limit: None,
         });
         let hit = hits

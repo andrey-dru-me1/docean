@@ -8,13 +8,9 @@ use super::{
     shared_near_dup_index, HighlightSpan, SearchHitDto, SearchMode, SearchRequestDto,
 };
 
-fn index_doc(id: &str, text: &str, tags: &[&str], paths: &[&str]) {
+fn index_doc(id: &str, text: &str, tags: &[&str]) {
     let _ = search_index_document(id.to_owned(), text.to_owned());
-    search_set_metadata(
-        id.to_owned(),
-        tags.iter().map(|s| s.to_string()).collect(),
-        paths.iter().map(|s| s.to_string()).collect(),
-    );
+    search_set_metadata(id.to_owned(), tags.iter().map(|s| s.to_string()).collect());
 }
 
 fn search(text: &str, mode: SearchMode) -> Vec<SearchHitDto> {
@@ -22,7 +18,6 @@ fn search(text: &str, mode: SearchMode) -> Vec<SearchHitDto> {
         text: text.to_owned(),
         mode,
         tags: vec![],
-        paths: vec![],
         limit: None,
     })
 }
@@ -37,15 +32,13 @@ fn exact_search_returns_matching_snippets_with_highlights() {
         "t1_a",
         "The quick brown fox jumps over the lazy dog.",
         &["animal"],
-        &["/docs"],
     );
     index_doc(
         "t1_b",
         "Rust ownership moves values without copying.",
         &["code"],
-        &["/dev"],
     );
-    index_doc("t1_c", "A quick run through the park.", &[], &[]);
+    index_doc("t1_c", "A quick run through the park.", &[]);
 
     let hits = search("quick", SearchMode::Exact);
     assert_eq!(hits.len(), 2, "two docs mention 'quick'");
@@ -58,12 +51,7 @@ fn exact_search_returns_matching_snippets_with_highlights() {
 
 #[test]
 fn exact_search_is_term_based_and_empty_query_returns_nothing() {
-    index_doc(
-        "t2_a",
-        "The rain in Spain falls mainly on the plain.",
-        &[],
-        &[],
-    );
+    index_doc("t2_a", "The rain in Spain falls mainly on the plain.", &[]);
 
     assert!(search("", SearchMode::Exact).is_empty());
     let no = search("zzz", SearchMode::Exact);
@@ -76,12 +64,10 @@ fn semantic_search_finds_rephrased_text_offline() {
         "t3_a",
         "The company's annual revenue increased by twenty percent.",
         &[],
-        &[],
     );
     index_doc(
         "t3_b",
         "Birdwatching requires patience and binoculars.",
-        &[],
         &[],
     );
 
@@ -102,12 +88,10 @@ fn hybrid_search_combines_and_deduplicates() {
         "t4_a",
         "Mount Everest is the tallest mountain in the world.",
         &[],
-        &[],
     );
     index_doc(
         "t4_b",
         "The tallest peak, Everest, stands in the Himalayas.",
-        &[],
         &[],
     );
 
@@ -123,20 +107,14 @@ fn every_dto_score_is_relevance_in_0_to_1_for_all_modes() {
     // Repeated keywords push the exact (FTS5) score > 1 under the old
     // `exp(-rank)` mapping; unrelated vocabulary yields negative cosine under
     // the old raw-cosine semantic mapping. Both must land in `[0, 1]` now.
-    index_doc("s1_rep", "search search search search search", &[], &[]);
-    index_doc(
-        "s1_unrelated",
-        "aardvark zephyr quixotic klaxon fjord",
-        &[],
-        &[],
-    );
+    index_doc("s1_rep", "search search search search search", &[]);
+    index_doc("s1_unrelated", "aardvark zephyr quixotic klaxon fjord", &[]);
     index_doc(
         "s1_office",
         "office supplies and the office printer invoice",
         &[],
-        &[],
     );
-    index_doc("s1_cookie", "chocolate chip cookie recipe", &[], &[]);
+    index_doc("s1_cookie", "chocolate chip cookie recipe", &[]);
 
     for mode in [SearchMode::Exact, SearchMode::Semantic, SearchMode::Hybrid] {
         let hits = search("office supplies", mode);
@@ -156,57 +134,28 @@ fn every_dto_score_is_relevance_in_0_to_1_for_all_modes() {
 }
 
 #[test]
-fn tag_and_path_filters_restrict_results() {
+fn tag_filters_restrict_results() {
     index_doc(
         "t5_a",
         "Quarterly sales report for Q3.",
         &["finance", "report"],
-        &["/work/reports"],
     );
-    index_doc(
-        "t5_b",
-        "Product roadmap draft.",
-        &["product"],
-        &["/work/roadmap"],
-    );
-    index_doc(
-        "t5_c",
-        "Personal notes on quarterly goals.",
-        &["personal"],
-        &["/home"],
-    );
+    index_doc("t5_b", "Product roadmap draft.", &["product"]);
+    index_doc("t5_c", "Personal notes on quarterly goals.", &["personal"]);
 
     let by_tag = search_query(SearchRequestDto {
         text: "quarterly".to_owned(),
         mode: SearchMode::Exact,
         tags: vec!["finance".to_owned()],
-        paths: vec![],
         limit: None,
     });
     assert_eq!(by_tag.len(), 1);
     assert_eq!(by_tag[0].document_id, "t5_a");
-
-    let by_path = search_query(SearchRequestDto {
-        text: "quarterly".to_owned(),
-        mode: SearchMode::Exact,
-        tags: vec![],
-        paths: vec!["/work/reports".to_owned()],
-        limit: None,
-    });
-    assert!(
-        find(&by_path, "t5_a").is_some() && find(&by_path, "t5_b").is_none(),
-        "path filter should only match docs under /work/reports"
-    );
 }
 
 #[test]
 fn remove_document_drops_it_from_search_and_metadata() {
-    index_doc(
-        "t6_a",
-        "Unique phrase: xylophone calendar.",
-        &["x"],
-        &["/x"],
-    );
+    index_doc("t6_a", "Unique phrase: xylophone calendar.", &["x"]);
     assert_eq!(search("xylophone", SearchMode::Exact).len(), 1);
 
     let _ = search_remove_document("t6_a".to_owned());
@@ -215,7 +164,6 @@ fn remove_document_drops_it_from_search_and_metadata() {
         text: "xylophone".to_owned(),
         mode: SearchMode::Exact,
         tags: vec!["x".to_owned()],
-        paths: vec![],
         limit: None,
     });
     assert!(filtered.is_empty());
@@ -229,7 +177,6 @@ fn shared_near_dup_index_is_the_instance_the_indexer_writes_to() {
     index_doc(
         "t8_origin",
         "algorithmic complexity guarantees amortized logarithmic lookup behavior",
-        &[],
         &[],
     );
 
@@ -246,7 +193,7 @@ fn shared_near_dup_index_is_the_instance_the_indexer_writes_to() {
 
 #[test]
 fn highlight_spans_are_case_insensitive_and_byte_aligned() {
-    index_doc("t7_a", "Alpha beta Gamma delta.", &[], &[]);
+    index_doc("t7_a", "Alpha beta Gamma delta.", &[]);
     let hits = search("alpha GAMMA", SearchMode::Exact);
     let a = find(&hits, "t7_a").unwrap();
     let spans: Vec<&HighlightSpan> = a.highlights.iter().collect();
@@ -338,7 +285,7 @@ fn index_document_from_repository_wires_a_persisted_doc_into_search() {
 fn search_reindex_from_repository_rebuilds_index_from_sqlite() {
     // Simulates app startup: repos are loaded from disk but the in-memory search
     // index is empty. Search must be consistent with the persisted store after a
-    // re-index pass seeded from `repo.query` / content / paths.
+    // re-index pass seeded from `repo.query` / content / tags.
     let root = temp_root("reindex");
     let repo = open_repository(root.display().to_string()).unwrap();
     let id = put_document(

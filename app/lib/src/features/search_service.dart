@@ -14,24 +14,19 @@ export '../rust/api/search.dart'
 
 /// The search service contract. Implement with the Rust bridge, fakes in tests.
 abstract interface class SearchService {
-  /// Run a search; results carry snippets, highlight spans, tags and paths.
+  /// Run a search; results carry snippets, highlight spans, and tags.
   List<SearchHitDto> query(
     String text, {
     required bridge.SearchMode mode,
     List<String> tags = const [],
-    List<String> paths = const [],
     int? limit,
   });
 
   /// Index a document's text so it becomes searchable.
   void indexDocument(String documentId, String text);
 
-  /// Register a document's tags/paths for result filtering.
-  void setMetadata(
-    String documentId, {
-    List<String> tags = const [],
-    List<String> paths = const [],
-  });
+  /// Register a document's tags for result filtering.
+  void setMetadata(String documentId, {List<String> tags = const []});
 
   /// Drop a document from all search indexes.
   void removeDocument(String documentId);
@@ -46,14 +41,12 @@ class BridgeSearchService implements SearchService {
     String text, {
     required bridge.SearchMode mode,
     List<String> tags = const [],
-    List<String> paths = const [],
     int? limit,
   }) => bridge.searchQuery(
     req: bridge.SearchRequestDto(
       text: text,
       mode: mode,
       tags: tags,
-      paths: paths,
       limit: limit,
     ),
   );
@@ -63,15 +56,8 @@ class BridgeSearchService implements SearchService {
       bridge.searchIndexDocument(documentId: documentId, text: text);
 
   @override
-  void setMetadata(
-    String documentId, {
-    List<String> tags = const [],
-    List<String> paths = const [],
-  }) => bridge.searchSetMetadata(
-    documentId: documentId,
-    tags: tags,
-    paths: paths,
-  );
+  void setMetadata(String documentId, {List<String> tags = const []}) =>
+      bridge.searchSetMetadata(documentId: documentId, tags: tags);
 
   @override
   void removeDocument(String documentId) =>

@@ -1,8 +1,8 @@
 //! End-to-end tests for the auto-organization pipeline, driven by a fixed
 //! deterministic fixture corpus and a mock generative provider.
 //!
-//! These verify orchestration: tagging (emergent + reused), placement,
-//! deterministic rename, deduplication, and the opt-in generative tier.
+//! These verify orchestration: tagging (emergent + reused), deterministic
+//! rename, deduplication, and the opt-in generative tier.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use crate::ai::{
 use crate::auto_org::config::{FilenameSource, OrgConfig, OrgPlan};
 use crate::auto_org::generative::{apply_generated, generate_filename};
 use crate::auto_org::organizer::{Corpus, CorpusDoc, DeterministicOrganizer};
-use crate::auto_org::rules::{MatchKind, PlacementRule, RuleSet};
+use crate::auto_org::rules::RuleSet;
 
 /// The deterministic fixture corpus: two finance docs + a recipe doc.
 fn fixture_corpus() -> Corpus {
@@ -61,17 +61,9 @@ fn fixture_with_duplicate() -> Corpus {
 }
 
 #[test]
-fn organize_reuses_tags_and_resolves_path() {
+fn organize_reuses_tags_from_corpus() {
     let config = OrgConfig {
         rules: RuleSet {
-            placement: vec![PlacementRule {
-                id: "invoice".to_owned(),
-                match_kind: MatchKind::Tag,
-                value: "invoice".to_owned(),
-                path: "/finance/invoices".to_owned(),
-                priority: 0,
-            }],
-            fallback_path: Some("/inbox".to_owned()),
             filename_template: "{keywords}-{date}.{ext}".to_owned(),
         },
         ..Default::default()
@@ -94,7 +86,6 @@ fn organize_reuses_tags_and_resolves_path() {
         "tags: {:?}",
         plan.tags
     );
-    assert_eq!(plan.suggested_path.as_deref(), Some("/finance/invoices"));
     assert_eq!(plan.filename_source, FilenameSource::Template);
     let title = plan.suggested_title.as_deref().unwrap();
     let title_lower = title.to_lowercase();
@@ -126,7 +117,6 @@ fn organize_is_deterministic_across_runs() {
     let a: OrgPlan = organizer.organize(&corpus, "x");
     let b = organizer.organize(&corpus, "x");
     assert_eq!(a.tags, b.tags);
-    assert_eq!(a.suggested_path, b.suggested_path);
     assert_eq!(a.suggested_title, b.suggested_title);
     assert_eq!(a.is_duplicate_of, b.is_duplicate_of);
 }
@@ -342,5 +332,4 @@ fn determinism_same_corpus_same_output() {
     assert_eq!(a.suggested_title, b.suggested_title);
     assert_eq!(a.alt_titles, b.alt_titles);
     assert_eq!(a.tags, b.tags);
-    assert_eq!(a.suggested_path, b.suggested_path);
 }

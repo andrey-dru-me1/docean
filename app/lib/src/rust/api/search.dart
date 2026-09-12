@@ -59,18 +59,16 @@ Float32List searchEmbed({required String text}) =>
 /// Dimensionality of the embedding vectors produced by [`search_embed`].
 int searchEmbedDims() => RustLib.instance.api.crateApiSearchSearchEmbedDims();
 
-/// Register a document's tags and hierarchy paths for result filtering.
+/// Register a document's tags for result filtering.
 ///
-/// Call after a document is tagged or assigned to a path so searches can be
-/// filtered by that metadata. Pure bookkeeping: indexing text is separate.
+/// Call after a document is tagged so searches can be filtered by them. Pure
+/// bookkeeping: indexing text is separate.
 void searchSetMetadata({
   required String documentId,
   required List<String> tags,
-  required List<String> paths,
 }) => RustLib.instance.api.crateApiSearchSearchSetMetadata(
   documentId: documentId,
   tags: tags,
-  paths: paths,
 );
 
 /// Rebuild the in-memory search index from the persisted repository.
@@ -85,9 +83,9 @@ void searchReindexFromRepository({required DocumentRepository repo}) =>
 /// Run a search across the document library.
 ///
 /// `mode` selects exact full-text, semantic (vector similarity), or a hybrid
-/// combination. When `tags`/`paths` are non-empty only documents carrying all of
-/// the tags (and reachable via any listed path) are returned, with snippets
-/// annotated by match-highlight spans for the UI.
+/// combination. When `tags` is non-empty only documents carrying all of the
+/// tags are returned, with snippets annotated by match-highlight spans for the
+/// UI.
 List<SearchHitDto> searchQuery({required SearchRequestDto req}) =>
     RustLib.instance.api.crateApiSearchSearchQuery(req: req);
 
@@ -149,7 +147,6 @@ class SearchHitDto {
   /// Byte ranges of the matching terms within `snippet`, for UI highlighting.
   final List<HighlightSpan> highlights;
   final List<String> tags;
-  final List<String> paths;
 
   const SearchHitDto({
     required this.documentId,
@@ -157,7 +154,6 @@ class SearchHitDto {
     required this.snippet,
     required this.highlights,
     required this.tags,
-    required this.paths,
   });
 
   @override
@@ -166,8 +162,7 @@ class SearchHitDto {
       score.hashCode ^
       snippet.hashCode ^
       highlights.hashCode ^
-      tags.hashCode ^
-      paths.hashCode;
+      tags.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -178,8 +173,7 @@ class SearchHitDto {
           score == other.score &&
           snippet == other.snippet &&
           highlights == other.highlights &&
-          tags == other.tags &&
-          paths == other.paths;
+          tags == other.tags;
 }
 
 /// Query kinds selectable in the UI.
@@ -193,26 +187,18 @@ class SearchRequestDto {
 
   /// Only return documents bearing all of these tags.
   final List<String> tags;
-
-  /// Only return documents reachable via any of these paths.
-  final List<String> paths;
   final int? limit;
 
   const SearchRequestDto({
     required this.text,
     required this.mode,
     required this.tags,
-    required this.paths,
     this.limit,
   });
 
   @override
   int get hashCode =>
-      text.hashCode ^
-      mode.hashCode ^
-      tags.hashCode ^
-      paths.hashCode ^
-      limit.hashCode;
+      text.hashCode ^ mode.hashCode ^ tags.hashCode ^ limit.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -222,6 +208,5 @@ class SearchRequestDto {
           text == other.text &&
           mode == other.mode &&
           tags == other.tags &&
-          paths == other.paths &&
           limit == other.limit;
 }

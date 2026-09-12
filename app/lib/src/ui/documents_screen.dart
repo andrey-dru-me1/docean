@@ -91,10 +91,8 @@ class DocumentsScreen extends StatefulWidget {
 class _DocumentsScreenState extends State<DocumentsScreen> {
   List<DocumentSummary> _all = [];
   List<String> _tags = [];
-  List<String> _paths = [];
   String _query = '';
   final Set<String> _tagFilters = {};
-  String? _pathFilter;
   FileTypeCategory? _fileTypeFilter;
   bool _loading = true;
   Object? _error;
@@ -155,7 +153,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       final results = await Future.wait([
         widget.documentService.listDocuments(),
         widget.documentService.listTags(),
-        widget.documentService.listPaths(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -163,7 +160,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         // Only show tags that appear on at least one document.
         final usedTags = <String>{for (final doc in _all) ...doc.tags};
         _tags = (results[1] as List<String>).where(usedTags.contains).toList();
-        _paths = results[2] as List<String>;
         _loading = false;
       });
     } catch (e) {
@@ -187,9 +183,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           !_tagFilters.every(
             (f) => d.tags.any((t) => t == f || t.startsWith('$f/')),
           )) {
-        return false;
-      }
-      if (_pathFilter != null && !d.paths.contains(_pathFilter)) {
         return false;
       }
       if (_fileTypeFilter != null &&
@@ -357,30 +350,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     onSelected: (tag) => setState(() => _tagFilters.add(tag)),
                   ),
                 ),
-              ],
-            ),
-          ],
-          if (_paths.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final path in _paths)
-                  FilterChip(
-                    label: Text(path),
-                    selected: _pathFilter == path,
-                    visualDensity: VisualDensity.compact,
-                    labelStyle: TextStyle(
-                      fontSize: 11.5,
-                      // Chip themes can default labels to a light color;
-                      // pin the readable onSurfaceVariant explicitly so
-                      // path chips stay dark-on-light (and light-on-dark).
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    onSelected: (v) =>
-                        setState(() => _pathFilter = v ? path : null),
-                  ),
               ],
             ),
           ],

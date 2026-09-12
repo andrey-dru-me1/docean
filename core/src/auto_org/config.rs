@@ -42,8 +42,6 @@ impl Default for OrgConfig {
             shingle_k: 3,
             cluster_k: 0,
             rules: RuleSet {
-                placement: Vec::new(),
-                fallback_path: Some("/inbox".to_owned()),
                 filename_template: RuleSet::default_template(),
             },
             learning_mode: LearningMode::Basic,
@@ -64,8 +62,6 @@ pub struct OrgPlan {
     /// Alternative tag sets (rank >= 1) the review UI can offer, ordered by
     /// preference-model score when learning is on.
     pub alt_tag_sets: Vec<Vec<String>>,
-    /// Deterministically resolved hierarchy path, if any.
-    pub suggested_path: Option<String>,
     /// Renamed filename (title), if the pipeline produced one. Rank-0 title.
     pub suggested_title: Option<String>,
     /// Alternative titles (rank >= 1).

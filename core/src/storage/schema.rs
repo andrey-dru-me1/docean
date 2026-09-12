@@ -130,6 +130,16 @@ const MIGRATIONS: &[&str] = &[
 
     DELETE FROM tags WHERE name NOT IN (SELECT tag FROM document_tags);
     "#,
+    // v3 -> v4: the logical many-to-many hierarchy-path system is removed.
+    // The physical folder layout lives in the library mirror (main_path,
+    // derived from tags) and parent/child links live in hierarchy_links; this
+    // virtual-placement table (whose default only ever produced `/inbox`) was
+    // display-only with no editor. Dropping the tables also severs every
+    // assignment; `/inbox` and friends disappear with them.
+    r#"
+    DROP TABLE IF EXISTS document_paths;
+    DROP TABLE IF EXISTS paths;
+    "#,
 ];
 
 /// Apply all pending migrations to `conn`.
@@ -176,8 +186,6 @@ mod tests {
             "documents",
             "tags",
             "document_tags",
-            "paths",
-            "document_paths",
             "hierarchy_links",
             "content",
             "document_suggestions",
@@ -191,6 +199,18 @@ mod tests {
                 )
                 .unwrap();
             assert_eq!(count, 1, "missing table {table}");
+        }
+
+        // The logical hierarchy-path tables were dropped in v4.
+        for table in ["paths", "document_paths"] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 0, "table {table} should have been dropped");
         }
     }
 }

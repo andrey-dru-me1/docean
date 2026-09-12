@@ -41,7 +41,6 @@ class _FakeSearchService implements SearchService {
     String text, {
     required SearchMode mode,
     List<String> tags = const [],
-    List<String> paths = const [],
     int? limit,
   }) {
     queryCount++;
@@ -52,11 +51,7 @@ class _FakeSearchService implements SearchService {
   void indexDocument(String documentId, String text) {}
 
   @override
-  void setMetadata(
-    String documentId, {
-    List<String> tags = const [],
-    List<String> paths = const [],
-  }) {}
+  void setMetadata(String documentId, {List<String> tags = const []}) {}
 
   @override
   void removeDocument(String documentId) {}

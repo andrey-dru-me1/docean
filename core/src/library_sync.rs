@@ -307,16 +307,6 @@ pub fn sync_library(
                             report.failed.push((name, e));
                             continue;
                         }
-                        if !entry.rel_dir.is_empty() {
-                            if let Err(e) = repo.assign_path(crate::domain::PathAssignment {
-                                document_id: id.clone(),
-                                path: entry.rel_dir.clone(),
-                                position: 0,
-                            }) {
-                                report.failed.push((name, e));
-                                continue;
-                            }
-                        }
                         report.linked.push(id);
                     }
                     Some(current) if current != &name => {
@@ -400,16 +390,6 @@ pub fn sync_library(
                         if let Err(e) = stamp_main_path(repo, &id, &entry.rel_dir) {
                             report.failed.push((name, e));
                             continue;
-                        }
-                        if !entry.rel_dir.is_empty() {
-                            if let Err(e) = repo.assign_path(crate::domain::PathAssignment {
-                                document_id: id.clone(),
-                                path: entry.rel_dir.clone(),
-                                position: 0,
-                            }) {
-                                report.failed.push((name, e));
-                                continue;
-                            }
                         }
                         if let Err(e) = organize_document(repo, &id, OrgConfig::default()) {
                             eprintln!(
@@ -510,13 +490,6 @@ pub fn sync_library(
             }
             if expected_dir != stamped_dir {
                 stamp_main_path(repo, &id, &expected_dir)?;
-                if !expected_dir.is_empty() {
-                    repo.assign_path(crate::domain::PathAssignment {
-                        document_id: id.clone(),
-                        path: expected_dir.clone(),
-                        position: 0,
-                    })?;
-                }
             }
             Ok(())
         })();
@@ -836,7 +809,6 @@ mod tests {
             text: "acme5691".to_owned(),
             mode: SearchMode::Exact,
             tags: vec![],
-            paths: vec![],
             limit: None,
         });
         assert!(
@@ -857,7 +829,6 @@ mod tests {
             text: "acme5691".to_owned(),
             mode: SearchMode::Exact,
             tags: vec![],
-            paths: vec![],
             limit: None,
         });
         assert!(
@@ -1168,13 +1139,6 @@ mod tests {
             doc.extra.get("file_name").map(String::as_str),
             Some("Moved.txt"),
             "the mirror carries the document title"
-        );
-        // The soft hierarchy knows the document at /keeper.
-        let paths = repo.paths_of(id.clone()).unwrap();
-        assert!(
-            paths.iter().any(|p| p.path == "keeper"),
-            "doc must be soft-assigned to keeper: {:?}",
-            paths
         );
 
         // Idempotent: second run is empty.
@@ -1514,7 +1478,7 @@ mod tests {
     }
 
     #[test]
-    fn addition_in_subdir_ingests_with_main_path_and_soft_path() {
+    fn addition_in_subdir_ingests_and_replaces_main_path_with_tag_path() {
         let root = temp_root("add-subdir");
         let repo = open_repository(root.display().to_string()).unwrap();
         let dir = FakeDir::new();

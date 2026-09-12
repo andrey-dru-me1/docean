@@ -91,9 +91,6 @@ class OrgPlan {
   /// preference-model score when learning is on.
   final List<List<String>> altTagSets;
 
-  /// Deterministically resolved hierarchy path, if any.
-  final String? suggestedPath;
-
   /// Renamed filename (title), if the pipeline produced one. Rank-0 title.
   final String? suggestedTitle;
 
@@ -113,7 +110,6 @@ class OrgPlan {
     required this.documentId,
     required this.tags,
     required this.altTagSets,
-    this.suggestedPath,
     this.suggestedTitle,
     required this.altTitles,
     this.isDuplicateOf,
@@ -126,7 +122,6 @@ class OrgPlan {
       documentId.hashCode ^
       tags.hashCode ^
       altTagSets.hashCode ^
-      suggestedPath.hashCode ^
       suggestedTitle.hashCode ^
       altTitles.hashCode ^
       isDuplicateOf.hashCode ^
@@ -141,7 +136,6 @@ class OrgPlan {
           documentId == other.documentId &&
           tags == other.tags &&
           altTagSets == other.altTagSets &&
-          suggestedPath == other.suggestedPath &&
           suggestedTitle == other.suggestedTitle &&
           altTitles == other.altTitles &&
           isDuplicateOf == other.isDuplicateOf &&

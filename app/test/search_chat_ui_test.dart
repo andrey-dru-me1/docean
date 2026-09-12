@@ -33,7 +33,6 @@ class _FakeSearchService implements SearchService {
     String text, {
     required SearchMode mode,
     List<String> tags = const [],
-    List<String> paths = const [],
     int? limit,
   }) {
     if (text.trim().isEmpty) return const [];
@@ -44,7 +43,6 @@ class _FakeSearchService implements SearchService {
         snippet: 'The quick brown fox jumps over the lazy dog.',
         highlights: [HighlightSpan(start: BigInt.from(4), end: BigInt.from(9))],
         tags: const ['finance'],
-        paths: const ['/work/reports'],
       ),
     ];
   }
@@ -53,11 +51,7 @@ class _FakeSearchService implements SearchService {
   void indexDocument(String documentId, String text) {}
 
   @override
-  void setMetadata(
-    String documentId, {
-    List<String> tags = const [],
-    List<String> paths = const [],
-  }) {}
+  void setMetadata(String documentId, {List<String> tags = const []}) {}
 
   @override
   void removeDocument(String documentId) {}
@@ -141,7 +135,6 @@ void main() {
             searchService: _FakeSearchService(),
             onOpenDocument: opened.add,
             tags: const ['finance', 'tax'],
-            paths: const ['/work'],
           ),
         ),
       );
@@ -151,9 +144,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('quick brown fox'), findsOneWidget);
-      // 'finance' and the path appear as filters + on the result card.
+      // 'finance' appears as a filter and on the result card.
       expect(find.text('finance'), findsWidgets);
-      expect(find.text('/work/reports'), findsWidgets);
 
       await tester.tap(find.text('Exact'));
       await tester.pumpAndSettle();
@@ -380,7 +372,6 @@ class _RecordingSearchService implements SearchService {
     String text, {
     required SearchMode mode,
     List<String> tags = const [],
-    List<String> paths = const [],
     int? limit,
   }) {
     onCall(ServiceCall(tags));
@@ -391,11 +382,7 @@ class _RecordingSearchService implements SearchService {
   void indexDocument(String documentId, String text) {}
 
   @override
-  void setMetadata(
-    String documentId, {
-    List<String> tags = const [],
-    List<String> paths = const [],
-  }) {}
+  void setMetadata(String documentId, {List<String> tags = const []}) {}
 
   @override
   void removeDocument(String documentId) {}

@@ -6,69 +6,20 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-/// How a rule's `when` value is matched against document signals.
-enum MatchKind { tag, keyword, titleContains }
-
-/// A single placement rule: when `signals` match, place the document at `path`.
-class PlacementRule {
-  final String id;
-  final MatchKind matchKind;
-  final String value;
-  final String path;
-  final int priority;
-
-  const PlacementRule({
-    required this.id,
-    required this.matchKind,
-    required this.value,
-    required this.path,
-    required this.priority,
-  });
-
-  @override
-  int get hashCode =>
-      id.hashCode ^
-      matchKind.hashCode ^
-      value.hashCode ^
-      path.hashCode ^
-      priority.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is PlacementRule &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          matchKind == other.matchKind &&
-          value == other.value &&
-          path == other.path &&
-          priority == other.priority;
-}
-
-/// The rule set + fallbacks that govern deterministic placement and renaming.
+/// The template configuration used when generating filenames.
 class RuleSet {
-  final List<PlacementRule> placement;
-  final String? fallbackPath;
-
   /// Supported placeholders: `{keywords}`, `{tags}`, `{title}`, `{date}`, `{ext}`.
   final String filenameTemplate;
 
-  const RuleSet({
-    required this.placement,
-    this.fallbackPath,
-    required this.filenameTemplate,
-  });
+  const RuleSet({required this.filenameTemplate});
 
   @override
-  int get hashCode =>
-      placement.hashCode ^ fallbackPath.hashCode ^ filenameTemplate.hashCode;
+  int get hashCode => filenameTemplate.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is RuleSet &&
           runtimeType == other.runtimeType &&
-          placement == other.placement &&
-          fallbackPath == other.fallbackPath &&
           filenameTemplate == other.filenameTemplate;
 }

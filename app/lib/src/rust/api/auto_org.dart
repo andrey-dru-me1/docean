@@ -16,7 +16,7 @@ import 'storage.dart';
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
 
 /// Run the deterministic (non-generative) organizer on `document_id`, returning
-/// the [`OrgPlan`] of suggested tags, placement, rename, and dedup.
+/// the [`OrgPlan`] of suggested tags, rename, and dedup.
 ///
 /// Declared `async` so FRB executes it on Rust's async worker pool instead of
 /// the Dart UI isolate. This is the primitive behind the per-file "Suggest
@@ -46,13 +46,10 @@ Future<OrgPlan> autoOrgOrganize({
 /// as ingestion, and applies the suggestion through the *normal* update paths:
 ///
 /// * title applied only when `extra['title_manual']` is **not** truthy;
-/// * tags applied only when `extra['tags_manual']` is **not** truthy;
-/// * placement always applied (a hierarchy move is not part of the manual
-///   title/tag contract).
+/// * tags applied only when `extra['tags_manual']` is **not** truthy.
 ///
 /// Each applied change is written via [`DocumentRepository::update_title`] /
-/// [`DocumentRepository::set_tags`] and the fresh tags/paths are mirrored into
-/// the in-memory search index via [`crate::api::search::search_set_metadata`]
+/// [`DocumentRepository::set_tags`] and the fresh tags are mirrored into
 /// (that mirror also happens inside the two update paths). The pass needs **no
 /// AI provider** — it is the same deterministic pipeline used at ingestion.
 OrgBulkStats autoOrgReorganizeAll({
@@ -75,9 +72,8 @@ OrgBulkStats autoOrgReorganizeAll({
 ///
 /// Semantics are identical to [`auto_org_reorganize_one_impl`] — title applied
 /// only when `extra['title_manual']` is not truthy, tags only when
-/// `extra['tags_manual']` is not truthy, placement always applied — but the
-/// corpus snapshot and organizer are built **once** for the whole batch instead
-/// of once per document.
+/// `extra['tags_manual']` is not truthy — but the corpus snapshot and organizer
+/// are built **once** for the whole batch instead of once per document.
 Future<OrgBulkStats> autoOrgReorganizeSelected({
   required DocumentRepository repo,
   required List<String> ids,
@@ -236,7 +232,7 @@ Future<int> autoOrgResolveManualEdit({
   recordFeedback: recordFeedback,
 );
 
-/// A convenience default [`RuleSet`] (empty placement rules + `/inbox` fallback).
+/// A convenience default [`RuleSet`] (default filename template, no placement).
 RuleSet autoOrgDefaultRules() =>
     RustLib.instance.api.crateApiAutoOrgAutoOrgDefaultRules();
 
@@ -245,7 +241,7 @@ class OrgBulkStats {
   /// Documents examined by the pass.
   final BigInt total;
 
-  /// Documents whose tags/title/placement changed as a result.
+  /// Documents whose tags/title changed as a result.
   final BigInt updated;
 
   /// Documents left untouched (already matching, or manual-edit flags set).

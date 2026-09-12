@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use crate::domain::{
-    Content, Document, DocumentSuggestion, HierarchyLink, HierarchyPath, NodeKind, PathAssignment,
-    SuggestionFeedback, SuggestionKind, SuggestionSource, SuggestionStatus, Tag,
+    Content, Document, DocumentSuggestion, HierarchyLink, NodeKind, SuggestionFeedback,
+    SuggestionKind, SuggestionSource, SuggestionStatus, Tag,
 };
 use crate::storage::{hash_bytes, DocumentQuery, DocumentStore, SqliteDocumentStore, StorageError};
 
@@ -210,59 +210,6 @@ fn hierarchy_link_and_children() {
         store.children(&"root".to_owned()).unwrap(),
         vec!["c2", "c1"]
     );
-}
-
-#[test]
-fn many_to_many_paths() {
-    let mut store = temp_store("paths");
-    store.put(doc("d1", "one", &[]), b"payload").unwrap();
-    store.put(doc("d2", "two", &[]), b"payload").unwrap();
-
-    store
-        .assign_path(PathAssignment {
-            document_id: "d1".to_owned(),
-            path: "/inbox".to_owned(),
-            position: 0,
-        })
-        .unwrap();
-    store
-        .assign_path(PathAssignment {
-            document_id: "d1".to_owned(),
-            path: "/archive/2026".to_owned(),
-            position: 0,
-        })
-        .unwrap();
-    store
-        .assign_path(PathAssignment {
-            document_id: "d2".to_owned(),
-            path: "/inbox".to_owned(),
-            position: 1,
-        })
-        .unwrap();
-
-    let paths = store.paths_of(&"d1".to_owned()).unwrap();
-    // Ordered by position, then path (both assignments use position 0, so
-    // alphabetical path order applies).
-    assert_eq!(
-        paths,
-        vec![
-            HierarchyPath {
-                path: "/archive/2026".to_owned()
-            },
-            HierarchyPath {
-                path: "/inbox".to_owned()
-            },
-        ]
-    );
-
-    assert_eq!(store.documents_at("/inbox").unwrap(), vec!["d1", "d2"]);
-    assert_eq!(store.list_paths().unwrap().len(), 2);
-
-    store.unassign_path(&"d1".to_owned(), "/inbox").unwrap();
-    assert_eq!(store.documents_at("/inbox").unwrap(), vec!["d2"]);
-
-    store.delete_path("/archive/2026").unwrap();
-    assert!(store.paths_of(&"d1".to_owned()).unwrap().is_empty());
 }
 
 #[test]
@@ -555,24 +502,11 @@ fn persistence_survives_reopen() {
     {
         let mut store = SqliteDocumentStore::open(root.clone()).unwrap();
         store.put(doc("d1", "persisted", &["k"]), b"data").unwrap();
-        store
-            .assign_path(PathAssignment {
-                document_id: "d1".to_owned(),
-                path: "/p".to_owned(),
-                position: 0,
-            })
-            .unwrap();
     }
 
     let store = SqliteDocumentStore::open(root.clone()).unwrap();
     assert_eq!(store.get(&"d1".to_owned()).unwrap().title, "persisted");
     assert_eq!(store.read_bytes(&"d1".to_owned()).unwrap(), b"data");
-    assert_eq!(
-        store.paths_of(&"d1".to_owned()).unwrap(),
-        vec![HierarchyPath {
-            path: "/p".to_owned()
-        }]
-    );
 
     let _ = std::fs::remove_dir_all(&root);
 }

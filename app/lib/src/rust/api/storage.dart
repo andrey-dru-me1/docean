@@ -31,8 +31,6 @@ abstract class DocumentRepository implements RustOpaqueInterface {
     required String title,
   });
 
-  Future<void> assignPath({required PathAssignment assignment});
-
   Future<List<String>> children({required String parent});
 
   /// Wipe all learning data.
@@ -49,17 +47,13 @@ abstract class DocumentRepository implements RustOpaqueInterface {
   /// Remove all suggestion rows for a document.
   Future<void> deleteDocumentSuggestions({required String documentId});
 
-  Future<void> deletePath({required String path});
-
-  Future<List<String>> documentsAt({required String path});
-
   /// Ensure a document's file exists on disk with a friendly, deterministic
   /// name and that `extra["file_name"]` is stamped to record that mapping.
   ///
   /// When no library is configured this is a no-op (`Ok(())`).
   ///
-  /// The name is derived from `extra["original_name"]` + mime type via
-  /// [`LibraryFs::file_name_for`], avoiding collisions with
+  /// The name is derived from the document title + mime/original extension
+  /// via [`LibraryFs::title_file_name`], avoiding collisions with
   /// [`LibraryFs::unique_name`]. Blob bytes are read from the store and
   /// written atomically when the file is missing. Stamp order (write first,
   /// then `put`) means a crash after the write but before the stamp is healed
@@ -82,8 +76,6 @@ abstract class DocumentRepository implements RustOpaqueInterface {
 
   Future<void> link({required HierarchyLink link});
 
-  Future<List<HierarchyPath>> listPaths();
-
   Future<List<Tag>> listTags();
 
   /// Update the review status (pending/applied/dismissed) of one suggestion.
@@ -91,8 +83,6 @@ abstract class DocumentRepository implements RustOpaqueInterface {
     required String suggestionId,
     required SuggestionStatus status,
   });
-
-  Future<List<HierarchyPath>> pathsOf({required String documentId});
 
   /// Housekeeping: drop non-pending suggestions older than `older_than_ms`.
   Future<void> pruneSuggestions({required PlatformInt64 olderThanMs});
@@ -105,8 +95,6 @@ abstract class DocumentRepository implements RustOpaqueInterface {
     required String text,
     required String source,
   });
-
-  Future<void> putPath({required String path});
 
   /// Persist (or update) one pending suggestion row.
   Future<void> putSuggestion({required DocumentSuggestion suggestion});
@@ -153,8 +141,6 @@ abstract class DocumentRepository implements RustOpaqueInterface {
     required String documentId,
     SuggestionKind? kind,
   });
-
-  Future<void> unassignPath({required String documentId, required String path});
 
   /// Rename a document through the repository (`repo.put`, reusing the stored
   /// raw bytes so the rename never depends on re-ingestion).

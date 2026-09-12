@@ -69,7 +69,6 @@ class OrgPlan {
   const OrgPlan({
     required this.documentId,
     this.tags = const [],
-    this.suggestedPath,
     this.suggestedTitle,
     this.isDuplicateOf,
     this.confidence = 1.0,
@@ -78,7 +77,6 @@ class OrgPlan {
 
   final String documentId;
   final List<String> tags;
-  final String? suggestedPath;
   final String? suggestedTitle;
   final String? isDuplicateOf;
   final double confidence;

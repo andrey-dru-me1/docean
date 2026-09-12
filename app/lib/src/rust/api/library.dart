@@ -33,7 +33,8 @@ LibrarySyncReportDto librarySync({required DocumentRepository repo}) =>
 ///
 /// Used for reveal-in-finder / open-directly from the real file (no temp copy
 /// needed). Returns `None` when the library is unset, the document has no
-/// stamped `file_name`, or the file no longer exists on disk.
+/// stamped `file_name`, or the file no longer exists on disk. The stamped
+/// `main_path` folder is honored.
 String? libraryFilePath({
   required DocumentRepository repo,
   required String id,

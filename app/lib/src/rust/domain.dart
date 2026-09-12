@@ -217,60 +217,8 @@ class HierarchyLink {
           position == other.position;
 }
 
-/// A hierarchy path, e.g. `/work/invoices/2026`.
-///
-/// A path is an entity independent of any single document: a document may be
-/// reachable through *many* paths (each a [`PathAssignment`] edge), and a path
-/// may contain many documents. This is a many-to-many relationship mirroring
-/// filesystem hard links / multiple virtual folders.
-class HierarchyPath {
-  /// Canonical, `/`-separated path with a leading slash. Unique in storage.
-  final String path;
-
-  const HierarchyPath({required this.path});
-
-  @override
-  int get hashCode => path.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is HierarchyPath &&
-          runtimeType == other.runtimeType &&
-          path == other.path;
-}
-
 /// Whether a hierarchy node is a leaf document or a folder/collection.
 enum NodeKind { document, folder }
-
-/// A member edge of the many-to-many relationship between documents and paths.
-///
-/// One document ↔ many paths, and one path ↔ many documents.
-class PathAssignment {
-  final String documentId;
-  final String path;
-
-  /// Ordinal position of the document among the path's members.
-  final int position;
-
-  const PathAssignment({
-    required this.documentId,
-    required this.path,
-    required this.position,
-  });
-
-  @override
-  int get hashCode => documentId.hashCode ^ path.hashCode ^ position.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is PathAssignment &&
-          runtimeType == other.runtimeType &&
-          documentId == other.documentId &&
-          path == other.path &&
-          position == other.position;
-}
 
 /// A single preference-evidence event recorded when the user reviews a
 /// suggestion (accepted/rejected term, how strongly it was weighted).

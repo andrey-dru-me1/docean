@@ -35,12 +35,8 @@ Future<Uint8List?> _thumbnailer(Uint8List bytes, int maxDim) async {
 }
 
 /// A helper document with fixed fields.
-DocumentSummary _doc(
-  String id,
-  String title, {
-  List<String> tags = const [],
-  List<String> paths = const [],
-}) => DocumentSummary(id: id, title: title, tags: tags, paths: paths);
+DocumentSummary _doc(String id, String title, {List<String> tags = const []}) =>
+    DocumentSummary(id: id, title: title, tags: tags);
 
 /// Adds a tag filter through the filter bar's search field: type the name,
 /// pick the (best-match) suggestion. The field keeps focus afterwards, so
@@ -59,16 +55,10 @@ void main() {
     ) async {
       final service = FakeDocumentService(
         documents: [
-          _doc(
-            'doc-1',
-            'Invoice Q3',
-            tags: const ['finance'],
-            paths: const ['/work'],
-          ),
+          _doc('doc-1', 'Invoice Q3', tags: const ['finance']),
           _doc('doc-2', 'Roadmap', tags: const ['product']),
         ],
         tags: const ['finance', 'product'],
-        paths: const ['/work'],
       );
 
       await tester.pumpWidget(
@@ -81,7 +71,6 @@ void main() {
       expect(find.text('Invoice Q3'), findsOneWidget);
       expect(find.text('Roadmap'), findsOneWidget);
       expect(find.text('finance'), findsWidgets);
-      expect(find.text('/work'), findsWidgets);
     });
 
     testWidgets('shows an empty state when the library has no documents', (

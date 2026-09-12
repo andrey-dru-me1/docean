@@ -126,7 +126,7 @@ class NoopBulkOrganizer implements BulkOrganizer {
 /// fakes in tests.
 abstract interface class DocumentService {
   /// List every persisted document (metadata from `repo.query`), newest first,
-  /// with tags and hierarchy paths resolved from the repository.
+  /// with tags resolved from the repository.
   Future<List<DocumentSummary>> listDocuments();
 
   /// Fresh metadata for a single document (used by the detail view to reflect
@@ -227,9 +227,6 @@ abstract interface class DocumentService {
 
   /// All tag names known to the repository (`repo.listTags`).
   Future<List<String>> listTags();
-
-  /// All hierarchy paths known to the repository (`repo.listPaths`).
-  Future<List<String>> listPaths();
 
   /// Rebuild the in-memory search index from the persisted repository.
   ///
@@ -363,28 +360,17 @@ class BridgeDocumentService implements DocumentService {
     );
     final summaries = <DocumentSummary>[];
     for (final doc in docs) {
-      final paths = await _pathsOf(repo, doc);
-      summaries.add(_summaryOf(doc, paths));
+      summaries.add(_summaryOf(doc));
     }
     return summaries;
   }
 
-  Future<List<String>> _pathsOf(DocumentRepository repo, Document doc) async {
-    try {
-      final paths = await repo.pathsOf(documentId: doc.id);
-      return [for (final p in paths) p.path];
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  /// Fresh metadata for a single document, resolving paths from the repository.
+  /// Fresh metadata for a single document.
   @override
   Future<DocumentSummary> getDocument(String id) async {
     final repo = await _repo();
     final doc = await repo.get_(id: id);
-    final paths = await _pathsOf(repo, doc);
-    return _summaryOf(doc, paths);
+    return _summaryOf(doc);
   }
 
   /// The extracted text for a document, if any has been persisted.
@@ -408,9 +394,7 @@ class BridgeDocumentService implements DocumentService {
     final repo = await _repo();
     await repo.setTags(documentId: id, tags: tags);
     try {
-      final doc = await repo.get_(id: id);
-      final paths = await _pathsOf(repo, doc);
-      search_bridge.searchSetMetadata(documentId: id, tags: tags, paths: paths);
+      search_bridge.searchSetMetadata(documentId: id, tags: tags);
     } catch (_) {
       // If the search metadata is unavailable the tags are still persisted in
       // the repository; search filtering simply falls back to repository-source.
@@ -427,12 +411,7 @@ class BridgeDocumentService implements DocumentService {
     // Best-effort search-metadata mirror (mirrors the setTags pattern).
     try {
       final doc = await repo.get_(id: id);
-      final paths = await _pathsOf(repo, doc);
-      search_bridge.searchSetMetadata(
-        documentId: id,
-        tags: doc.tags,
-        paths: paths,
-      );
+      search_bridge.searchSetMetadata(documentId: id, tags: doc.tags);
     } catch (_) {
       // Persisted regardless of search-index availability.
     }
@@ -663,12 +642,11 @@ class BridgeDocumentService implements DocumentService {
     );
   }
 
-  DocumentSummary _summaryOf(Document doc, List<String> paths) {
+  DocumentSummary _summaryOf(Document doc) {
     return DocumentSummary(
       id: doc.id,
       title: doc.title,
       tags: doc.tags,
-      paths: paths,
       mimeType: doc.mimeType,
       originalName: doc.extra['original_name'],
       extra: Map.of(doc.extra),
@@ -680,13 +658,6 @@ class BridgeDocumentService implements DocumentService {
     final repo = await _repo();
     final tags = await repo.listTags();
     return [for (final t in tags) t.name];
-  }
-
-  @override
-  Future<List<String>> listPaths() async {
-    final repo = await _repo();
-    final paths = await repo.listPaths();
-    return [for (final p in paths) p.path];
   }
 
   @override
@@ -715,7 +686,6 @@ DocumentSummary _withMaterializedAncestors(DocumentSummary doc) {
     title: doc.title,
     snippet: doc.snippet,
     tags: expanded.toList(),
-    paths: doc.paths,
     mimeType: doc.mimeType,
     originalName: doc.originalName,
     extra: doc.extra,
@@ -726,14 +696,12 @@ class FakeDocumentService implements DocumentService {
   FakeDocumentService({
     List<DocumentSummary> documents = const [],
     List<String> tags = const [],
-    List<String> paths = const [],
     Map<String, String> contentByDocumentId = const {},
     Map<String, List<int>> bytesByDocumentId = const {},
     this.suggestion,
     Map<String, List<SuggestionEntry>> suggestionsByDocumentId = const {},
   }) : documents = [for (final d in documents) _withMaterializedAncestors(d)],
        tags = List.of(tags),
-       paths = List.of(paths),
        contentByDocumentId = Map.of(contentByDocumentId),
        bytesByDocumentId = {
          for (final e in bytesByDocumentId.entries) e.key: List.of(e.value),
@@ -745,7 +713,6 @@ class FakeDocumentService implements DocumentService {
 
   final List<DocumentSummary> documents;
   final List<String> tags;
-  final List<String> paths;
 
   /// Extracted text keyed by document id (unit-level stand-in for repo content).
   final Map<String, String> contentByDocumentId;
@@ -1143,7 +1110,6 @@ class FakeDocumentService implements DocumentService {
     title: title ?? src.title,
     snippet: src.snippet,
     tags: tags ?? List.of(src.tags),
-    paths: src.paths,
     mimeType: src.mimeType,
     originalName: src.originalName,
     extra: extra ?? src.extra,
@@ -1151,9 +1117,6 @@ class FakeDocumentService implements DocumentService {
 
   @override
   Future<List<String>> listTags() async => List.of(tags);
-
-  @override
-  Future<List<String>> listPaths() async => List.of(paths);
 
   @override
   Future<void> reindex() async {

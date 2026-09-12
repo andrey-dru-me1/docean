@@ -136,9 +136,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   OrgConfig dco_decode_box_autoadd_org_config(dynamic raw);
 
   @protected
-  PathAssignment dco_decode_box_autoadd_path_assignment(dynamic raw);
-
-  @protected
   ProviderSettings dco_decode_box_autoadd_provider_settings(dynamic raw);
 
   @protected
@@ -231,9 +228,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   HierarchyLink dco_decode_hierarchy_link(dynamic raw);
 
   @protected
-  HierarchyPath dco_decode_hierarchy_path(dynamic raw);
-
-  @protected
   HighlightSpan dco_decode_highlight_span(dynamic raw);
 
   @protected
@@ -270,9 +264,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<DuplicatePairDto> dco_decode_list_duplicate_pair_dto(dynamic raw);
 
   @protected
-  List<HierarchyPath> dco_decode_list_hierarchy_path(dynamic raw);
-
-  @protected
   List<HighlightSpan> dco_decode_list_highlight_span(dynamic raw);
 
   @protected
@@ -286,9 +277,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<PeerInfo> dco_decode_list_peer_info(dynamic raw);
-
-  @protected
-  List<PlacementRule> dco_decode_list_placement_rule(dynamic raw);
 
   @protected
   Float32List dco_decode_list_prim_f_32_strict(dynamic raw);
@@ -321,9 +309,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Tag> dco_decode_list_tag(dynamic raw);
-
-  @protected
-  MatchKind dco_decode_match_kind(dynamic raw);
 
   @protected
   ModelInfo dco_decode_model_info(dynamic raw);
@@ -373,9 +358,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   OrgPlan dco_decode_org_plan(dynamic raw);
 
   @protected
-  PathAssignment dco_decode_path_assignment(dynamic raw);
-
-  @protected
   PeerEvent dco_decode_peer_event(dynamic raw);
 
   @protected
@@ -383,9 +365,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PeerInfo dco_decode_peer_info(dynamic raw);
-
-  @protected
-  PlacementRule dco_decode_placement_rule(dynamic raw);
 
   @protected
   ProviderKind dco_decode_provider_kind(dynamic raw);
@@ -589,11 +568,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   OrgConfig sse_decode_box_autoadd_org_config(SseDeserializer deserializer);
 
   @protected
-  PathAssignment sse_decode_box_autoadd_path_assignment(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   ProviderSettings sse_decode_box_autoadd_provider_settings(
     SseDeserializer deserializer,
   );
@@ -708,9 +682,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   HierarchyLink sse_decode_hierarchy_link(SseDeserializer deserializer);
 
   @protected
-  HierarchyPath sse_decode_hierarchy_path(SseDeserializer deserializer);
-
-  @protected
   HighlightSpan sse_decode_highlight_span(SseDeserializer deserializer);
 
   @protected
@@ -755,11 +726,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  List<HierarchyPath> sse_decode_list_hierarchy_path(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   List<HighlightSpan> sse_decode_list_highlight_span(
     SseDeserializer deserializer,
   );
@@ -775,11 +741,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<PeerInfo> sse_decode_list_peer_info(SseDeserializer deserializer);
-
-  @protected
-  List<PlacementRule> sse_decode_list_placement_rule(
-    SseDeserializer deserializer,
-  );
 
   @protected
   Float32List sse_decode_list_prim_f_32_strict(SseDeserializer deserializer);
@@ -822,9 +783,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Tag> sse_decode_list_tag(SseDeserializer deserializer);
-
-  @protected
-  MatchKind sse_decode_match_kind(SseDeserializer deserializer);
 
   @protected
   ModelInfo sse_decode_model_info(SseDeserializer deserializer);
@@ -880,9 +838,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   OrgPlan sse_decode_org_plan(SseDeserializer deserializer);
 
   @protected
-  PathAssignment sse_decode_path_assignment(SseDeserializer deserializer);
-
-  @protected
   PeerEvent sse_decode_peer_event(SseDeserializer deserializer);
 
   @protected
@@ -890,9 +845,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PeerInfo sse_decode_peer_info(SseDeserializer deserializer);
-
-  @protected
-  PlacementRule sse_decode_placement_rule(SseDeserializer deserializer);
 
   @protected
   ProviderKind sse_decode_provider_kind(SseDeserializer deserializer);
@@ -1135,12 +1087,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_box_autoadd_path_assignment(
-    PathAssignment self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_box_autoadd_provider_settings(
     ProviderSettings self,
     SseSerializer serializer,
@@ -1285,9 +1231,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_hierarchy_link(HierarchyLink self, SseSerializer serializer);
 
   @protected
-  void sse_encode_hierarchy_path(HierarchyPath self, SseSerializer serializer);
-
-  @protected
   void sse_encode_highlight_span(HighlightSpan self, SseSerializer serializer);
 
   @protected
@@ -1336,12 +1279,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_list_hierarchy_path(
-    List<HierarchyPath> self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_list_highlight_span(
     List<HighlightSpan> self,
     SseSerializer serializer,
@@ -1367,12 +1304,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_peer_info(List<PeerInfo> self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_list_placement_rule(
-    List<PlacementRule> self,
-    SseSerializer serializer,
-  );
 
   @protected
   void sse_encode_list_prim_f_32_strict(
@@ -1427,9 +1358,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_tag(List<Tag> self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_match_kind(MatchKind self, SseSerializer serializer);
 
   @protected
   void sse_encode_model_info(ModelInfo self, SseSerializer serializer);
@@ -1495,12 +1423,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_org_plan(OrgPlan self, SseSerializer serializer);
 
   @protected
-  void sse_encode_path_assignment(
-    PathAssignment self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_peer_event(PeerEvent self, SseSerializer serializer);
 
   @protected
@@ -1508,9 +1430,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_peer_info(PeerInfo self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_placement_rule(PlacementRule self, SseSerializer serializer);
 
   @protected
   void sse_encode_provider_kind(ProviderKind self, SseSerializer serializer);

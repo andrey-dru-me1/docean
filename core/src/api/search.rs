@@ -7,7 +7,7 @@
 //!
 //! On top of the engine's raw exact/semantic/duplicate functions, this module
 //! also exposes a higher-level [`search_query`] used by the search UI: it takes
-//! a mode plus optional tag/path filters, dispatches to the engine, and returns
+//! a mode plus optional tag filters, dispatches to the engine, and returns
 //! snippets annotated with match-highlight spans and per-document metadata.
 
 use std::collections::HashMap;
@@ -20,8 +20,8 @@ use crate::domain::NodeKind;
 use crate::search::{embed, SearchEngine, SearchHit, EMBED_DIM};
 use crate::storage::DocumentQuery;
 
-/// Document id -> (tags, paths) lookup table for result filtering.
-type DocMeta = HashMap<String, (Vec<String>, Vec<String>)>;
+/// Document id -> tags lookup table for result filtering.
+type DocMeta = HashMap<String, Vec<String>>;
 
 /// The process-wide search engine, shared behind a lock.
 fn engine() -> &'static Arc<Mutex<SearchEngine>> {
@@ -38,7 +38,7 @@ pub(crate) fn shared_near_dup_index() -> crate::search::SharedNearDuplicateIndex
     engine().lock().unwrap().near_dup_index()
 }
 
-/// document id -> (tags, paths) metadata for UI filtering.
+/// document id -> tags metadata for UI filtering.
 fn metadata() -> &'static Arc<std::sync::Mutex<DocMeta>> {
     static META: std::sync::OnceLock<Arc<std::sync::Mutex<DocMeta>>> = std::sync::OnceLock::new();
     META.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
@@ -77,7 +77,6 @@ pub struct SearchHitDto {
     /// Byte ranges of the matching terms within `snippet`, for UI highlighting.
     pub highlights: Vec<HighlightSpan>,
     pub tags: Vec<String>,
-    pub paths: Vec<String>,
 }
 
 /// A search request (Dart DTO).
@@ -90,9 +89,6 @@ pub struct SearchRequestDto {
     /// Only return documents bearing all of these tags.
     #[serde(default)]
     pub tags: Vec<String>,
-    /// Only return documents reachable via any of these paths.
-    #[serde(default)]
-    pub paths: Vec<String>,
     pub limit: Option<u32>,
 }
 
@@ -187,11 +183,7 @@ fn merge_hits(a: Vec<SearchHit>, b: Vec<SearchHit>) -> Vec<SearchHit> {
     out
 }
 
-fn to_dto(
-    hit: &SearchHit,
-    query: &str,
-    meta: &HashMap<String, (Vec<String>, Vec<String>)>,
-) -> SearchHitDto {
+fn to_dto(hit: &SearchHit, query: &str, meta: &HashMap<String, Vec<String>>) -> SearchHitDto {
     let snippet = hit.snippet.clone().unwrap_or_default();
     SearchHitDto {
         document_id: hit.document_id.clone(),
@@ -200,14 +192,7 @@ fn to_dto(
         score: normalize_score(hit.score),
         snippet: snippet.clone(),
         highlights: compute_highlights(&snippet, query),
-        tags: meta
-            .get(&hit.document_id)
-            .map(|(t, _)| t.clone())
-            .unwrap_or_default(),
-        paths: meta
-            .get(&hit.document_id)
-            .map(|(_, p)| p.clone())
-            .unwrap_or_default(),
+        tags: meta.get(&hit.document_id).cloned().unwrap_or_default(),
     }
 }
 // ---------------------------------------------------------------------------
@@ -239,13 +224,13 @@ pub fn search_remove_document(document_id: String) -> Result<(), String> {
 /// Exact full-text search (FTS5 word / `"phrase"` / boolean queries).
 #[flutter_rust_bridge::frb(sync)]
 pub fn search_exact(query: String, limit: u32) -> Result<Vec<SearchHitDto>, String> {
-    dispatch_to_dto(SearchMode::Exact, &query, Some(limit), &[], &[])
+    dispatch_to_dto(SearchMode::Exact, &query, Some(limit), &[])
 }
 
 /// Semantic search via local embeddings, ranked by cosine similarity.
 #[flutter_rust_bridge::frb(sync)]
 pub fn search_semantic(query: String, limit: u32) -> Result<Vec<SearchHitDto>, String> {
-    dispatch_to_dto(SearchMode::Semantic, &query, Some(limit), &[], &[])
+    dispatch_to_dto(SearchMode::Semantic, &query, Some(limit), &[])
 }
 
 /// Near-duplicate detection: list all candidate duplicate pairs.
@@ -289,16 +274,13 @@ pub fn search_embed_dims() -> u32 {
     EMBED_DIM as u32
 }
 
-/// Register a document's tags and hierarchy paths for result filtering.
+/// Register a document's tags for result filtering.
 ///
-/// Call after a document is tagged or assigned to a path so searches can be
-/// filtered by that metadata. Pure bookkeeping: indexing text is separate.
+/// Call after a document is tagged so searches can be filtered by them. Pure
+/// bookkeeping: indexing text is separate.
 #[flutter_rust_bridge::frb(sync)]
-pub fn search_set_metadata(document_id: String, tags: Vec<String>, paths: Vec<String>) {
-    metadata()
-        .lock()
-        .unwrap()
-        .insert(document_id, (tags, paths));
+pub fn search_set_metadata(document_id: String, tags: Vec<String>) {
+    metadata().lock().unwrap().insert(document_id, tags);
 }
 
 /// Index one already-persisted document into the in-memory search engine.
@@ -306,7 +288,7 @@ pub fn search_set_metadata(document_id: String, tags: Vec<String>, paths: Vec<St
 /// This is the **wiring point** between the durable SQLite repository and the
 /// process-global search engine: after a file is stored by the ingestion
 /// pipeline (or when the index is rebuilt from the store at startup), re-read
-/// the extracted text and tag/path metadata from [`DocumentRepository`] and
+/// the extracted text and tag metadata from [`DocumentRepository`] and
 /// feed them to the in-memory search backends. Reuses the existing
 /// [`search_index_document`] / [`search_set_metadata`] bridge functions.
 pub(crate) fn index_document_from_repository(
@@ -317,12 +299,8 @@ pub(crate) fn index_document_from_repository(
     let content = repo
         .get_content(document_id.to_owned())?
         .ok_or_else(|| format!("document {document_id} has no extracted content to index"))?;
-    let paths = repo
-        .paths_of(document_id.to_owned())
-        .map(|ps| ps.into_iter().map(|p| p.path).collect::<Vec<_>>())
-        .unwrap_or_default();
     search_index_document(document_id.to_owned(), content.text)?;
-    search_set_metadata(document_id.to_owned(), doc.tags, paths);
+    search_set_metadata(document_id.to_owned(), doc.tags);
     Ok(())
 }
 
@@ -347,22 +325,21 @@ pub fn search_reindex_from_repository(repo: &DocumentRepository) -> Result<(), S
 /// Run a search across the document library.
 ///
 /// `mode` selects exact full-text, semantic (vector similarity), or a hybrid
-/// combination. When `tags`/`paths` are non-empty only documents carrying all of
-/// the tags (and reachable via any listed path) are returned, with snippets
-/// annotated by match-highlight spans for the UI.
+/// combination. When `tags` is non-empty only documents carrying all of the
+/// tags are returned, with snippets annotated by match-highlight spans for the
+/// UI.
 #[flutter_rust_bridge::frb(sync)]
 pub fn search_query(req: SearchRequestDto) -> Vec<SearchHitDto> {
-    dispatch_to_dto(req.mode, &req.text, req.limit, &req.tags, &req.paths).unwrap_or_default()
+    dispatch_to_dto(req.mode, &req.text, req.limit, &req.tags).unwrap_or_default()
 }
 
 /// Shared dispatch for exact/semantic/hybrid search: runs the engine, applies
-/// tag/path filters, and converts results to [`SearchHitDto`] with highlights.
+/// tag filters, and converts results to [`SearchHitDto`] with highlights.
 fn dispatch_to_dto(
     mode: SearchMode,
     text: &str,
     limit: Option<u32>,
     tags: &[String],
-    paths: &[String],
 ) -> Result<Vec<SearchHitDto>, String> {
     let text = text.trim();
     if text.is_empty() {
@@ -386,15 +363,10 @@ fn dispatch_to_dto(
     let filtered: Vec<&SearchHit> = hits
         .iter()
         .filter(|h| {
-            let tag_ok = tags.is_empty()
+            tags.is_empty()
                 || meta
                     .get(&h.document_id)
-                    .is_some_and(|(t, _)| tags.iter().all(|want| t.contains(want)));
-            let path_ok = paths.is_empty()
-                || meta
-                    .get(&h.document_id)
-                    .is_some_and(|(_, p)| paths.iter().any(|want| p.contains(want)));
-            tag_ok && path_ok
+                    .is_some_and(|t| tags.iter().all(|want| t.contains(want)))
         })
         .take(limit)
         .collect();
@@ -413,7 +385,6 @@ impl From<crate::search::SearchHit> for SearchHitDto {
             snippet: h.snippet.unwrap_or_default(),
             highlights: Vec::new(),
             tags: Vec::new(),
-            paths: Vec::new(),
         }
     }
 }

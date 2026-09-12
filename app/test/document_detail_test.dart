@@ -73,7 +73,6 @@ class _GatedTagService extends FakeDocumentService {
       title: doc.title,
       snippet: doc.snippet,
       tags: List.of(nextTags),
-      paths: doc.paths,
       mimeType: doc.mimeType,
       originalName: doc.originalName,
       extra: {...doc.extra, 'tags_manual': 'true'},

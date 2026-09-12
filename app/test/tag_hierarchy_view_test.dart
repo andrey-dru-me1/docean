@@ -10,12 +10,8 @@ import 'package:docean/src/ui/widgets.dart' show TagChip, tagColorFor;
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
-DocumentSummary _doc(
-  String id,
-  String title, {
-  List<String> tags = const [],
-  List<String> paths = const [],
-}) => DocumentSummary(id: id, title: title, tags: tags, paths: paths);
+DocumentSummary _doc(String id, String title, {List<String> tags = const []}) =>
+    DocumentSummary(id: id, title: title, tags: tags);
 
 /// The standard fixture used across tree-structure tests.
 ///

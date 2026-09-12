@@ -4,7 +4,7 @@
 //! copy the bytes into the content-addressed [`BlobStore`], and extract a
 //! plain-text layer. Produces a [`Document`] (metadata record) plus a [`Content`]
 //! row per file. The pipeline itself stores metadata with **empty tags**; the
-//! deterministic auto-organization pass (tags + title + placement) is applied
+//! deterministic auto-organization pass (tags + title) is applied
 //! *after* a file is persisted, by [`crate::api::ingest::ingest_files`] via
 //! `crate::auto_org`.
 //!
@@ -58,8 +58,8 @@ pub enum IngestError {
 /// Options controlling one batch of ingestion.
 #[derive(Debug, Clone, Default)]
 pub struct IngestOption {
-    /// Optional folder prefix for the resulting documents (matches an existing
-    /// `HierarchyPath`). When `None`, no path is assigned.
+    /// Optional folder prefix recorded on the resulting documents' metadata
+    /// (`extra["destination_path"]`). When `None`, no destination is recorded.
     pub destination_path: Option<String>,
     /// Override the display title for the first file only (for batches).
     /// `None` falls back to the file's stem.

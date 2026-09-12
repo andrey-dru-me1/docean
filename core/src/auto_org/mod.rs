@@ -37,7 +37,7 @@ pub use config::{FilenameSource, OrgConfig, OrgPlan};
 pub use feedback::{LearningMode, PreferenceModel};
 pub use generative::{apply_generated, generate_filename};
 pub use organizer::{Corpus, CorpusDoc, DeterministicOrganizer};
-pub use rules::{MatchKind, PlacementRule, RuleSet};
+pub use rules::RuleSet;
 
 #[cfg(test)]
 mod tests;
