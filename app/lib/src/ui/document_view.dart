@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 import 'package:url_launcher/url_launcher.dart';
 
@@ -157,6 +158,12 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
 
   late final TextEditingController _titleController;
 
+  /// Owns the inline title field; blur commits the edit.
+  late final FocusNode _titleFocus;
+
+  /// Guards against the Enter-commit and the blur listener racing two saves.
+  bool _savingTitle = false;
+
   /// Shared preview loader backed by the document service; reuses the same LRU
   /// cache as the browse/search thumbnails so the detail panel doesn't re-read
   /// bytes the list already loaded. Injectable via [DocumentDetailView.previewLoader]
@@ -172,12 +179,33 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
     super.initState();
     _doc = widget.document;
     _titleController = TextEditingController(text: widget.document.title);
+    _titleFocus = FocusNode(debugLabel: 'document-title');
+    _titleFocus.addListener(_onTitleFocusChange);
     _load();
     _loadSuggestions();
   }
 
   @override
+  void didUpdateWidget(covariant DocumentDetailView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Re-opening a different document in this same state instance re-seeds
+    // the inline editor.
+    if (oldWidget.document.id != widget.document.id) {
+      _doc = widget.document;
+      _titleController.text = widget.document.title;
+    }
+  }
+
+  void _onTitleFocusChange() {
+    if (!_titleFocus.hasFocus) {
+      _saveTitle(_titleController.text);
+    }
+  }
+
+  @override
   void dispose() {
+    _titleFocus.removeListener(_onTitleFocusChange);
+    _titleFocus.dispose();
     _titleController.dispose();
     super.dispose();
   }
@@ -312,8 +340,11 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
   }
 
   Future<void> _saveTitle(String value) async {
-    final title = value.trim();
+    if (_savingTitle) return;
+    // Titles are one logical line: collapse any pasted newlines/whitespace.
+    final title = value.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (title.isEmpty || title == _doc.title) return;
+    _savingTitle = true;
     try {
       await widget.documentService.updateTitle(widget.document.id, title);
       final fresh = await widget.documentService.getDocument(
@@ -350,6 +381,8 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Could not update title: $e')));
+    } finally {
+      _savingTitle = false;
     }
   }
 
@@ -809,19 +842,43 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: TextField(
-            controller: _titleController,
-            style: Theme.of(context).textTheme.headlineSmall,
-            minLines: 1,
-            maxLines: null,
-            keyboardType: TextInputType.multiline,
-            decoration: InputDecoration(
-              hintText: 'Document title',
-              isDense: true,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 4),
+          child: Actions(
+            actions: <Type, Action<Intent>>{
+              // Titles are single logical lines: Enter/numpad-Enter commits
+              // and releases focus. The field stays multi-line only so long
+              // titles WRAP for display — without this override, multiline
+              // text fields turn Enter into a newline and onSubmitted never
+              // fires (the title could then not be committed by keyboard).
+              _CommitTitleIntent: CallbackAction<_CommitTitleIntent>(
+                onInvoke: (_) {
+                  // Commit and KEEP focus (blur is the dismissal gesture).
+                  _saveTitle(_titleController.text);
+                  return null;
+                },
+              ),
+            },
+            child: Shortcuts(
+              shortcuts: const <ShortcutActivator, Intent>{
+                SingleActivator(LogicalKeyboardKey.enter): _CommitTitleIntent(),
+                SingleActivator(LogicalKeyboardKey.numpadEnter):
+                    _CommitTitleIntent(),
+              },
+              child: TextField(
+                controller: _titleController,
+                focusNode: _titleFocus,
+                style: Theme.of(context).textTheme.headlineSmall,
+                minLines: 1,
+                maxLines: null,
+                keyboardType: TextInputType.multiline,
+                decoration: InputDecoration(
+                  hintText: 'Document title',
+                  isDense: true,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                ),
+                onSubmitted: _saveTitle,
+              ),
             ),
-            onSubmitted: _saveTitle,
           ),
         ),
         // Magic-wand "Suggest title": replaces the old 'Save title' button.
@@ -1383,4 +1440,9 @@ class _RenameTagDialogState extends State<_RenameTagDialog> {
       ],
     );
   }
+}
+
+/// Local intent: commits the inline title editor (Enter / numpad Enter).
+class _CommitTitleIntent extends Intent {
+  const _CommitTitleIntent();
 }

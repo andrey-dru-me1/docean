@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'
     show debugDefaultTargetPlatformOverride;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:docean/src/features/document_service.dart'
@@ -764,6 +765,50 @@ void main() {
           find.textContaining('Title suggested: Suggested title'),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      'Enter commits the inline title; no newline, blur also commits',
+      (tester) async {
+        // Regression: the title field is multi-line for display wrapping,
+        // which made Enter insert a newline (onSubmitted never fired) and
+        // blur did nothing — the title could not be changed by hand.
+        final doc = _doc(title: 'Old title', tags: const ['finance']);
+        final service = FakeDocumentService(
+          documents: [doc],
+          contentByDocumentId: {'doc-1': 'Report body'},
+        );
+        await tester.pumpWidget(
+          _wrap(DocumentDetailView(document: doc, documentService: service)),
+        );
+        await tester.pumpAndSettle();
+
+        final titleField = find.byType(TextField);
+        await tester.tap(titleField);
+        await tester.pump();
+        await tester.enterText(titleField, 'Renamed via enter');
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        expect(service.updateTitleCount, 1);
+        expect(service.lastTitle, 'Renamed via enter');
+        expect(
+          tester.widget<TextField>(titleField).controller!.text,
+          isNot(contains('\n')),
+          reason: 'Enter must commit, never append a newline',
+        );
+
+        // Blur path: edit, then release focus (what a real click-away does
+        // on desktop — the harness doesn't unfocus on taps, so unfocus
+        // directly through the same path the field listener observes).
+        await tester.enterText(titleField, 'Renamed via blur');
+        await tester.pump();
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+        expect(service.updateTitleCount, 2);
+        expect(service.lastTitle, 'Renamed via blur');
       },
     );
 
