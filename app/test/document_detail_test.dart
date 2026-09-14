@@ -26,6 +26,9 @@ DocumentSummary _doc({
   String? mimeType = 'application/pdf',
   String? originalName = 'report.pdf',
   Map<String, String> extra = const {},
+  int? sizeBytes,
+  int? createdAtMs,
+  int? updatedAtMs,
 }) => DocumentSummary(
   id: id,
   title: title,
@@ -33,6 +36,9 @@ DocumentSummary _doc({
   mimeType: mimeType,
   originalName: originalName,
   extra: extra,
+  sizeBytes: sizeBytes,
+  createdAtMs: createdAtMs,
+  updatedAtMs: updatedAtMs,
 );
 
 /// The inline title field is the first TextField.
@@ -1424,6 +1430,55 @@ void main() {
       expect(s.completedPolls, [('doc-1', SuggestionKind.tags)]);
       // The snackbar includes the dismissal count.
       expect(find.text('2 suggestions dismissed'), findsOneWidget);
+    });
+  });
+
+  group('metadata section', () {
+    testWidgets('shows created/modified/size/type/name/provenance', (
+      tester,
+    ) async {
+      final doc = _doc(
+        sizeBytes: 12345,
+        createdAtMs: 1700000000000,
+        updatedAtMs: 1700086400000,
+        extra: const {'ingested_by': 'phone-import'},
+      );
+      final service = FakeDocumentService(
+        documents: [doc],
+        contentByDocumentId: {'doc-1': 'Report body'},
+      );
+      await tester.pumpWidget(
+        _wrap(DocumentDetailView(document: doc, documentService: service)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Metadata'), findsOneWidget);
+      expect(find.text('Created'), findsOneWidget);
+      expect(find.text('Modified'), findsOneWidget);
+      expect(
+        find.textContaining(RegExp(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}')),
+        findsNWidgets(2),
+      );
+      expect(find.text('12.1 KB'), findsOneWidget);
+      expect(find.text('Type'), findsOneWidget);
+      expect(find.text('File name'), findsOneWidget);
+      expect(find.text('phone-import'), findsOneWidget);
+    });
+
+    testWidgets('hidden entirely when the summary carries no metadata', (
+      tester,
+    ) async {
+      const doc = DocumentSummary(id: 'x', title: 'Bare', tags: []);
+      final service = FakeDocumentService(
+        documents: [doc],
+        contentByDocumentId: {'x': 'body'},
+      );
+      await tester.pumpWidget(
+        _wrap(DocumentDetailView(document: doc, documentService: service)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Metadata'), findsNothing);
+      expect(find.text('Created'), findsNothing);
     });
   });
 }

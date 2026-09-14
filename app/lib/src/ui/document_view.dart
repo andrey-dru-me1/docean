@@ -32,6 +32,9 @@ class DocumentSummary {
     this.mimeType,
     this.originalName,
     this.extra = const {},
+    this.sizeBytes,
+    this.createdAtMs,
+    this.updatedAtMs,
   });
 
   final String id;
@@ -54,6 +57,16 @@ class DocumentSummary {
   /// auto-organization suggestions so a user's manual edits are never
   /// overwritten.
   final Map<String, String> extra;
+
+  /// Raw file size in bytes, when known (metadata section).
+  final int? sizeBytes;
+
+  /// Ingestion time (epoch ms), when known (metadata "Created").
+  final int? createdAtMs;
+
+  /// Last modification time (epoch ms): content, title, tags, hierarchy
+  /// placement or metadata change (metadata "Modified").
+  final int? updatedAtMs;
 
   /// Whether the title has been hand-edited by the user (companion storage
   /// task sets `extra['title_manual'] = 'true'` on manual rename).
@@ -522,6 +535,9 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
         mimeType: src.mimeType,
         originalName: src.originalName,
         extra: src.extra,
+        sizeBytes: src.sizeBytes,
+        createdAtMs: src.createdAtMs,
+        updatedAtMs: src.updatedAtMs,
       );
 
   Future<void> _openExternally() async {
@@ -831,6 +847,20 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
               key: ValueKey('preview-${_doc.id}'),
               document: _doc,
               loader: _previewLoader,
+            ),
+          ],
+          if (_hasMetadata) ...[
+            const SizedBox(height: 16),
+            Text('Metadata', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: _buildMetadata(),
+              ),
             ),
           ],
           const SizedBox(height: 16),
@@ -1147,6 +1177,92 @@ class _DocumentDetailViewState extends State<DocumentDetailView> {
           ),
       ],
     );
+  }
+
+  /// Whether any repository-provided metadata exists to show. Documents whose
+  /// summary carries no timestamps/size/type (e.g. fixtures) skip the section.
+  bool get _hasMetadata =>
+      _doc.createdAtMs != null ||
+      _doc.updatedAtMs != null ||
+      _doc.sizeBytes != null ||
+      _doc.mimeType != null ||
+      _doc.originalName != null;
+
+  /// Provenance keys rendered in order when present in `extra` ("who/where
+  /// this came from"); unknown future keys simply do not appear.
+  static const List<(String, String)> _provenanceKeys = [
+    ('Imported by', 'ingested_by'),
+    ('Imported by', 'imported_by'),
+    ('Origin', 'origin'),
+    ('Source URL', 'source_url'),
+  ];
+
+  Widget _buildMetadata() {
+    final created = _doc.createdAtMs;
+    final updated = _doc.updatedAtMs;
+    final rows = <(String, String)>[
+      if (created != null) ('Created', _formatTimestamp(created)),
+      if (updated != null && updated != created)
+        ('Modified', _formatTimestamp(updated)),
+      if (_doc.sizeBytes != null) ('Size', _formatSize(_doc.sizeBytes!)),
+      if (_doc.mimeType != null && _doc.mimeType!.isNotEmpty) ...[
+        ('Type', _doc.mimeType!),
+      ],
+      if (_doc.originalName != null && _doc.originalName!.isNotEmpty) ...[
+        ('File name', _doc.originalName!),
+      ],
+      for (final (label, key) in _provenanceKeys)
+        if (_doc.extra[key]?.isNotEmpty ?? false) (label, _doc.extra[key]!),
+      if (_doc.id.length >= 64) ('Content hash (SHA-256)', _doc.id),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (label, value) in rows)
+          Padding(
+            key: ValueKey('meta-$label'),
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 150,
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: SelectableText(
+                    value,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// `2026-09-14 08:33` local time from epoch milliseconds.
+  static String _formatTimestamp(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+  }
+
+  /// Human byte size: `942 B`, `3.1 KB`, `4.7 MB`, `1.2 GB`.
+  static String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+    final mb = kb / 1024;
+    if (mb < 1024) return '${mb.toStringAsFixed(1)} MB';
+    return '${(mb / 1024).toStringAsFixed(1)} GB';
   }
 
   Widget _buildContent() {

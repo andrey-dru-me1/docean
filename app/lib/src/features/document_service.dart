@@ -650,6 +650,9 @@ class BridgeDocumentService implements DocumentService {
       mimeType: doc.mimeType,
       originalName: doc.extra['original_name'],
       extra: Map.of(doc.extra),
+      sizeBytes: doc.sizeBytes.toInt(),
+      createdAtMs: doc.createdAtMs.toInt(),
+      updatedAtMs: doc.updatedAtMs.toInt(),
     );
   }
 
@@ -1113,6 +1116,9 @@ class FakeDocumentService implements DocumentService {
     mimeType: src.mimeType,
     originalName: src.originalName,
     extra: extra ?? src.extra,
+    sizeBytes: src.sizeBytes,
+    createdAtMs: src.createdAtMs,
+    updatedAtMs: src.updatedAtMs,
   );
 
   @override
