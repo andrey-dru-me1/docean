@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Opt out of Flutter's experimental merged UI/platform-thread mode
+	     (default ON in 3.44.x macOS embedder). Merged threading defers the
+	     main-queue block with which irondash_engine_context registers the
+	     engine, losing a startup race against super_native_extensions' drag
+	     manager (nil-ivar segfault; irondash/irondash#81). Classic threading
+	     removes the window without patching the plugin. -->
+	<key>FLTEnableMergedPlatformUIThread</key>
+	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleExecutable</key>
