@@ -1,11 +1,16 @@
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart'
+    show DragItemWidget;
 
 import 'package:docean/src/features/document_service.dart'
     show FakeDocumentService;
 import 'package:docean/src/ui/document_view.dart'
     show DocumentDetailView, DocumentSummary;
 import 'package:docean/src/ui/documents_screen.dart' show DocumentsScreen;
+import 'package:docean/src/ui/tag_hierarchy_view.dart' show TagHierarchyView;
 import 'package:docean/src/ui/widgets.dart' show TagChip, tagColorFor;
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
@@ -54,6 +59,7 @@ Future<void> _toggleToTags(WidgetTester tester) async {
 }
 
 String nodeKey(List<String> comps) => 'tag-node-${comps.join('\u0000')}';
+
 String docRowKey(String id, List<String> comps) =>
     'tag-doc-$id@${comps.join('\u0000')}';
 
@@ -683,5 +689,72 @@ void main() {
         expect(tileChips, findsNWidgets(2));
       },
     );
+  });
+
+  // ---------------------------------------------------------------
+  // Drag-out of document rows (source only; never drop targets)
+  // ---------------------------------------------------------------
+  group('drag-out', () {
+    testWidgets('document rows are drag sources; tag rows are not', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      await tester.pumpWidget(
+        _wrap(
+          DocumentsScreen(
+            documentService: _treeService(),
+            onOpenDocument: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _toggleToTags(tester);
+
+      await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
+      await tester.pumpAndSettle();
+      await _tapNode(tester, ['study', 'study/lecture']);
+
+      final docRow = find.byKey(
+        ValueKey(docRowKey('knn', ['study', 'study/lecture'])),
+      );
+      expect(docRow, findsOneWidget);
+      // The drag wrapper sits OUTSIDE the row (it wraps it).
+      expect(
+        find.ancestor(of: docRow, matching: find.byType(DragItemWidget)),
+        findsOneWidget,
+      );
+      expect(
+        find.ancestor(
+          of: find.byKey(ValueKey(nodeKey(['study']))),
+          matching: find.byType(DragItemWidget),
+        ),
+        findsNothing,
+      );
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('no drag wrapper when readBytes is not provided', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      await tester.pumpWidget(
+        _wrap(
+          TagHierarchyView(
+            documents: _treeService().documents,
+            onOpenDocument: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
+      await tester.pumpAndSettle();
+      await _tapNode(tester, ['study', 'study/lecture']);
+      expect(
+        find.byKey(ValueKey(docRowKey('knn', ['study', 'study/lecture']))),
+        findsOneWidget,
+      );
+      expect(find.byType(DragItemWidget), findsNothing);
+      debugDefaultTargetPlatformOverride = null;
+    });
   });
 }

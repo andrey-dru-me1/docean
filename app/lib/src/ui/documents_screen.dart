@@ -9,7 +9,7 @@ import '../features/document_service.dart'
 import '../features/tag_hierarchy.dart'
     show maximalTags, suggestTagCompletions, validateTagPath;
 import 'document_preview_view.dart' show DocumentTilePreview;
-import 'document_view.dart' show DocumentSummary;
+import 'document_view.dart' show DocumentSummary, dragOutFileName;
 import 'search_screen.dart' show DocumentOpener;
 import 'tag_hierarchy_view.dart' show TagHierarchyView;
 import 'tag_search_field.dart' show TagSearchField;
@@ -391,6 +391,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         key: const ValueKey('tag-hierarchy-view'),
         documents: filtered,
         onOpenDocument: widget.onOpenDocument,
+        readBytes: (id) => widget.documentService.readBytes(id),
       );
     }
     return RefreshIndicator(
@@ -426,7 +427,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           );
           return wrapDocumentDragOut(
             documentId: document.id,
-            fileName: _dragFileName(document),
+            fileName: dragOutFileName(document),
             mimeType: document.mimeType,
             readBytes: () => widget.documentService.readBytes(document.id),
             child: tile,
@@ -852,19 +853,6 @@ Future<String?> _promptForExistingTag(
   context: context,
   builder: (dialogContext) => _ExistingTagDialog(tags: tags),
 );
-
-/// The file name the dropped document should receive.
-///
-/// Prefers the original ingested file name (so extensions are preserved);
-/// falls back to the cleaned title with the MIME-derived extension when the
-/// original name is unknown.
-String _dragFileName(DocumentSummary document) {
-  final original = document.originalName?.trim();
-  if (original != null && original.isNotEmpty) return original;
-  final title = document.title.trim();
-  if (title.isEmpty) return 'document';
-  return title;
-}
 
 /// A small stateful dialog that owns its [TextEditingController] for the
 /// lifetime of the dialog (created in [initState], disposed in [dispose]) to

@@ -64,6 +64,17 @@ class DocumentSummary {
   bool get tagsManuallyEdited => extra['tags_manual'] == 'true';
 }
 
+/// The file name a document receives when dragged out of docean (grid tiles,
+/// search results, hierarchy rows). Prefers the original ingested file name
+/// so the extension is preserved; falls back to the trimmed title.
+String dragOutFileName(DocumentSummary document) {
+  final original = document.originalName?.trim();
+  if (original != null && original.isNotEmpty) return original;
+  final title = document.title.trim();
+  if (title.isEmpty) return 'document';
+  return title;
+}
+
 /// A full-screen (or right-side panel) detail view for a document opened from
 /// a search result, the browse list, or a chat citation.
 ///

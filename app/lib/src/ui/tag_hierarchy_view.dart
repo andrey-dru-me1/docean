@@ -10,8 +10,8 @@ import '../features/tag_hierarchy.dart'
         lastSegmentOf,
         parentOf,
         topLevelTags;
-import 'document_view.dart' show DocumentSummary;
-import 'widgets.dart' show EmptyState, tagColorFor;
+import 'document_view.dart' show DocumentSummary, dragOutFileName;
+import 'widgets.dart' show EmptyState, tagColorFor, wrapDocumentDragOut;
 
 /// The "Tags" view mode: a collapsible tree of the documents' tag hierarchy.
 ///
@@ -32,6 +32,7 @@ class TagHierarchyView extends StatefulWidget {
     super.key,
     required this.documents,
     required this.onOpenDocument,
+    this.readBytes,
   });
 
   /// The currently filtered documents to build the tag tree from.
@@ -39,6 +40,11 @@ class TagHierarchyView extends StatefulWidget {
 
   /// Called when a document leaf row is tapped.
   final void Function(DocumentSummary) onOpenDocument;
+
+  /// Resolves a document's raw bytes so its row can be dragged OUT to the OS
+  /// (Finder/Desktop) as a virtual file, mirroring grid tiles and search
+  /// results. `null` disables drag-out; tag rows are never draggable.
+  final Future<List<int>> Function(String id)? readBytes;
 
   @override
   State<TagHierarchyView> createState() => _TagHierarchyViewState();
@@ -472,8 +478,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   }
 
   /// A directly-assigned document row inside a container's rows column.
+  /// Drag-out source only (documents never act as drop targets here).
   Widget _buildDocumentRow(DocumentSummary doc, {Key? key}) {
-    return GestureDetector(
+    final row = GestureDetector(
       key: key,
       onTap: () => widget.onOpenDocument(doc),
       behavior: HitTestBehavior.opaque,
@@ -503,6 +510,15 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
           ),
         ),
       ),
+    );
+    final readBytes = widget.readBytes;
+    if (readBytes == null) return row;
+    return wrapDocumentDragOut(
+      documentId: doc.id,
+      fileName: dragOutFileName(doc),
+      mimeType: doc.mimeType,
+      readBytes: () => readBytes(doc.id),
+      child: row,
     );
   }
 
