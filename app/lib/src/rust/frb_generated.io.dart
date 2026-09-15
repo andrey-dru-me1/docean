@@ -299,6 +299,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
 
   @protected
+  List<SavedView> dco_decode_list_saved_view(dynamic raw);
+
+  @protected
   List<SearchHitDto> dco_decode_list_search_hit_dto(dynamic raw);
 
   @protected
@@ -380,6 +383,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RuleSet dco_decode_rule_set(dynamic raw);
+
+  @protected
+  SavedView dco_decode_saved_view(dynamic raw);
 
   @protected
   SearchHitDto dco_decode_search_hit_dto(dynamic raw);
@@ -767,6 +773,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<SavedView> sse_decode_list_saved_view(SseDeserializer deserializer);
+
+  @protected
   List<SearchHitDto> sse_decode_list_search_hit_dto(
     SseDeserializer deserializer,
   );
@@ -864,6 +873,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RuleSet sse_decode_rule_set(SseDeserializer deserializer);
+
+  @protected
+  SavedView sse_decode_saved_view(SseDeserializer deserializer);
 
   @protected
   SearchHitDto sse_decode_search_hit_dto(SseDeserializer deserializer);
@@ -1339,6 +1351,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_saved_view(
+    List<SavedView> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_search_hit_dto(
     List<SearchHitDto> self,
     SseSerializer serializer,
@@ -1454,6 +1472,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_rule_set(RuleSet self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_saved_view(SavedView self, SseSerializer serializer);
 
   @protected
   void sse_encode_search_hit_dto(SearchHitDto self, SseSerializer serializer);

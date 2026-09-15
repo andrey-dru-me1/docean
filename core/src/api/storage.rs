@@ -9,8 +9,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::domain::{
-    Content, Document, DocumentSuggestion, FeedbackStats, HierarchyLink, SuggestionFeedback,
-    SuggestionKind, Tag,
+    Content, Document, DocumentSuggestion, FeedbackStats, HierarchyLink, SavedView,
+    SuggestionFeedback, SuggestionKind, Tag,
 };
 use crate::library_fs::LibraryFs;
 use crate::storage::{DocumentQuery, DocumentStore, SqliteDocumentStore};
@@ -473,6 +473,34 @@ impl DocumentRepository {
     pub fn clear_feedback(&self) -> Result<(), String> {
         let mut store = self.store()?;
         store.clear_feedback().map_err(|e| e.to_string())
+    }
+
+    /// Save (or replace) a named filter view: a tag set applied in one tap
+    /// from the filter bar. Tags are persisted sorted.
+    pub fn save_view(&self, name: String, tags: Vec<String>) -> Result<(), String> {
+        let name = name.trim().to_owned();
+        if name.is_empty() {
+            return Err("view name is empty".to_owned());
+        }
+        if tags.is_empty() {
+            return Err("view has no tags".to_owned());
+        }
+        let mut store = self.store()?;
+        store
+            .save_view(&SavedView { name, tags })
+            .map_err(|e| e.to_string())
+    }
+
+    /// All saved views, name-ordered.
+    pub fn list_saved_views(&self) -> Result<Vec<SavedView>, String> {
+        let store = self.store()?;
+        store.list_views().map_err(|e| e.to_string())
+    }
+
+    /// Delete a saved view by name (unknown names are a no-op).
+    pub fn delete_saved_view(&self, name: String) -> Result<(), String> {
+        let mut store = self.store()?;
+        store.delete_view(&name).map_err(|e| e.to_string())
     }
 
     /// Housekeeping: drop non-pending suggestions older than `older_than_ms`.

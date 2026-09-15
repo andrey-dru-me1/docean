@@ -153,3 +153,13 @@ pub struct FeedbackStats {
     pub accepts: f64,
     pub rejects: f64,
 }
+
+/// A saved (pinned) filter view: a named set of tag filters applied in one
+/// tap from the filter bar. Tags are persisted sorted; applying a view
+/// replaces the active tag-filter set.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedView {
+    pub name: String,
+    pub tags: Vec<String>,
+}

@@ -220,6 +220,27 @@ class HierarchyLink {
 /// Whether a hierarchy node is a leaf document or a folder/collection.
 enum NodeKind { document, folder }
 
+/// A saved (pinned) filter view: a named set of tag filters applied in one
+/// tap from the filter bar. Tags are persisted sorted; applying a view
+/// replaces the active tag-filter set.
+class SavedView {
+  final String name;
+  final List<String> tags;
+
+  const SavedView({required this.name, required this.tags});
+
+  @override
+  int get hashCode => name.hashCode ^ tags.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SavedView &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          tags == other.tags;
+}
+
 /// A single preference-evidence event recorded when the user reviews a
 /// suggestion (accepted/rejected term, how strongly it was weighted).
 ///

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../features/document_preview.dart' show DocumentPreviewLoader;
 import '../features/document_service.dart'
     show BulkOrganizer, DocumentService, NoopBulkOrganizer;
+import '../rust/domain.dart' show SavedView;
 import '../features/tag_hierarchy.dart'
     show maximalTags, suggestTagCompletions, validateTagPath;
 import 'document_preview_view.dart' show DocumentTilePreview;
@@ -94,6 +95,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   String _query = '';
   final Set<String> _tagFilters = {};
   FileTypeCategory? _fileTypeFilter;
+
+  /// Pinned filter views (name -> tag set) shown in the filter bar.
+  List<SavedView> _savedViews = const [];
   bool _loading = true;
   Object? _error;
 
@@ -153,6 +157,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       final results = await Future.wait([
         widget.documentService.listDocuments(),
         widget.documentService.listTags(),
+        widget.documentService.listSavedViews(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -160,6 +165,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         // Only show tags that appear on at least one document.
         final usedTags = <String>{for (final doc in _all) ...doc.tags};
         _tags = (results[1] as List<String>).where(usedTags.contains).toList();
+        _savedViews = results[2] as List<SavedView>;
         _loading = false;
       });
     } catch (e) {
@@ -213,6 +219,104 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
   /// The browsing chrome: filter field, tag/path filter chips, and a "Select all"
   /// icon button that enters selection mode with all filtered documents selected.
+  bool _viewIsActive(SavedView view) =>
+      _tagFilters.length == view.tags.length &&
+      _tagFilters.containsAll(view.tags);
+
+  /// Apply a pinned view (or clear it when it is already active).
+  void _toggleView(SavedView view) {
+    setState(() {
+      if (_viewIsActive(view)) {
+        _tagFilters.clear();
+      } else {
+        _tagFilters
+          ..clear()
+          ..addAll(view.tags);
+      }
+    });
+  }
+
+  /// Ask for a name and pin the active tag filters as a view.
+  Future<void> _saveCurrentView() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pin filter view'),
+        content: TextField(
+          key: const ValueKey('saved-view-name-field'),
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'View name',
+            helperText: 'Reusing a name replaces that view.',
+          ),
+          onSubmitted: (v) => Navigator.of(context).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Save view'),
+          ),
+        ],
+      ),
+    );
+    final trimmed = name?.trim() ?? '';
+    if (trimmed.isEmpty || !mounted) return;
+    try {
+      final existed = _savedViews.any((v) => v.name == trimmed);
+      await widget.documentService.saveView(trimmed, _tagFilters.toList());
+      _savedViews = await widget.documentService.listSavedViews();
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(existed ? 'View updated' : 'View pinned')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not save view: $e')));
+    }
+  }
+
+  /// Right-click / long-press menu on a view chip: delete it.
+  Future<void> _showViewMenu(BuildContext chipContext, SavedView view) async {
+    final box = chipContext.findRenderObject() as RenderBox?;
+    final overlayBox =
+        Overlay.of(chipContext).context.findRenderObject() as RenderBox?;
+    if (box == null || overlayBox == null || !box.hasSize) return;
+    final delete = await showMenu<String>(
+      context: chipContext,
+      position: RelativeRect.fromRect(
+        Rect.fromPoints(
+          box.localToGlobal(box.size.bottomLeft(Offset.zero)),
+          box.localToGlobal(box.size.topRight(Offset.zero)),
+        ),
+        Offset.zero & overlayBox.size,
+      ),
+      items: const [
+        PopupMenuItem<String>(value: 'delete', child: Text('Delete view')),
+      ],
+    );
+    if (delete != 'delete' || !mounted) return;
+    try {
+      await widget.documentService.deleteSavedView(view.name);
+      _savedViews = await widget.documentService.listSavedViews();
+      if (!mounted) return;
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not delete view: $e')));
+    }
+  }
+
   Widget _buildFilterBar(BuildContext context) {
     final filtered = _filtered;
     return Padding(
@@ -330,6 +434,40 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               runSpacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                for (final view in _savedViews)
+                  Builder(
+                    key: ValueKey('saved-view-${view.name}'),
+                    builder: (chipContext) {
+                      final active = _viewIsActive(view);
+                      return GestureDetector(
+                        onTap: () => _toggleView(view),
+                        onSecondaryTap: () => _showViewMenu(chipContext, view),
+                        onLongPress: () => _showViewMenu(chipContext, view),
+                        child: Chip(
+                          label: Text(view.name),
+                          avatar: Icon(
+                            active ? Icons.star : Icons.star_border,
+                            size: 16,
+                            color: active
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                          ),
+                          labelStyle: TextStyle(
+                            fontSize: 11.5,
+                            color: active
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      );
+                    },
+                  ),
                 for (final tag in _tagFilters)
                   TagChip(
                     key: ValueKey('filter-$tag'),
@@ -349,6 +487,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         .toList(),
                     onSelected: (tag) => setState(() => _tagFilters.add(tag)),
                   ),
+                ),
+                // Pin the current tag-filter set as a named view.
+                IconButton(
+                  key: const ValueKey('save-view-button'),
+                  tooltip: 'Pin current filters as view',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _tagFilters.isEmpty ? null : _saveCurrentView,
+                  icon: const Icon(Icons.star_outline, size: 18),
                 ),
               ],
             ),

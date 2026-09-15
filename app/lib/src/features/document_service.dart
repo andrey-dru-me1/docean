@@ -37,6 +37,7 @@ import '../rust/domain.dart'
         Document,
         DocumentSuggestion,
         NodeKind,
+        SavedView,
         SuggestionKind,
         SuggestionSource,
         SuggestionStatus;
@@ -227,6 +228,15 @@ abstract interface class DocumentService {
 
   /// All tag names known to the repository (`repo.listTags`).
   Future<List<String>> listTags();
+
+  /// Saved (pinned) filter views: named tag sets applied from the filter bar.
+  Future<List<SavedView>> listSavedViews();
+
+  /// Save or replace a named view of the given tag filters.
+  Future<void> saveView(String name, List<String> tags);
+
+  /// Delete a saved view by name.
+  Future<void> deleteSavedView(String name);
 
   /// Rebuild the in-memory search index from the persisted repository.
   ///
@@ -664,6 +674,24 @@ class BridgeDocumentService implements DocumentService {
   }
 
   @override
+  Future<List<SavedView>> listSavedViews() async {
+    final repo = await _repo();
+    return repo.listSavedViews();
+  }
+
+  @override
+  Future<void> saveView(String name, List<String> tags) async {
+    final repo = await _repo();
+    await repo.saveView(name: name, tags: tags);
+  }
+
+  @override
+  Future<void> deleteSavedView(String name) async {
+    final repo = await _repo();
+    await repo.deleteSavedView(name: name);
+  }
+
+  @override
   Future<void> reindex() async {
     final repo = await _repo();
     search_bridge.searchReindexFromRepository(repo: repo);
@@ -703,8 +731,10 @@ class FakeDocumentService implements DocumentService {
     Map<String, List<int>> bytesByDocumentId = const {},
     this.suggestion,
     Map<String, List<SuggestionEntry>> suggestionsByDocumentId = const {},
+    List<SavedView> savedViews = const [],
   }) : documents = [for (final d in documents) _withMaterializedAncestors(d)],
        tags = List.of(tags),
+       views = List.of(savedViews),
        contentByDocumentId = Map.of(contentByDocumentId),
        bytesByDocumentId = {
          for (final e in bytesByDocumentId.entries) e.key: List.of(e.value),
@@ -779,6 +809,13 @@ class FakeDocumentService implements DocumentService {
 
   /// The ids passed to the most recent [bulkTags] call (bulk-tag assertion).
   final List<String> bulkTagIds = [];
+
+  /// Saved views seeded for tests and mutated by [saveView]/[deleteSavedView].
+  final List<SavedView> views;
+
+  /// Counts of [saveView]/[deleteSavedView] calls (view assertion).
+  int savedViewWrites = 0;
+  int savedViewDeletes = 0;
 
   DocumentSummary _byId(String id) => documents.firstWhere(
     (d) => d.id == id,
@@ -1123,6 +1160,28 @@ class FakeDocumentService implements DocumentService {
 
   @override
   Future<List<String>> listTags() async => List.of(tags);
+
+  @override
+  Future<List<SavedView>> listSavedViews() async => List.of(views);
+
+  @override
+  Future<void> saveView(String name, List<String> tags) async {
+    savedViewWrites++;
+    final trimmed = name.trim();
+    final view = SavedView(name: trimmed, tags: [...tags]..sort());
+    final i = views.indexWhere((v) => v.name == trimmed);
+    if (i >= 0) {
+      views[i] = view;
+    } else {
+      views.add(view);
+    }
+  }
+
+  @override
+  Future<void> deleteSavedView(String name) async {
+    savedViewDeletes++;
+    views.removeWhere((v) => v.name == name);
+  }
 
   @override
   Future<void> reindex() async {

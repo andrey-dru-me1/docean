@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use crate::domain::{
-    Content, Document, DocumentSuggestion, HierarchyLink, NodeKind, SuggestionFeedback,
-    SuggestionKind, SuggestionSource, SuggestionStatus, Tag,
+    Content, Document, DocumentSuggestion, HierarchyLink, NodeKind, SavedView,
+    SuggestionFeedback, SuggestionKind, SuggestionSource, SuggestionStatus, Tag,
 };
 use crate::storage::{hash_bytes, DocumentQuery, DocumentStore, SqliteDocumentStore, StorageError};
 
@@ -489,6 +489,49 @@ fn suggestions_and_feedback_round_trip() {
 
     store.clear_feedback().unwrap();
     assert!(store.feedback_stats(None, None).unwrap().is_empty());
+}
+
+#[test]
+fn saved_views_round_trip() {
+    let mut store = temp_store("saved_views");
+
+    store
+        .save_view(&SavedView {
+            name: "Mit work".to_owned(),
+            tags: vec!["\u{043d}\u{0433}\u{0443}".to_owned(), "study/mit".to_owned()],
+        })
+        .unwrap();
+    let views = store.list_views().unwrap();
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].name, "Mit work");
+    // Tags persist sorted (ASCII before Cyrillic byte order).
+    assert_eq!(
+        views[0].tags,
+        vec!["study/mit".to_owned(), "\u{043d}\u{0433}\u{0443}".to_owned()]
+    );
+
+    // Re-saving a name upserts the tag set; still one row.
+    store
+        .save_view(&SavedView {
+            name: "Mit work".to_owned(),
+            tags: vec!["only".to_owned()],
+        })
+        .unwrap();
+    let views = store.list_views().unwrap();
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].tags, vec!["only".to_owned()]);
+
+    store
+        .save_view(&SavedView {
+            name: "B".to_owned(),
+            tags: vec!["x".to_owned()],
+        })
+        .unwrap();
+    assert_eq!(store.list_views().unwrap().len(), 2);
+
+    store.delete_view("B").unwrap();
+    store.delete_view("missing-is-noop").unwrap();
+    assert_eq!(store.list_views().unwrap().len(), 1);
 }
 
 #[test]

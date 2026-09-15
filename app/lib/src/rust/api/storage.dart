@@ -47,6 +47,9 @@ abstract class DocumentRepository implements RustOpaqueInterface {
   /// Remove all suggestion rows for a document.
   Future<void> deleteDocumentSuggestions({required String documentId});
 
+  /// Delete a saved view by name (unknown names are a no-op).
+  Future<void> deleteSavedView({required String name});
+
   /// Ensure a document's file exists on disk with a friendly, deterministic
   /// name and that `extra["file_name"]` is stamped to record that mapping.
   ///
@@ -75,6 +78,9 @@ abstract class DocumentRepository implements RustOpaqueInterface {
   Future<String?> libraryDir();
 
   Future<void> link({required HierarchyLink link});
+
+  /// All saved views, name-ordered.
+  Future<List<SavedView>> listSavedViews();
 
   Future<List<Tag>> listTags();
 
@@ -114,6 +120,10 @@ abstract class DocumentRepository implements RustOpaqueInterface {
 
   /// Persist one feedback event.
   Future<void> recordFeedback({required SuggestionFeedback feedback});
+
+  /// Save (or replace) a named filter view: a tag set applied in one tap
+  /// from the filter bar. Tags are persisted sorted.
+  Future<void> saveView({required String name, required List<String> tags});
 
   /// Set (or clear) the library mirror directory.
   ///

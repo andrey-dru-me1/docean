@@ -13,7 +13,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::domain::{
     Content, Document, DocumentId, DocumentSuggestion, FeedbackStats, HierarchyLink, NodeKind,
-    SuggestionFeedback, SuggestionKind, Tag,
+    SavedView, SuggestionFeedback, SuggestionKind, Tag,
 };
 use crate::storage::blob::{hash_bytes, BlobStore};
 use crate::storage::schema;
@@ -614,6 +614,51 @@ impl SqliteDocumentStore {
     pub fn clear_feedback(&mut self) -> Result<(), StorageError> {
         self.with_conn_mut(|conn| {
             conn.execute("DELETE FROM suggestion_feedback", [])?;
+            Ok(())
+        })
+    }
+
+    /// Insert or replace a saved filter view. Tags are sorted before storing
+    /// so re-saving the same set is byte-stable and comparisons are cheap.
+    pub fn save_view(&mut self, view: &SavedView) -> Result<(), StorageError> {
+        let mut tags = view.tags.clone();
+        tags.sort();
+        let tags_json = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_owned());
+        self.with_conn_mut(|conn| {
+            conn.execute(
+                r#"
+                INSERT INTO saved_views(name, tags) VALUES (?1, ?2)
+                ON CONFLICT(name) DO UPDATE SET tags = excluded.tags
+                "#,
+                params![view.name, tags_json],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// All saved views, name-ordered. Corrupt rows are skipped rather than
+    /// failing the listing.
+    pub fn list_views(&self) -> Result<Vec<SavedView>, StorageError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT name, tags FROM saved_views ORDER BY name")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows
+                .into_iter()
+                .filter_map(|(name, tags_json)| {
+                    serde_json::from_str::<Vec<String>>(&tags_json)
+                        .ok()
+                        .map(|tags| SavedView { name, tags })
+                })
+                .collect())
+        })
+    }
+
+    /// Remove a saved view by name (removing a missing one is a no-op).
+    pub fn delete_view(&mut self, name: &str) -> Result<(), StorageError> {
+        self.with_conn_mut(|conn| {
+            conn.execute("DELETE FROM saved_views WHERE name = ?1", [name])?;
             Ok(())
         })
     }

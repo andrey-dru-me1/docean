@@ -140,6 +140,15 @@ const MIGRATIONS: &[&str] = &[
     DROP TABLE IF EXISTS document_paths;
     DROP TABLE IF EXISTS paths;
     "#,
+    // v4 -> v5: saved (pinned) filter views — a named set of tag filters the
+    // user applies in one tap from the filter bar. Pure UI preference data;
+    // tags persist as a JSON array (sorted), keyed by unique name.
+    r#"
+    CREATE TABLE IF NOT EXISTS saved_views (
+        name TEXT PRIMARY KEY,
+        tags TEXT NOT NULL
+    );
+    "#,
 ];
 
 /// Apply all pending migrations to `conn`.
@@ -190,6 +199,7 @@ mod tests {
             "content",
             "document_suggestions",
             "suggestion_feedback",
+            "saved_views",
         ] {
             let count: i64 = conn
                 .query_row(
