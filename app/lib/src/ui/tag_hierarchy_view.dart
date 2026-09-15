@@ -270,17 +270,18 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   }
 
   /// Appends the row (and expansion content) for one tag node at ANY level —
-  /// top-level roots and nested children alike, so a uniform subtree collapses
-  /// identically no matter where it sits. Returns the number of row units
-  /// added, or null when this walk was already rendered elsewhere (the caller
-  /// reserves a spacer).
+  /// top-level roots and nested children alike. Returns the number of row
+  /// units added, or null when this walk was already rendered elsewhere (the
+  /// caller reserves a spacer).
   ///
-  /// UNIFORM SUBTREE: all docs contained below the path share one tag set
-  /// (e.g. `study/mit` holding a single doc tagged study+lecture+mit+ml). The
-  /// collapsed row lists the docs' remaining tags (minus the walked path —
-  /// the gutter pills already show those), each in its own color, comma-
-  /// separated; expanding lists the contained documents directly — the
-  /// intermediate tag levels carry no information for a uniform set.
+  /// SINGLE-DOC DIRS COLLAPSE: a child directory that carries EXACTLY the
+  /// same documents as its parent (in this tree — the walked row, not the
+  /// tag path's parent) is folded into the parent's row as a comma-joined
+  /// tag name, transitively until every visible child adds information.
+  /// `source(2) > vkr(2), maga(2)` becomes `source, vkr, maga (2)` with the
+  /// docs' distinct tails (article, kalman_filter) as its children. This
+  /// generalizes the old uniform-subtree collapse (identical sets collapse
+  /// the same way, one shared tag at a time).
   int? _appendTagNode(
     List<Widget> out,
     List<String> components,
@@ -291,54 +292,22 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     final pathKey = '$keyPrefix${components.join(_kPathSeparator)}';
     if (!rendered.add(pathKey)) return null;
 
-    final contained = _containedDocs(components, tagsByDoc);
-    final first = contained.isEmpty ? null : tagsByDoc[contained.first]!;
-    final uniform =
-        first != null &&
-        contained.every((id) {
-          final s = tagsByDoc[id]!;
-          return s.length == first.length && s.containsAll(first);
-        });
-    if (uniform) {
-      final walked = components.toSet();
-      final remaining =
-          first.where((t) => !walked.contains(t) && !t.contains(':')).toList()
-            ..sort();
-      out.add(
-        _buildTagRow(
-          components,
-          pathKey,
-          tagsByDoc,
-          extraTagSpans: [
-            for (final t in remaining) _pathSpans([t], separatorPrefix: ', '),
-          ],
-        ),
-      );
-      if (!_expandedTagPaths.contains(pathKey)) return 1;
-      final docRows = [
-        for (final id in contained)
-          _buildDocumentRow(_byId[id]!, key: ValueKey('tag-doc-$id@$pathKey')),
-      ];
-      out.add(
-        _GutterBody(
-          segments: [
-            _GutterSegment.docIcon(
-              color: Theme.of(context).colorScheme.outlineVariant,
-              height: docRows.length,
-            ),
-          ],
-          rows: docRows,
-          totalRows: docRows.length,
-        ),
-      );
-      return 1 + docRows.length;
-    }
+    final (walked, absorbed) = _absorbSameCountDirs(components, tagsByDoc);
 
-    out.add(_buildTagRow(components, pathKey, tagsByDoc));
+    out.add(
+      _buildTagRow(
+        components,
+        pathKey,
+        tagsByDoc,
+        extraTagSpans: [
+          for (final t in absorbed) _pathSpans([t], separatorPrefix: ', '),
+        ],
+      ),
+    );
     if (!_expandedTagPaths.contains(pathKey)) return 1;
     var count = 1;
     final body = _buildExpandedBody(
-      components,
+      walked,
       pathKey,
       tagsByDoc,
       rendered: rendered,
@@ -347,6 +316,33 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     out.add(body);
     count += body.totalRows;
     return count;
+  }
+
+  /// Walks [components] down through children whose document count equals
+  /// the directory's own (every doc below passes through them), absorbing
+  /// each into the row until a fixpoint. Returns the extended walk plus the
+  /// absorbed tags (display order: absorption order, i.e. top-down).
+  (List<String>, List<String>) _absorbSameCountDirs(
+    List<String> components,
+    TagsByDoc tagsByDoc,
+  ) {
+    var walked = [...components];
+    final absorbed = <String>[];
+    while (true) {
+      final base = _containedDocs(walked, tagsByDoc);
+      if (base.isEmpty) break;
+      String? next;
+      for (final t in childTags(walked, tagsByDoc)) {
+        if (_containedDocs([...walked, t], tagsByDoc).length == base.length) {
+          next = t;
+          break;
+        }
+      }
+      if (next == null) break;
+      walked = [...walked, next];
+      absorbed.add(next);
+    }
+    return (walked, absorbed);
   }
 
   /// Docs CONTAINED by [components]: their tag sets include every walked
@@ -636,16 +632,16 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     });
   }
 
-  /// Expansion keys of EVERY walk in the lattice: the roots and, recursively,
-  /// each walk extended by one child tag. Walks are finite — every step adds
-  /// a tag that is not already in the path. [keyPrefix] namespaces the keys
-  /// to one filtered section (matching `_appendTagNode`'s pathKey).
+  /// Expansion keys of EVERY rendered walk: rows follow the ABSORPTION, so
+  /// the walk recursion mirrors `_appendTagNode` — each node's key is the
+  /// original components, while its children hang off the absorbed walk.
   Set<String> _allPathKeys(TagsByDoc tagsByDoc, {String keyPrefix = ''}) {
     final keys = <String>{};
     void walk(List<String> components) {
       if (!keys.add('$keyPrefix${components.join(_kPathSeparator)}')) return;
-      for (final t in childTags(components, tagsByDoc)) {
-        walk([...components, t]);
+      final (walked, _) = _absorbSameCountDirs(components, tagsByDoc);
+      for (final t in childTags(walked, tagsByDoc)) {
+        walk([...walked, t]);
       }
     }
 

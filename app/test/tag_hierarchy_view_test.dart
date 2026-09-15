@@ -215,7 +215,7 @@ void main() {
     });
 
     testWidgets(
-      'study children: mit first (2 remaining docs), then lecture, seminar',
+      'study absorbs equal-count mit; grandchildren become children',
       (tester) async {
         await tester.pumpWidget(
           _wrap(
@@ -231,58 +231,23 @@ void main() {
         await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
         await tester.pumpAndSettle();
 
-        final ys = [
-          tester
-              .getTopLeft(find.byKey(ValueKey(nodeKey(['study', 'study/mit']))))
-              .dy,
-          tester
-              .getTopLeft(
-                find.byKey(ValueKey(nodeKey(['study', 'study/lecture']))),
-              )
-              .dy,
-          tester
-              .getTopLeft(
-                find.byKey(ValueKey(nodeKey(['study', 'study/seminar']))),
-              )
-              .dy,
-        ];
-        for (var i = 0; i < ys.length - 1; i++) {
-          expect(ys[i], lessThan(ys[i + 1]));
-        }
-        // No level-skipping: study/mit/ml (and every tag whose parent chain
-        // is not fully walked) must not be listed under study.
+        // mit carries the same 2 docs as study -> absorbed into its row.
         expect(
-          find.byKey(ValueKey(nodeKey(['study', 'study/mit/ml']))),
+          find.byKey(ValueKey(nodeKey(['study', 'study/mit']))),
+          findsNothing,
+        );
+        // The pre-absorption sibling keys are gone entirely.
+        expect(
+          find.byKey(ValueKey(nodeKey(['study', 'study/lecture']))),
           findsNothing,
         );
         expect(
-          find.byKey(ValueKey(nodeKey(['study', 'study/mit/cprog']))),
+          find.byKey(ValueKey(nodeKey(['study', 'study/seminar']))),
           findsNothing,
         );
-      },
-    );
-
-    testWidgets(
-      'expanding mit keeps its siblings, grouped by parent (cprog, ml, lecture, seminar)',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            DocumentsScreen(
-              documentService: _treeService(),
-              onOpenDocument: (_) {},
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        await _toggleToTags(tester);
-
-        await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(ValueKey(nodeKey(['study', 'study/mit']))));
-        await tester.pumpAndSettle();
-
-        // All four children of the mit walk are visible. Children are FULL
-        // tag names (childTags returns tags, not bare segments).
+        // All four grandchildren surface under the merged row, grouped:
+        // mit's children (cprog, ml - alpha) first, then study's
+        // (lecture, seminar).
         final cprog = find.byKey(
           ValueKey(nodeKey(['study', 'study/mit', 'study/mit/cprog'])),
         );
@@ -290,17 +255,14 @@ void main() {
           ValueKey(nodeKey(['study', 'study/mit', 'study/mit/ml'])),
         );
         final lecture = find.byKey(
-          ValueKey(nodeKey(['study', 'study/lecture'])),
+          ValueKey(nodeKey(['study', 'study/mit', 'study/lecture'])),
         );
         final seminar = find.byKey(
-          ValueKey(nodeKey(['study', 'study/seminar'])),
+          ValueKey(nodeKey(['study', 'study/mit', 'study/seminar'])),
         );
         for (final f in [cprog, ml, lecture, seminar]) {
           expect(f, findsOneWidget);
         }
-        // Grouped by parent: children of the LAST path tag (mit) first
-        // (cprog, ml — alpha within the group), then children of earlier
-        // path tags (study): lecture, seminar.
         expect(tester.getTopLeft(cprog).dy, lessThan(tester.getTopLeft(ml).dy));
         expect(
           tester.getTopLeft(ml).dy,
@@ -310,15 +272,23 @@ void main() {
           tester.getTopLeft(lecture).dy,
           lessThan(tester.getTopLeft(seminar).dy),
         );
-        // mit's children sit deeper than mit itself (chevron x grows).
+        // 'study, mit (2)': the absorbed tag shows in the row text, the
+        // badge keeps the merged document count.
+        final studyRow = find.byKey(ValueKey(nodeKey(['study'])));
+        expect(
+          find.descendant(of: studyRow, matching: find.textContaining('mit')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: studyRow, matching: find.text('2')),
+          findsOneWidget,
+        );
       },
     );
 
     testWidgets(
-      'mixed paths reach every document: qsort via mit/cprog/seminar, knn via mit/ml/lecture',
+      'mixed paths reach every document: qsort via cprog, knn via ml',
       (tester) async {
-        // Tall viewport: the fully expanded lattice exceeds the default
-        // 600px test surface and rows would scroll under the finder taps.
         tester.view.physicalSize = const Size(1200, 1800);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.reset);
@@ -333,17 +303,16 @@ void main() {
         await tester.pumpAndSettle();
         await _toggleToTags(tester);
 
-        // qsort is the only doc contained under study/mit/cprog → that
-        // subtree collapses at cprog: the row lists qsort's remaining tag
-        // (seminar) and expanding shows the doc link directly.
+        // study absorbs mit; drill into cprog - it absorbs qsort's other
+        // tag (seminar) because alone it holds the single doc there.
         await _tapNode(tester, ['study']);
-        await _tapNode(tester, ['study', 'study/mit']);
         await _tapNode(tester, ['study', 'study/mit', 'study/mit/cprog']);
+        final cprogRow = find.byKey(
+          ValueKey(nodeKey(['study', 'study/mit', 'study/mit/cprog'])),
+        );
         expect(
           find.descendant(
-            of: find.byKey(
-              ValueKey(nodeKey(['study', 'study/mit', 'study/mit/cprog'])),
-            ),
+            of: cprogRow,
             matching: find.textContaining('seminar'),
           ),
           findsOneWidget,
@@ -356,7 +325,7 @@ void main() {
           ),
           findsOneWidget,
         );
-        // No child directory rows inside the collapsed cprog subtree.
+        // No standalone directory row for the absorbed seminar tail.
         expect(
           find.byKey(
             ValueKey(
@@ -381,7 +350,7 @@ void main() {
         );
         expect(studyPills, findsWidgets);
 
-        // knn symmetric: collapses at ml with 'lecture' as remaining tag.
+        // knn symmetric: ml absorbs lecture.
         await _tapNode(tester, ['study', 'study/mit', 'study/mit/ml']);
         expect(
           find.byKey(
@@ -475,54 +444,47 @@ void main() {
       expect(find.byKey(ValueKey(docRowKey('deep', ['a']))), findsOneWidget);
     });
 
-    testWidgets(
-      'collapse study after expanding study/mit does not crash and preserves expanded state',
-      (tester) async {
-        tester.view.physicalSize = const Size(1200, 1800);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
-        await tester.pumpWidget(
-          _wrap(
-            DocumentsScreen(
-              documentService: _treeService(),
-              onOpenDocument: (_) {},
-            ),
+    testWidgets('collapse study after expanding ml preserves expanded state', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 1800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        _wrap(
+          DocumentsScreen(
+            documentService: _treeService(),
+            onOpenDocument: (_) {},
           ),
-        );
-        await tester.pumpAndSettle();
-        await _toggleToTags(tester);
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _toggleToTags(tester);
 
-        await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(ValueKey(nodeKey(['study', 'study/mit']))),
-          findsOneWidget,
-        );
+      await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
+      await tester.pumpAndSettle();
+      final mlRow = find.byKey(
+        ValueKey(nodeKey(['study', 'study/mit', 'study/mit/ml'])),
+      );
+      expect(mlRow, findsOneWidget);
 
-        await tester.tap(find.byKey(ValueKey(nodeKey(['study', 'study/mit']))));
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(ValueKey(nodeKey(['study', 'study/mit', 'study/mit/ml']))),
-          findsOneWidget,
-        );
+      await tester.tap(mlRow);
+      await tester.pumpAndSettle();
+      final knnDoc = find.byKey(
+        ValueKey(docRowKey('knn', ['study', 'study/mit', 'study/mit/ml'])),
+      );
+      expect(knnDoc, findsOneWidget);
 
-        // Collapse study — no exception; children disappear.
-        await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(ValueKey(nodeKey(['study', 'study/mit']))),
-          findsNothing,
-        );
+      // Collapse study - no exception; children disappear.
+      await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
+      await tester.pumpAndSettle();
+      expect(mlRow, findsNothing);
 
-        // Re-expand study — mit is still expanded.
-        await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(ValueKey(nodeKey(['study', 'study/mit', 'study/mit/ml']))),
-          findsOneWidget,
-        );
-      },
-    );
+      // Re-expand study - ml is still expanded.
+      await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
+      await tester.pumpAndSettle();
+      expect(knnDoc, findsOneWidget);
+    });
 
     testWidgets('tag-tree-toggle-all expands and collapses all', (
       tester,
@@ -590,10 +552,10 @@ void main() {
         await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
         await tester.pumpAndSettle();
 
-        // study/mit row shows its per-component colorful path.
+        // The merged 'study, mit' row shows its colorful path spans.
         expect(
           find.descendant(
-            of: find.byKey(ValueKey(nodeKey(['study', 'study/mit']))),
+            of: find.byKey(ValueKey(nodeKey(['study']))),
             matching: find.textContaining('mit'),
           ),
           findsOneWidget,
@@ -715,10 +677,10 @@ void main() {
 
       await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
       await tester.pumpAndSettle();
-      await _tapNode(tester, ['study', 'study/lecture']);
+      await _tapNode(tester, ['study', 'study/mit', 'study/mit/ml']);
 
       final docRow = find.byKey(
-        ValueKey(docRowKey('knn', ['study', 'study/lecture'])),
+        ValueKey(docRowKey('knn', ['study', 'study/mit', 'study/mit/ml'])),
       );
       expect(docRow, findsOneWidget);
       // The drag wrapper sits OUTSIDE the row (it wraps it).
@@ -751,9 +713,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(ValueKey(nodeKey(['study']))));
       await tester.pumpAndSettle();
-      await _tapNode(tester, ['study', 'study/lecture']);
+      await _tapNode(tester, ['study', 'study/mit', 'study/mit/ml']);
       expect(
-        find.byKey(ValueKey(docRowKey('knn', ['study', 'study/lecture']))),
+        find.byKey(
+          ValueKey(docRowKey('knn', ['study', 'study/mit', 'study/mit/ml'])),
+        ),
         findsOneWidget,
       );
       expect(find.byType(DragItemWidget), findsNothing);
