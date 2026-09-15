@@ -63,6 +63,9 @@ String nodeKey(List<String> comps) => 'tag-node-${comps.join('\u0000')}';
 String docRowKey(String id, List<String> comps) =>
     'tag-doc-$id@${comps.join('\u0000')}';
 
+/// Document row key for a file of the root / current (filtered) directory.
+String fileRowKey(String id) => 'tag-doc-$id@';
+
 /// Taps a tag row by its walk, scrolling it into view first — deep lattice
 /// walks extend past the viewport and ListView lazily builds rows.
 Future<void> _tapNode(WidgetTester tester, List<String> components) async {
@@ -755,6 +758,280 @@ void main() {
       );
       expect(find.byType(DragItemWidget), findsNothing);
       debugDefaultTargetPlatformOverride = null;
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // Filtering by a tag moves INTO that directory
+  // ---------------------------------------------------------------
+  group('filtered tree (cd)', () {
+    testWidgets('selected tag row disappears; children re-base to root', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          TagHierarchyView(
+            documents: [
+              _doc('mitml', 'MIT ML', tags: const ['mit', 'mit/ml']),
+              _doc('mitonly', 'MIT only', tags: const ['mit']),
+            ],
+            onOpenDocument: (_) {},
+            selectedTags: const {'mit'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Inside 'mit': the directory itself is not listed, its child is
+      // re-based to root, and the doc that ONLY had 'mit' is a plain file.
+      expect(find.byKey(ValueKey(nodeKey(['mit']))), findsNothing);
+      expect(find.byKey(ValueKey(nodeKey(['ml']))), findsOneWidget);
+      expect(find.byKey(ValueKey(fileRowKey('mitonly'))), findsOneWidget);
+
+      await _tapNode(tester, ['ml']);
+      expect(find.byKey(ValueKey(docRowKey('mitml', ['ml']))), findsOneWidget);
+    });
+
+    testWidgets('sibling directories of the selection re-base to root', (
+      tester,
+    ) async {
+      // mit/ml selected inside mit: diploma hangs off the hidden 'mit'
+      // breadcrumb and must surface as a root 'diploma' directory, never
+      // re-materializing an empty 'mit' ghost.
+      await tester.pumpWidget(
+        _wrap(
+          TagHierarchyView(
+            documents: [
+              _doc(
+                'both',
+                'ML + diploma thesis',
+                tags: const ['mit', 'mit/ml', 'mit/diploma'],
+              ),
+            ],
+            onOpenDocument: (_) {},
+            selectedTags: const {'mit/ml'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey(nodeKey(['mit']))), findsNothing);
+      expect(find.byKey(ValueKey(nodeKey(['ml']))), findsNothing);
+      expect(find.byKey(ValueKey(nodeKey(['diploma']))), findsOneWidget);
+      // Sibling content remains: NOT a plain file of the current dir.
+      expect(find.byKey(ValueKey(fileRowKey('both'))), findsNothing);
+
+      await _tapNode(tester, ['diploma']);
+      expect(
+        find.byKey(ValueKey(docRowKey('both', ['diploma']))),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('breadcrumbs above the selected directory are hidden', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          TagHierarchyView(
+            documents: [
+              _doc(
+                'deep',
+                'Deep doc',
+                tags: const ['study', 'study/mit', 'study/mit/ml'],
+              ),
+            ],
+            onOpenDocument: (_) {},
+            selectedTags: const {'study/mit'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey(nodeKey(['study']))), findsNothing);
+      expect(
+        find.byKey(ValueKey(nodeKey(['study', 'study/mit']))),
+        findsNothing,
+      );
+      expect(find.byKey(ValueKey(nodeKey(['ml']))), findsOneWidget);
+    });
+
+    testWidgets('multi-select is ONE dir: other tags first, exact docs last', (
+      tester,
+    ) async {
+      // mit/ml + mit/diploma selected: the display equals what expanding
+      // those tag dirs shows — remaining ('other') tag dirs FIRST, and at
+      // the end the documents that carry exactly the selected tags.
+      await tester.pumpWidget(
+        _wrap(
+          TagHierarchyView(
+            documents: [
+              _doc(
+                'exact',
+                'Exactly the two tags',
+                tags: const ['mit', 'mit/ml', 'mit/diploma'],
+              ),
+              _doc(
+                'wider',
+                'Also has another tag',
+                tags: const ['mit', 'mit/ml', 'mit/diploma', 'misc'],
+              ),
+            ],
+            onOpenDocument: (_) {},
+            selectedTags: const {'mit/ml', 'mit/diploma'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Selected dirs vanish entirely (no ghost rows)...
+      expect(find.byKey(ValueKey(nodeKey(['ml']))), findsNothing);
+      expect(find.byKey(ValueKey(nodeKey(['diploma']))), findsNothing);
+      expect(find.byKey(ValueKey(nodeKey(['mit']))), findsNothing);
+      // ...the other tag renders as a directory first...
+      expect(find.byKey(ValueKey(nodeKey(['misc']))), findsOneWidget);
+      // ...and the exact-match document is a file row at the end.
+      final misc = find.byKey(ValueKey(nodeKey(['misc'])));
+      final file = find.byKey(ValueKey(fileRowKey('exact')));
+      expect(file, findsOneWidget);
+      expect(
+        tester.getTopLeft(misc).dy,
+        lessThan(tester.getTopLeft(file).dy),
+        reason: 'directories before files',
+      );
+      expect(
+        find.byKey(ValueKey(fileRowKey('wider'))),
+        findsNothing,
+        reason: 'wider has remaining content: dir member, not a file',
+      );
+
+      await _tapNode(tester, ['misc']);
+      expect(
+        find.byKey(ValueKey(docRowKey('wider', ['misc']))),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'sibling of selection stays a dir and contains its docs on expand',
+      (tester) async {
+        // Literal report scenario: doc{nsu/maga, nsu/vkr, kalman_filter}
+        // (materialized nsu) filtered by nsu/vkr + nsu/kalman_filter.
+        // 'kalman_filter' is the UNRELATED tag kept as a dir; expanding it
+        // must show the doc NESTED, never as a top-level row.
+        await tester.pumpWidget(
+          _wrap(
+            TagHierarchyView(
+              documents: [
+                _doc(
+                  'thesis',
+                  'Kalman thesis',
+                  tags: const ['nsu', 'nsu/maga', 'nsu/vkr', 'kalman_filter'],
+                ),
+              ],
+              onOpenDocument: (_) {},
+              selectedTags: const {'nsu/vkr', 'nsu/kalman_filter'},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(ValueKey(nodeKey(['kalman_filter']))),
+          findsOneWidget,
+        );
+        await _tapNode(tester, ['kalman_filter']);
+        final docRow = find.byKey(
+          ValueKey(docRowKey('thesis', ['kalman_filter'])),
+        );
+        expect(docRow, findsOneWidget);
+        expect(
+          find.byKey(ValueKey('tag-doc-thesis@')),
+          findsNothing,
+          reason: 'doc with remaining tags must not be a root file',
+        );
+        // NESTED: strictly indented under the directory row.
+        expect(
+          tester.getTopLeft(docRow).dx,
+          greaterThan(
+            tester
+                .getTopLeft(find.byKey(ValueKey(nodeKey(['kalman_filter']))))
+                .dx,
+          ),
+          reason: 'expanded doc must be indented under its dir',
+        );
+      },
+    );
+
+    testWidgets('root dir with mixed members still indents its direct docs', (
+      tester,
+    ) async {
+      // Non-uniform expansion: one doc's set EXACTLY equals the dir walk,
+      // another continues deeper (kalman_filter/ekf). The exact-match doc
+      // used to be deferred OUT of the container (flush at top level);
+      // it must now sit indented inside like any nested member.
+      await tester.pumpWidget(
+        _wrap(
+          TagHierarchyView(
+            documents: [
+              _doc(
+                'thesis',
+                'Kalman thesis',
+                tags: const ['nsu', 'nsu/maga', 'nsu/vkr', 'kalman_filter'],
+              ),
+              _doc(
+                'ekf',
+                'EKF extensions',
+                tags: const [
+                  'nsu',
+                  'nsu/maga',
+                  'nsu/vkr',
+                  'kalman_filter',
+                  'kalman_filter/ekf',
+                ],
+              ),
+            ],
+            onOpenDocument: (_) {},
+            selectedTags: const {'nsu/maga', 'nsu/vkr'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final dir = find.byKey(ValueKey(nodeKey(['kalman_filter'])));
+      expect(dir, findsOneWidget);
+      // 'ekf' dir listed too (child of the kept tag).
+      await _tapNode(tester, ['kalman_filter']);
+      final thesisRow = find.byKey(
+        ValueKey(docRowKey('thesis', ['kalman_filter'])),
+      );
+      expect(thesisRow, findsOneWidget);
+      expect(
+        tester.getTopLeft(thesisRow).dx,
+        greaterThan(tester.getTopLeft(dir).dx),
+        reason: 'direct doc of an expanded root dir must be indented',
+      );
+      expect(
+        find.byKey(ValueKey(docRowKey('ekf', ['kalman_filter']))),
+        findsNothing,
+        reason: 'deeper doc belongs under ekf, not at this level',
+      );
+    });
+
+    testWidgets('untagged documents are file rows of the root', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          TagHierarchyView(
+            documents: [
+              _doc('tagged', 'Tagged', tags: const ['idea']),
+              _doc('bare', 'No tags at all', tags: const []),
+              _doc('prop', 'Property only', tags: const ['student:Alice']),
+            ],
+            onOpenDocument: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey(nodeKey(['idea']))), findsOneWidget);
+      // The root directory lists its plain files, too.
+      expect(find.byKey(ValueKey(fileRowKey('bare'))), findsOneWidget);
+      expect(find.byKey(ValueKey(fileRowKey('prop'))), findsOneWidget);
     });
   });
 }

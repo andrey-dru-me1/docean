@@ -392,6 +392,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         documents: filtered,
         onOpenDocument: widget.onOpenDocument,
         readBytes: (id) => widget.documentService.readBytes(id),
+        // Selecting a tag filter "moves into" that directory in the tree.
+        selectedTags: _tagFilters,
       );
     }
     return RefreshIndicator(

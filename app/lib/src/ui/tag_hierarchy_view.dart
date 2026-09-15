@@ -6,6 +6,7 @@ import '../features/tag_hierarchy.dart'
         childTags,
         docAtPath,
         docsContaining,
+        implicitAncestors,
         isValidTagPath,
         lastSegmentOf,
         parentOf,
@@ -33,6 +34,7 @@ class TagHierarchyView extends StatefulWidget {
     required this.documents,
     required this.onOpenDocument,
     this.readBytes,
+    this.selectedTags = const {},
   });
 
   /// The currently filtered documents to build the tag tree from.
@@ -45,6 +47,12 @@ class TagHierarchyView extends StatefulWidget {
   /// (Finder/Desktop) as a virtual file, mirroring grid tiles and search
   /// results. `null` disables drag-out; tag rows are never draggable.
   final Future<List<int>> Function(String id)? readBytes;
+
+  /// Active tag filters: the tree is rooted INSIDE these directories (like
+  /// `cd`). Selected paths and their ancestors are never listed, tags below
+  /// a selected path are re-based to root entries, and documents left
+  /// without any tag appear as plain file rows of the current directory.
+  final Set<String> selectedTags;
 
   @override
   State<TagHierarchyView> createState() => _TagHierarchyViewState();
@@ -140,10 +148,75 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     return tagsByDoc;
   }
 
+  /// Tree namespace with the active filters applied as a `cd` into EVERY
+  /// selected directory at once. The result is exactly what the unfiltered
+  /// hierarchy shows with those tag dirs expanded — ONE merged namespace, so
+  /// the root and any expanded section share the same shape: breadcrumbs (the
+  /// selected paths and their ancestors) never render; remaining content
+  /// re-bases to root; unrelated tags stay; documents left with nothing but
+  /// the selection become plain file rows listed AFTER all directories.
+  /// Documents without any hierarchy tag are file rows of the ROOT even with
+  /// no selection (the untagged files of the top directory).
+  ({TagsByDoc tags, List<String> files}) _visibleTree() {
+    final raw = _tagsByDoc;
+    final files = <String>[
+      // Untagged / property-only documents: files of the current directory.
+      for (final doc in widget.documents)
+        if (!raw.containsKey(doc.id)) doc.id,
+    ];
+    final selected = {
+      for (final s in widget.selectedTags)
+        if (isValidTagPath(s)) s,
+    };
+    if (selected.isEmpty) return (tags: raw, files: files);
+
+    final hidden = <String>{
+      ...selected,
+      for (final s in selected) ...implicitAncestors(s),
+    };
+    // Longest first: 'mit/ml' claims 'mit/ml/x' before a coarser 'mit' could.
+    final prefixes = selected.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    final tags = <String, Set<String>>{};
+    for (final entry in raw.entries) {
+      final out = <String>{};
+      for (final t in entry.value) {
+        if (hidden.contains(t)) continue; // the dir itself, or a breadcrumb
+        final owner = prefixes.where((s) => t.startsWith('$s/')).firstOrNull;
+        if (owner != null) {
+          out.add(t.substring(owner.length + 1));
+          continue;
+        }
+        // Sibling branch of a selected directory hanging off one of ITS
+        // breadcrumbs (mit/diploma while cd'd into mit/ml): re-base under
+        // the deepest shared breadcrumb so the hidden chain can never
+        // re-materialize as an empty ghost directory.
+        String? shared;
+        for (final s in prefixes) {
+          for (final a in implicitAncestors(s)) {
+            if (t.startsWith('$a/') &&
+                (shared == null || a.length > shared.length)) {
+              shared = a;
+            }
+          }
+        }
+        out.add(shared != null ? t.substring(shared.length + 1) : t);
+      }
+      if (out.isEmpty) {
+        // Only the selection (+ breadcrumbs) remained: a plain file of it.
+        if (entry.value.any(selected.contains)) files.add(entry.key);
+      } else {
+        tags[entry.key] = out;
+      }
+    }
+    return (tags: tags, files: files);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final tagsByDoc = _tagsByDoc;
-    if (tagsByDoc.isEmpty) {
+    final (:tags, :files) = _visibleTree();
+    if (tags.isEmpty && files.isEmpty) {
       return const EmptyState(icon: Icons.tag, title: 'No tags yet');
     }
     final rows = <Widget>[];
@@ -151,9 +224,15 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     // out twice. Paths are ORDER-SENSITIVE component walks — the same tag set
     // reached via a different order is a different (also valid) walk.
     final rendered = <String>{};
-    for (final top in topLevelTags(tagsByDoc)) {
-      _appendNode(rows, [top], tagsByDoc, rendered: rendered);
+    for (final top in topLevelTags(tags)) {
+      _appendNode(rows, [top], tags, rendered: rendered);
     }
+    // Files land last, after all directories — the current directory's plain
+    // documents (untagged, or exactly the selected set).
+    rows.addAll([
+      for (final id in files)
+        _buildDocumentRow(_byId[id]!, key: ValueKey('tag-doc-$id@')),
+    ]);
     return Column(
       key: const ValueKey('tag-hierarchy-view'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -170,24 +249,24 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     );
   }
 
-  /// Appends the top-level node for [components]; the node's own files are
-  /// deferred below its expansion (they land after the whole subtree).
+  /// Appends the top-level node for [components]. A root node's own files
+  /// render INSIDE its expansion (indented), exactly like any nested
+  /// directory — only the CURRENT directory's plain files (untagged docs
+  /// and the selection-exact set) sit flush at the bottom of the listing.
   void _appendNode(
     List<Widget> rows,
     List<String> components,
     TagsByDoc tagsByDoc, {
     required Set<String> rendered,
+    String keyPrefix = '',
   }) {
-    final deferred = <Widget>[];
     _appendTagNode(
       rows,
       components,
       tagsByDoc,
       rendered: rendered,
-      deferredDocs: deferred,
-      deferOwnDocs: true,
+      keyPrefix: keyPrefix,
     );
-    rows.addAll(deferred);
   }
 
   /// Appends the row (and expansion content) for one tag node at ANY level —
@@ -207,10 +286,9 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     List<String> components,
     TagsByDoc tagsByDoc, {
     required Set<String> rendered,
-    List<Widget>? deferredDocs,
-    bool deferOwnDocs = false,
+    String keyPrefix = '',
   }) {
-    final pathKey = components.join(_kPathSeparator);
+    final pathKey = '$keyPrefix${components.join(_kPathSeparator)}';
     if (!rendered.add(pathKey)) return null;
 
     final contained = _containedDocs(components, tagsByDoc);
@@ -259,14 +337,12 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
     out.add(_buildTagRow(components, pathKey, tagsByDoc));
     if (!_expandedTagPaths.contains(pathKey)) return 1;
     var count = 1;
-    final nestedDeferred = deferredDocs ?? <Widget>[];
     final body = _buildExpandedBody(
       components,
       pathKey,
       tagsByDoc,
       rendered: rendered,
-      deferredDocs: nestedDeferred,
-      deferDocs: deferOwnDocs,
+      keyPrefix: keyPrefix,
     );
     out.add(body);
     count += body.totalRows;
@@ -290,16 +366,15 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
   /// contribute their OWN containers into the rows column — containers nest
   /// inside one another, shifting one gutter width per level.
   ///
-  /// Deferred documents of THIS node land in [deferredDocs] (the caller
-  /// places them after the container); they reserve row slots in the
-  /// container's pill span so the pill stretches over them too.
+  /// Directly-assigned documents of THIS path land at the bottom of the
+  /// container with a doc-icon gutter segment — same as in any nested
+  /// directory, so expanded roots and expanded children look identical.
   _GutterBody _buildExpandedBody(
     List<String> components,
     String pathKey,
     TagsByDoc tagsByDoc, {
     required Set<String> rendered,
-    bool deferDocs = false,
-    List<Widget>? deferredDocs,
+    String keyPrefix = '',
   }) {
     final bodyRows = <Widget>[];
 
@@ -340,7 +415,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
           childComponents,
           tagsByDoc,
           rendered: rendered,
-          deferredDocs: deferredDocs ?? <Widget>[],
+          keyPrefix: keyPrefix,
         );
         if (added == null) {
           bodyRows.add(SizedBox(height: _kTagRowHeight));
@@ -371,16 +446,10 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
       if (doc == null || docTags == null || !docAtPath(docTags, comps)) {
         continue;
       }
-      final row = _buildDocumentRow(
-        doc,
-        key: ValueKey('tag-doc-${doc.id}@$pathKey'),
+      bodyRows.add(
+        _buildDocumentRow(doc, key: ValueKey('tag-doc-${doc.id}@$pathKey')),
       );
-      if (deferDocs && deferredDocs != null) {
-        deferredDocs.add(row);
-      } else {
-        bodyRows.add(row);
-        docsHeight++;
-      }
+      docsHeight++;
     }
     if (docsHeight > 0) {
       segments.add(
@@ -561,7 +630,7 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
         _expandedTagPaths.clear();
         _allExpanded = false;
       } else {
-        _expandedTagPaths.addAll(_allPathKeys(_tagsByDoc));
+        _expandedTagPaths.addAll(_allPathKeys(_visibleTree().tags));
         _allExpanded = true;
       }
     });
@@ -569,11 +638,12 @@ class _TagHierarchyViewState extends State<TagHierarchyView> {
 
   /// Expansion keys of EVERY walk in the lattice: the roots and, recursively,
   /// each walk extended by one child tag. Walks are finite — every step adds
-  /// a tag that is not already in the path.
-  Set<String> _allPathKeys(TagsByDoc tagsByDoc) {
+  /// a tag that is not already in the path. [keyPrefix] namespaces the keys
+  /// to one filtered section (matching `_appendTagNode`'s pathKey).
+  Set<String> _allPathKeys(TagsByDoc tagsByDoc, {String keyPrefix = ''}) {
     final keys = <String>{};
     void walk(List<String> components) {
-      if (!keys.add(components.join(_kPathSeparator))) return;
+      if (!keys.add('$keyPrefix${components.join(_kPathSeparator)}')) return;
       for (final t in childTags(components, tagsByDoc)) {
         walk([...components, t]);
       }
